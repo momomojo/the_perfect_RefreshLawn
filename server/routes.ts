@@ -420,10 +420,10 @@ export function registerRoutes(app: Express): Server {
 
   // Check availability
   app.get("/api/availability/check", async (req, res) => {
-    const { providerId, date, startTime, endTime, serviceId } = req.query;
+    const { providerId, date, startTime, endTime, serviceId, address } = req.query;
 
-    if (!providerId || !date || !startTime || !endTime || !serviceId) {
-      return res.status(400).send("Provider ID, date, start time, end time, and service ID are required");
+    if (!providerId || !date || !startTime || !endTime || !serviceId || !address) {
+      return res.status(400).send("Provider ID, date, start time, end time, service ID, and address are required");
     }
 
     try {
@@ -433,7 +433,8 @@ export function registerRoutes(app: Express): Server {
         checkDate,
         startTime as string,
         endTime as string,
-        parseInt(serviceId as string)
+        parseInt(serviceId as string),
+        address as string
       );
       res.json({ isAvailable });
     } catch (err) {

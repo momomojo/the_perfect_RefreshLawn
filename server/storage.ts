@@ -73,7 +73,8 @@ export interface IStorage {
     date: Date,
     startTime: string,
     endTime: string,
-    serviceId: number
+    serviceId: number,
+    address: string
   ): Promise<boolean>;
 
   sessionStore: session.SessionStore;
@@ -413,7 +414,8 @@ export class DatabaseStorage implements IStorage {
     date: Date,
     startTime: string,
     endTime: string,
-    serviceId: number
+    serviceId: number,
+    address: string // New parameter for address check
   ): Promise<boolean> {
     // Get the service to check buffer time and max daily bookings
     const service = await this.getService(serviceId);
@@ -465,10 +467,16 @@ export class DatabaseStorage implements IStorage {
       .from(appointments)
       .where(eq(appointments.startTime, dateTimeStart.toISOString()));
 
-    // Add buffer time check
-    if (service.bufferTime && existingAppointments.length > 0) {
-      for (const existing of existingAppointments) {
-        const existingTime = new Date(existing.startTime);
+    // Check for address conflicts
+    for (const appointment of existingAppointments) {
+      // If there's an existing appointment at a different address, block the time slot
+      if (appointment.address !== address) {
+        return false;
+      }
+
+      // Add buffer time check for appointments at the same address
+      if (service.bufferTime) {
+        const existingTime = new Date(appointment.startTime);
         const timeDiff = Math.abs(dateTimeStart.getTime() - existingTime.getTime());
         const bufferTimeMs = service.bufferTime * 60 * 1000; // Convert minutes to milliseconds
 
@@ -478,11 +486,6 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    return existingAppointments.length === 0;
-  }
-
-  // Check availability
-  async isTimeSlotAvailable(providerId: number, date: Date, startTime: string, endTime: string): Promise<boolean> {
     // Check if there's a blocked date for this day
     const dateOnly = date.toISOString().split('T')[0];
     const [blockedDate] = await db
@@ -512,7 +515,6 @@ export class DatabaseStorage implements IStorage {
     }
 
     // Check weekly schedule
-    const dayOfWeek = date.getDay();
     const [schedule] = await db
       .select()
       .from(weeklySchedules)
@@ -532,32 +534,7 @@ export class DatabaseStorage implements IStorage {
       return false;
     }
 
-    // Check if there are any overlapping appointments
-    const serviceIds = (await this.getProviderServices(providerId)).map(s => s.id);
-
-    if (serviceIds.length === 0) {
-      return true; // No services, so no appointments
-    }
-
-    // Since this is a simplification, we're just checking if there's an existing appointment
-    // with the exact same start time. In a real application, you'd need to check for overlaps.
-    const dateTimeStart = new Date(date);
-    dateTimeStart.setHours(parseInt(startTime.split(':')[0]));
-    dateTimeStart.setMinutes(parseInt(startTime.split(':')[1]));
-    dateTimeStart.setSeconds(0, 0);
-
-    // Use a simpler approach to avoid the in() method issues
-    const existingAppointments = await db
-      .select()
-      .from(appointments)
-      .where(eq(appointments.startTime, dateTimeStart.toISOString()));
-
-    // Filter appointments by service ID in JavaScript
-    const matchingAppointments = existingAppointments.filter(
-      app => serviceIds.includes(app.serviceId)
-    );
-
-    return matchingAppointments.length === 0;
+    return true;
   }
 }
 

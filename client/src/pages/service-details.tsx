@@ -74,15 +74,15 @@ export default function ServiceDetails() {
     enabled: !!service?.providerId,
   });
 
-  // Generate available time slots when date is selected
+  // Update useEffect to make generateTimeSlots async
   useEffect(() => {
     if (selectedDate && service) {
       generateTimeSlots(selectedDate, service);
     }
-  }, [selectedDate, service, weeklySchedules, blockedDates]);
+  }, [selectedDate, service, weeklySchedules, blockedDates, form.getValues("address")]);
 
-  // Function to generate available time slots based on provider availability
-  const generateTimeSlots = (date: Date, service: Service) => {
+  // Update the generateTimeSlots function to include address check
+  const generateTimeSlots = async (date: Date, service: Service) => {
     // Default business hours
     const defaultStart = "09:00";
     const defaultEnd = "17:00";
@@ -137,7 +137,25 @@ export default function ServiceDetails() {
       const endTimeSlot = `${String(endHour).padStart(2, '0')}:${String(endMinute).padStart(2, '0')}`;
 
       if (endTimeSlot <= endTime) {
-        slots.push(current);
+        // Check availability with the backend
+        const params = new URLSearchParams({
+          providerId: service.providerId.toString(),
+          date: date.toISOString().split('T')[0],
+          startTime: current,
+          endTime: endTimeSlot,
+          serviceId: service.id.toString(),
+          address: form.getValues("address") || user?.address || "",
+        });
+
+        try {
+          const response = await fetch(`/api/availability/check?${params}`);
+          const { isAvailable } = await response.json();
+          if (isAvailable) {
+            slots.push(current);
+          }
+        } catch (error) {
+          console.error("Error checking availability:", error);
+        }
       }
 
       // Increment by 30 minutes
