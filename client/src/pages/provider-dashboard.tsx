@@ -12,11 +12,14 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { insertServiceSchema } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { CheckIcon, XIcon, ClockIcon } from "lucide-react";
+import { CheckIcon, XIcon, ClockIcon, LogOutIcon } from "lucide-react";
+import { useLocation } from "wouter";
+import * as z from 'zod';
 
 export default function ProviderDashboard() {
-  const { user } = useAuth();
+  const { user, logoutMutation } = useAuth();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
 
   const { data: services } = useQuery<Service[]>({
     queryKey: ["/api/services/provider"],
@@ -40,10 +43,25 @@ export default function ProviderDashboard() {
     },
   });
 
+  const handleLogout = async () => {
+    await logoutMutation.mutateAsync();
+    setLocation("/auth");
+  };
+
   return (
     <div className="min-h-screen bg-[#F5F7F3] p-8">
       <div className="container mx-auto">
-        <h1 className="text-3xl font-bold mb-8">Welcome, {user?.name}</h1>
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-3xl font-bold">Welcome, {user?.name}</h1>
+          <Button 
+            variant="outline" 
+            onClick={handleLogout}
+            className="flex items-center gap-2"
+          >
+            <LogOutIcon className="h-4 w-4" />
+            Logout
+          </Button>
+        </div>
 
         <Tabs defaultValue="appointments">
           <TabsList className="mb-8">
@@ -168,12 +186,42 @@ export default function ProviderDashboard() {
 function CreateServiceForm() {
   const { toast } = useToast();
   const form = useForm({
-    resolver: zodResolver(insertServiceSchema),
+    resolver: zodResolver(
+      insertServiceSchema.extend({
+        imageFile: z.instanceof(File).optional(),
+      })
+    ),
+  });
+
+  const uploadImageMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append('image', file);
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      if (!res.ok) throw new Error('Failed to upload image');
+      return res.json();
+    }
   });
 
   const createServiceMutation = useMutation({
     mutationFn: async (data: any) => {
-      const res = await apiRequest("POST", "/api/services", data);
+      let imageUrl = data.imageUrl;
+
+      if (data.imageFile) {
+        const uploadResult = await uploadImageMutation.mutateAsync(data.imageFile);
+        imageUrl = uploadResult.url;
+      }
+
+      const serviceData = {
+        ...data,
+        imageUrl,
+      };
+      delete serviceData.imageFile;
+
+      const res = await apiRequest("POST", "/api/services", serviceData);
       return res.json();
     },
     onSuccess: () => {
@@ -250,12 +298,34 @@ function CreateServiceForm() {
 
         <FormField
           control={form.control}
+          name="imageFile"
+          render={({ field: { value, onChange, ...field } }) => (
+            <FormItem>
+              <FormLabel>Image</FormLabel>
+              <FormControl>
+                <Input 
+                  type="file" 
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) onChange(file);
+                  }}
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
           name="imageUrl"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Image URL</FormLabel>
+              <FormLabel>Or Image URL</FormLabel>
               <FormControl>
-                <Input {...field} />
+                <Input {...field} placeholder="https://..." />
               </FormControl>
               <FormMessage />
             </FormItem>
