@@ -22,6 +22,7 @@ import {
   SelectTrigger, 
   SelectValue 
 } from "@/components/ui/select";
+import { useAuth } from "@/hooks/use-auth";
 
 // Define booking schema with Zod for validation
 const bookingSchema = z.object({
@@ -34,6 +35,7 @@ type BookingData = z.infer<typeof bookingSchema>;
 export default function ServiceDetails() {
   const [location] = useLocation();
   const { toast } = useToast();
+  const { user } = useAuth(); // Get user data to auto-populate address
   const serviceId = parseInt(location.split("/").pop() || "0");
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [selectedTime, setSelectedTime] = useState<string | undefined>(undefined);
@@ -43,10 +45,17 @@ export default function ServiceDetails() {
   const form = useForm<BookingData>({
     resolver: zodResolver(bookingSchema),
     defaultValues: {
-      address: "",
+      address: user?.address || "",
       specialInstructions: "",
     },
   });
+
+  // Update address when user data loads
+  useEffect(() => {
+    if (user?.address) {
+      form.setValue("address", user.address);
+    }
+  }, [user, form]);
 
   // Query for the service details
   const { data: service, isLoading: serviceLoading } = useQuery<Service>({
@@ -192,10 +201,10 @@ export default function ServiceDetails() {
     const [hours, minutes] = selectedTime.split(':').map(Number);
     startTime.setHours(hours, minutes, 0, 0);
 
-    // Create booking
+    // Create booking with string date format that matches the expected format on the server
     bookAppointmentMutation.mutate({
       serviceId,
-      startTime: startTime.toISOString(),
+      startTime: startTime.toISOString(), // Send as ISO string for the backend
       address: formData.address,
       specialInstructions: formData.specialInstructions
     });

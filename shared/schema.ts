@@ -8,7 +8,8 @@ export const users = pgTable("users", {
   password: text("password").notNull(),
   role: text("role", { enum: ["provider", "customer"] }).notNull(),
   name: text("name").notNull(),
-  email: text("email").notNull()
+  email: text("email").notNull(),
+  address: text("address") // Added address field to users
 });
 
 export const services = pgTable("services", {
@@ -58,7 +59,8 @@ export const insertUserSchema = createInsertSchema(users).pick({
   password: true,
   role: true,
   name: true,
-  email: true
+  email: true,
+  address: true // Added address to schema
 });
 
 export const insertServiceSchema = createInsertSchema(services).pick({
