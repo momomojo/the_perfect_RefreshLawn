@@ -137,30 +137,27 @@ export default function ServiceDetails() {
       const endTimeSlot = `${String(endHour).padStart(2, '0')}:${String(endMinute).padStart(2, '0')}`;
 
       if (endTimeSlot <= endTime) {
-        // Check availability with the backend
         const address = form.getValues("address") || user?.address || "";
-        if (address) { // Only check availability if we have an address
-          const params = new URLSearchParams({
-            providerId: service.providerId.toString(),
-            date: date.toISOString().split('T')[0],
-            startTime: current,
-            endTime: endTimeSlot,
-            serviceId: service.id.toString(),
-            address: address,
-          });
+        const params = new URLSearchParams({
+          providerId: service.providerId.toString(),
+          date: date.toISOString().split('T')[0],
+          startTime: current,
+          endTime: endTimeSlot,
+          serviceId: service.id.toString(),
+          address: address,
+        });
 
-          try {
-            const response = await fetch(`/api/availability/check?${params}`);
-            const { isAvailable } = await response.json();
-            if (isAvailable) {
-              slots.push(current);
-            }
-          } catch (error) {
-            console.error("Error checking availability:", error);
+        try {
+          const response = await fetch(`/api/availability/check?${params}`);
+          if (!response.ok) {
+            throw new Error('Network response was not ok');
           }
-        } else {
-          // If no address, show all time slots but they'll be verified when address is entered
-          slots.push(current);
+          const { isAvailable } = await response.json();
+          if (isAvailable) {
+            slots.push(current);
+          }
+        } catch (error) {
+          console.error("Error checking availability:", error);
         }
       }
 
