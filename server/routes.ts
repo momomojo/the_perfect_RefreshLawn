@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { storage } from "./storage";
+import { storage as dbStorage } from "./storage";
 import { setupAuth } from "./auth";
 import { insertServiceSchema, insertAppointmentSchema } from "@shared/schema";
 import multer from "multer";
@@ -13,7 +13,7 @@ if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
-const storage = multer.diskStorage({
+const multerStorage = multer.diskStorage({
   destination: uploadDir,
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
@@ -21,7 +21,7 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ storage });
+const upload = multer({ storage: multerStorage });
 
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
@@ -49,12 +49,12 @@ export function registerRoutes(app: Express): Server {
       return res.status(400).json(parsed.error);
     }
 
-    const service = await storage.createService(parsed.data, req.user.id);
+    const service = await dbStorage.createService(parsed.data, req.user.id);
     res.status(201).json(service);
   });
 
   app.get("/api/services", async (req, res) => {
-    const services = await storage.getAllServices();
+    const services = await dbStorage.getAllServices();
     res.json(services);
   });
 
@@ -63,8 +63,16 @@ export function registerRoutes(app: Express): Server {
       return res.status(403).send("Access denied");
     }
 
-    const services = await storage.getProviderServices(req.user.id);
+    const services = await dbStorage.getProviderServices(req.user.id);
     res.json(services);
+  });
+
+  app.get("/api/services/:id", async (req, res) => {
+    const service = await dbStorage.getService(parseInt(req.params.id));
+    if (!service) {
+      return res.status(404).send("Service not found");
+    }
+    res.json(service);
   });
 
   // Appointment routes
@@ -78,7 +86,7 @@ export function registerRoutes(app: Express): Server {
       return res.status(400).json(parsed.error);
     }
 
-    const appointment = await storage.createAppointment(parsed.data, req.user.id);
+    const appointment = await dbStorage.createAppointment(parsed.data, req.user.id);
     res.status(201).json(appointment);
   });
 
@@ -87,7 +95,7 @@ export function registerRoutes(app: Express): Server {
       return res.status(403).send("Access denied");
     }
 
-    const appointments = await storage.getCustomerAppointments(req.user.id);
+    const appointments = await dbStorage.getCustomerAppointments(req.user.id);
     res.json(appointments);
   });
 
@@ -96,7 +104,7 @@ export function registerRoutes(app: Express): Server {
       return res.status(403).send("Access denied");
     }
 
-    const appointments = await storage.getProviderAppointments(req.user.id);
+    const appointments = await dbStorage.getProviderAppointments(req.user.id);
     res.json(appointments);
   });
 
@@ -111,7 +119,7 @@ export function registerRoutes(app: Express): Server {
     }
 
     try {
-      const appointment = await storage.updateAppointmentStatus(
+      const appointment = await dbStorage.updateAppointmentStatus(
         parseInt(req.params.id),
         status
       );
