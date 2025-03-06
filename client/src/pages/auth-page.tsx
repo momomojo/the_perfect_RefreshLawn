@@ -9,7 +9,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { insertUserSchema } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
-import { GrassIcon } from "lucide-react";
+import { LeafIcon } from "lucide-react";
 
 export default function AuthPage() {
   const { user, loginMutation, registerMutation } = useAuth();
@@ -27,7 +27,7 @@ export default function AuthPage() {
           <Card>
             <CardHeader className="space-y-1">
               <div className="flex items-center gap-2">
-                <GrassIcon className="h-6 w-6 text-primary" />
+                <LeafIcon className="h-6 w-6 text-primary" />
                 <CardTitle className="text-2xl">Welcome to LawnCare</CardTitle>
               </div>
               <CardDescription>

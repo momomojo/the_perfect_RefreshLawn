@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
-import { GrassIcon, CalendarIcon, CreditCardIcon, UserIcon } from "lucide-react";
+import { LeafIcon, CalendarIcon, CreditCardIcon, UserIcon } from "lucide-react";
 
 export default function HomePage() {
   const { user } = useAuth();
@@ -9,7 +9,7 @@ export default function HomePage() {
 
   const features = [
     {
-      icon: <GrassIcon className="h-6 w-6" />,
+      icon: <LeafIcon className="h-6 w-6" />,
       title: "Professional Services",
       description: "Expert lawn care services from verified professionals"
     },
@@ -36,7 +36,7 @@ export default function HomePage() {
       <nav className="bg-white shadow-sm">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center gap-2">
-            <GrassIcon className="h-6 w-6 text-primary" />
+            <LeafIcon className="h-6 w-6 text-primary" />
             <span className="text-xl font-bold text-primary">LawnCare</span>
           </div>
           <div>
@@ -125,7 +125,7 @@ export default function HomePage() {
       <footer className="bg-primary text-primary-foreground mt-16">
         <div className="container mx-auto px-4 py-8">
           <div className="flex items-center justify-center gap-2">
-            <GrassIcon className="h-6 w-6" />
+            <LeafIcon className="h-6 w-6" />
             <span className="text-xl font-bold">LawnCare</span>
           </div>
           <p className="text-center mt-4">
