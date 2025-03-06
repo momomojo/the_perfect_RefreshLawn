@@ -297,9 +297,9 @@ export default function ServiceDetails() {
                         // Check day of week availability
                         const dayOfWeek = date.getDay();
 
-                        // If no schedules at all are defined, consider all days available
+                        // If no schedules at all are defined, consider all days unavailable
                         if (!weeklySchedules || weeklySchedules.length === 0) {
-                          return date < today || isBlocked;
+                          return true;
                         }
 
                         // Find if there's an explicit schedule for this day of week
@@ -307,9 +307,9 @@ export default function ServiceDetails() {
                           schedule => schedule.dayOfWeek === dayOfWeek
                         );
 
-                        // If no schedules for this day are defined, consider it available
+                        // If no schedules for this day are defined, consider it unavailable
                         if (daySchedules.length === 0) {
-                          return date < today || isBlocked;
+                          return true;
                         }
 
                         // If there are schedules for this day, check if at least one is available
