@@ -77,6 +77,7 @@ export default function ServiceDetails() {
   // Update the generateTimeSlots function to include address check
   const generateTimeSlots = async (date: Date, service: Service) => {
     const address = form.getValues("address") || user?.address;
+    const dateStr = date.toISOString().split('T')[0];
 
     if (!address) {
       toast({
@@ -103,7 +104,6 @@ export default function ServiceDetails() {
     }
 
     // Check if date is blocked
-    const dateStr = date.toISOString().split('T')[0];
     const isBlocked = blockedDates?.some(blocked => {
       const blockedDateStr = new Date(blocked.date).toISOString().split('T')[0];
       return blockedDateStr === dateStr && blocked.isFullDay;
@@ -147,7 +147,8 @@ export default function ServiceDetails() {
 
           const response = await fetch(`/api/availability/check?${params}`);
           if (!response.ok) {
-            throw new Error('Failed to check availability');
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to check availability');
           }
 
           const { isAvailable } = await response.json();
@@ -160,7 +161,7 @@ export default function ServiceDetails() {
           console.error("Error checking availability:", error);
           toast({
             title: "Error",
-            description: "Failed to check time slot availability",
+            description: error instanceof Error ? error.message : "Failed to check time slot availability",
             variant: "destructive",
           });
         }
