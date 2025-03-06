@@ -138,23 +138,29 @@ export default function ServiceDetails() {
 
       if (endTimeSlot <= endTime) {
         // Check availability with the backend
-        const params = new URLSearchParams({
-          providerId: service.providerId.toString(),
-          date: date.toISOString().split('T')[0],
-          startTime: current,
-          endTime: endTimeSlot,
-          serviceId: service.id.toString(),
-          address: form.getValues("address") || user?.address || "",
-        });
+        const address = form.getValues("address") || user?.address || "";
+        if (address) { // Only check availability if we have an address
+          const params = new URLSearchParams({
+            providerId: service.providerId.toString(),
+            date: date.toISOString().split('T')[0],
+            startTime: current,
+            endTime: endTimeSlot,
+            serviceId: service.id.toString(),
+            address: address,
+          });
 
-        try {
-          const response = await fetch(`/api/availability/check?${params}`);
-          const { isAvailable } = await response.json();
-          if (isAvailable) {
-            slots.push(current);
+          try {
+            const response = await fetch(`/api/availability/check?${params}`);
+            const { isAvailable } = await response.json();
+            if (isAvailable) {
+              slots.push(current);
+            }
+          } catch (error) {
+            console.error("Error checking availability:", error);
           }
-        } catch (error) {
-          console.error("Error checking availability:", error);
+        } else {
+          // If no address, show all time slots but they'll be verified when address is entered
+          slots.push(current);
         }
       }
 

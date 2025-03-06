@@ -1,6 +1,6 @@
 import { users, services, appointments, weeklySchedules, blockedDates, breakTimes, waitlist, type User, type Service, type Appointment, type WeeklySchedule, type BlockedDate, type BreakTime, type Waitlist, type InsertUser, type InsertService, type InsertAppointment, type InsertWeeklySchedule, type InsertBlockedDate, type InsertBreakTime, type InsertWaitlist } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, gte, lte, inQuery } from "drizzle-orm";
+import { eq, and, gte, lte, inQuery, inArray, sql } from "drizzle-orm";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 import { pool } from "./db";
@@ -182,7 +182,9 @@ export class DatabaseStorage implements IStorage {
     return await db
       .select()
       .from(appointments)
-      .where(eq(appointments.serviceId, serviceIds[0]));
+      .where(
+        inArray(appointments.serviceId, serviceIds)
+      );
   }
 
   async updateAppointmentStatus(
@@ -415,7 +417,7 @@ export class DatabaseStorage implements IStorage {
     startTime: string,
     endTime: string,
     serviceId: number,
-    address: string // New parameter for address check
+    address: string
   ): Promise<boolean> {
     // Get the service to check buffer time and max daily bookings
     const service = await this.getService(serviceId);
@@ -430,7 +432,7 @@ export class DatabaseStorage implements IStorage {
         .where(
           and(
             eq(appointments.serviceId, serviceId),
-            eq(appointments.startTime, dateStr)
+            eq(sql`DATE(${appointments.startTime})`, dateStr)
           )
         );
 
@@ -461,15 +463,19 @@ export class DatabaseStorage implements IStorage {
     dateTimeStart.setMinutes(parseInt(startTime.split(':')[1]));
     dateTimeStart.setSeconds(0, 0);
 
-    // Get all appointments for this day
+    // Get all appointments for this date
     const existingAppointments = await db
       .select()
       .from(appointments)
-      .where(eq(appointments.startTime, dateTimeStart.toISOString()));
+      .where(
+        and(
+          eq(appointments.serviceId, serviceId),
+          eq(sql`DATE(${appointments.startTime})`, dateTimeStart.toISOString().split('T')[0])
+        )
+      );
 
     // Check for address conflicts
     for (const appointment of existingAppointments) {
-      // If there's an existing appointment at a different address, block the time slot
       if (appointment.address !== address) {
         return false;
       }
@@ -481,34 +487,6 @@ export class DatabaseStorage implements IStorage {
         const bufferTimeMs = service.bufferTime * 60 * 1000; // Convert minutes to milliseconds
 
         if (timeDiff < bufferTimeMs) {
-          return false;
-        }
-      }
-    }
-
-    // Check if there's a blocked date for this day
-    const dateOnly = date.toISOString().split('T')[0];
-    const [blockedDate] = await db
-      .select()
-      .from(blockedDates)
-      .where(
-        and(
-          eq(blockedDates.providerId, providerId),
-          eq(blockedDates.date, dateOnly)
-        )
-      );
-
-    if (blockedDate) {
-      if (blockedDate.isFullDay) {
-        return false;
-      }
-
-      // Check if the requested time overlaps with blocked time
-      if (blockedDate.startTime && blockedDate.endTime) {
-        if (startTime >= blockedDate.startTime && startTime < blockedDate.endTime) {
-          return false;
-        }
-        if (endTime > blockedDate.startTime && endTime <= blockedDate.endTime) {
           return false;
         }
       }
