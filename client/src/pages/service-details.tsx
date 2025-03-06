@@ -1,10 +1,13 @@
-import { useState, useEffect } from 'react';
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Service, WeeklySchedule, BlockedDate } from "@shared/schema";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { ClockIcon, DollarSignIcon, MapPinIcon, FileTextIcon, CheckCircleIcon, ArrowLeftIcon } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useState, useEffect } from "react";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,10 +15,14 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { format } from "date-fns";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
 import { useAuth } from "@/hooks/use-auth";
-import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { ClockIcon, DollarSignIcon, MapPinIcon, FileTextIcon, CheckCircleIcon, ArrowLeftIcon } from "lucide-react";
 
 // Define booking schema with Zod for validation
 const bookingSchema = z.object({
@@ -26,9 +33,9 @@ const bookingSchema = z.object({
 type BookingData = z.infer<typeof bookingSchema>;
 
 export default function ServiceDetails() {
-  const { toast } = useToast();
-  const { user } = useAuth();
   const [location, setLocation] = useLocation();
+  const { toast } = useToast();
+  const { user } = useAuth(); // Get user data to auto-populate address
   const serviceId = parseInt(location.split("/").pop() || "0");
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [selectedTime, setSelectedTime] = useState<string | undefined>(undefined);
@@ -67,43 +74,35 @@ export default function ServiceDetails() {
     enabled: !!service?.providerId,
   });
 
-  // Update useEffect to make generateTimeSlots async
+  // Generate available time slots when date is selected
   useEffect(() => {
     if (selectedDate && service) {
       generateTimeSlots(selectedDate, service);
     }
-  }, [selectedDate, service, weeklySchedules, blockedDates, form.getValues("address")]);
+  }, [selectedDate, service, weeklySchedules, blockedDates]);
 
-  // Update the generateTimeSlots function to include address check
-  const generateTimeSlots = async (date: Date, service: Service) => {
-    const address = form.getValues("address") || user?.address;
-    const dateStr = date.toISOString().split('T')[0];
-
-    if (!address) {
-      toast({
-        title: "Address Required",
-        description: "Please enter a service address to see available time slots.",
-        variant: "destructive",
-      });
-      return;
-    }
-
+  // Function to generate available time slots based on provider availability
+  const generateTimeSlots = (date: Date, service: Service) => {
     // Default business hours
     const defaultStart = "09:00";
     const defaultEnd = "17:00";
 
-    // Get day schedule
+    // Get day of week (0 = Sunday, 1 = Monday, etc.)
     const dayOfWeek = date.getDay();
+
+    // Find schedule for the selected day
     const daySchedule = weeklySchedules?.find(
       schedule => schedule.dayOfWeek === dayOfWeek && schedule.isAvailable
     );
 
+    // If no schedule found or day not available, no time slots
     if (!daySchedule) {
       setAvailableTimes([]);
       return;
     }
 
     // Check if date is blocked
+    const dateStr = date.toISOString().split('T')[0];
     const isBlocked = blockedDates?.some(blocked => {
       const blockedDateStr = new Date(blocked.date).toISOString().split('T')[0];
       return blockedDateStr === dateStr && blocked.isFullDay;
@@ -114,16 +113,21 @@ export default function ServiceDetails() {
       return;
     }
 
+    // Get start and end times from schedule or use defaults
     const startTime = daySchedule?.startTime || defaultStart;
     const endTime = daySchedule?.endTime || defaultEnd;
 
+    // Create time slots every 30 minutes
     const slots: string[] = [];
     let current = startTime;
 
     while (current < endTime) {
+      // Get service duration and ensure we don't go past end time
+      const durationInMinutes = service.duration;
       const [hours, minutes] = current.split(':').map(Number);
+
       let endHour = hours;
-      let endMinute = minutes + service.duration;
+      let endMinute = minutes + durationInMinutes;
 
       while (endMinute >= 60) {
         endHour += 1;
@@ -133,38 +137,7 @@ export default function ServiceDetails() {
       const endTimeSlot = `${String(endHour).padStart(2, '0')}:${String(endMinute).padStart(2, '0')}`;
 
       if (endTimeSlot <= endTime) {
-        try {
-          const params = new URLSearchParams({
-            providerId: service.providerId.toString(),
-            date: dateStr,
-            startTime: `${current}:00`,  // Add seconds to match server expectation
-            endTime: `${endTimeSlot}:00`, // Add seconds to match server expectation
-            serviceId: service.id.toString(),
-            address: address,
-          });
-
-          console.log('Checking availability with params:', Object.fromEntries(params));
-
-          const response = await fetch(`/api/availability/check?${params}`);
-          if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Failed to check availability');
-          }
-
-          const { isAvailable } = await response.json();
-          console.log(`Time slot ${current}-${endTimeSlot}: ${isAvailable ? 'available' : 'not available'}`);
-
-          if (isAvailable) {
-            slots.push(current);
-          }
-        } catch (error) {
-          console.error("Error checking availability:", error);
-          toast({
-            title: "Error",
-            description: error instanceof Error ? error.message : "Failed to check time slot availability",
-            variant: "destructive",
-          });
-        }
+        slots.push(current);
       }
 
       // Increment by 30 minutes
@@ -180,13 +153,6 @@ export default function ServiceDetails() {
     }
 
     setAvailableTimes(slots);
-
-    if (slots.length === 0) {
-      toast({
-        title: "No Available Times",
-        description: "No time slots are available for the selected date. Please try another date.",
-      });
-    }
   };
 
   // Format time for display
@@ -266,6 +232,8 @@ export default function ServiceDetails() {
     );
   }
 
+  // Debug log to help diagnose available days issue
+  console.log("Weekly Schedules:", weeklySchedules);
 
   return (
     <div className="min-h-screen bg-[#F5F7F3] p-8">

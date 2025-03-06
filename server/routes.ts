@@ -420,13 +420,10 @@ export function registerRoutes(app: Express): Server {
 
   // Check availability
   app.get("/api/availability/check", async (req, res) => {
-    const { providerId, date, startTime, endTime, serviceId, address } = req.query;
+    const { providerId, date, startTime, endTime, serviceId } = req.query;
 
-    if (!providerId || !date || !startTime || !endTime || !serviceId || !address) {
-      return res.status(400).json({
-        error: "Missing required parameters",
-        params: { providerId, date, startTime, endTime, serviceId, address }
-      });
+    if (!providerId || !date || !startTime || !endTime || !serviceId) {
+      return res.status(400).send("Provider ID, date, start time, end time, and service ID are required");
     }
 
     try {
@@ -436,16 +433,11 @@ export function registerRoutes(app: Express): Server {
         checkDate,
         startTime as string,
         endTime as string,
-        parseInt(serviceId as string),
-        address as string
+        parseInt(serviceId as string)
       );
       res.json({ isAvailable });
     } catch (err) {
-      console.error("Availability check error:", err);
-      res.status(500).json({
-        error: "Failed to check availability",
-        details: err instanceof Error ? err.message : "Unknown error"
-      });
+      res.status(400).send("Invalid parameters");
     }
   });
 
