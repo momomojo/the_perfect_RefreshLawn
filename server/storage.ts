@@ -1,6 +1,6 @@
 import { users, services, appointments, weeklySchedules, blockedDates, type User, type Service, type Appointment, type WeeklySchedule, type BlockedDate, type InsertUser, type InsertService, type InsertAppointment, type InsertWeeklySchedule, type InsertBlockedDate } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, gte, lte } from "drizzle-orm";
+import { eq, and, gte, lte, inQuery } from "drizzle-orm";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 import { pool } from "./db";
@@ -206,8 +206,8 @@ export class DatabaseStorage implements IStorage {
       .where(
         and(
           eq(blockedDates.providerId, providerId),
-          gte(blockedDates.date, startDate),
-          lte(blockedDates.date, endDate)
+          gte(blockedDates.date, startDate.toISOString().split('T')[0]),
+          lte(blockedDates.date, endDate.toISOString().split('T')[0])
         )
       );
   }
@@ -232,7 +232,7 @@ export class DatabaseStorage implements IStorage {
   // Check availability
   async isTimeSlotAvailable(providerId: number, date: Date, startTime: string, endTime: string): Promise<boolean> {
     // Check if there's a blocked date for this day
-    const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const dateOnly = date.toISOString().split('T')[0];
     const [blockedDate] = await db
       .select()
       .from(blockedDates)
@@ -292,11 +292,18 @@ export class DatabaseStorage implements IStorage {
     const dateTimeStart = new Date(date);
     dateTimeStart.setHours(parseInt(startTime.split(':')[0]));
     dateTimeStart.setMinutes(parseInt(startTime.split(':')[1]));
+    dateTimeStart.setSeconds(0, 0);
 
+    // Use WHERE clause that compares the date part only
     const existingAppointments = await db
       .select()
       .from(appointments)
-      .where(eq(appointments.startTime, dateTimeStart.toISOString()));
+      .where(
+        and(
+          appointments.serviceId.in(serviceIds),
+          eq(appointments.startTime, dateTimeStart.toISOString())
+        )
+      );
 
     return existingAppointments.length === 0;
   }
