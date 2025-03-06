@@ -211,6 +211,13 @@ function CreateServiceForm() {
         imageFile: z.instanceof(File).optional(),
       })
     ),
+    defaultValues: {
+      title: "",
+      description: "",
+      duration: 60, // Default duration in minutes
+      price: 0,
+      imageUrl: ""
+    }
   });
 
   const uploadImageMutation = useMutation({
@@ -235,8 +242,11 @@ function CreateServiceForm() {
         imageUrl = uploadResult.url;
       }
 
+      // Ensure numeric fields are properly converted to numbers
       const serviceData = {
         ...data,
+        duration: Number(data.duration),
+        price: Number(data.price),
         imageUrl,
       };
       delete serviceData.imageFile;
@@ -252,6 +262,13 @@ function CreateServiceForm() {
         description: "Service created successfully",
       });
     },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: "Failed to create service: " + error.message,
+        variant: "destructive"
+      });
+    }
   });
 
   return (
@@ -295,7 +312,11 @@ function CreateServiceForm() {
             <FormItem>
               <FormLabel>Duration (minutes)</FormLabel>
               <FormControl>
-                <Input type="number" {...field} />
+                <Input 
+                  type="number" 
+                  {...field} 
+                  onChange={(e) => field.onChange(Number(e.target.value))}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -309,7 +330,12 @@ function CreateServiceForm() {
             <FormItem>
               <FormLabel>Price ($)</FormLabel>
               <FormControl>
-                <Input type="number" step="0.01" {...field} />
+                <Input 
+                  type="number" 
+                  step="0.01" 
+                  {...field} 
+                  onChange={(e) => field.onChange(Number(e.target.value))}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
