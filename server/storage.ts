@@ -98,13 +98,24 @@ export class DatabaseStorage implements IStorage {
     const service = await this.getService(appointment.serviceId);
     if (!service) throw new Error("Service not found");
 
+    // Convert startTime from string to Date if it's a string
+    let startTimeValue: Date;
+    if (typeof appointment.startTime === 'string') {
+      startTimeValue = new Date(appointment.startTime);
+    } else {
+      startTimeValue = appointment.startTime;
+    }
+
     const [newAppointment] = await db
       .insert(appointments)
       .values({
-        ...appointment,
+        serviceId: appointment.serviceId,
         customerId,
         status: "pending",
         totalAmount: service.price,
+        address: appointment.address,
+        specialInstructions: appointment.specialInstructions,
+        startTime: startTimeValue
       })
       .returning();
     return newAppointment;
@@ -294,18 +305,18 @@ export class DatabaseStorage implements IStorage {
     dateTimeStart.setMinutes(parseInt(startTime.split(':')[1]));
     dateTimeStart.setSeconds(0, 0);
 
-    // Use WHERE clause that compares the date part only
+    // Use a simpler approach to avoid the in() method issues
     const existingAppointments = await db
       .select()
       .from(appointments)
-      .where(
-        and(
-          appointments.serviceId.in(serviceIds),
-          eq(appointments.startTime, dateTimeStart.toISOString())
-        )
-      );
+      .where(eq(appointments.startTime, dateTimeStart.toISOString()));
 
-    return existingAppointments.length === 0;
+    // Filter appointments by service ID in JavaScript
+    const matchingAppointments = existingAppointments.filter(
+      app => serviceIds.includes(app.serviceId)
+    );
+
+    return matchingAppointments.length === 0;
   }
 }
 
