@@ -21,6 +21,7 @@ import { useLocation } from "wouter";
 import * as z from 'zod';
 import { format } from "date-fns";
 import { useState, useEffect } from "react";
+import React from 'react';
 
 export default function ProviderDashboard() {
   const { user, logoutMutation } = useAuth();
@@ -216,7 +217,8 @@ function CreateServiceForm() {
       description: "",
       duration: 60, // Default duration in minutes
       price: "0", // Changed to string type to match the schema expectation
-      imageUrl: ""
+      imageUrl: "",
+      imageFile: undefined
     }
   });
 
@@ -449,145 +451,174 @@ function WeeklyScheduleManager() {
     },
   });
 
+  // Group schedules by day of week for better display
+  const groupedSchedules = React.useMemo(() => {
+    if (!weeklySchedules) return {};
+
+    return weeklySchedules.reduce((acc: Record<number, WeeklySchedule[]>, schedule) => {
+      if (!acc[schedule.dayOfWeek]) {
+        acc[schedule.dayOfWeek] = [];
+      }
+      acc[schedule.dayOfWeek].push(schedule);
+      return acc;
+    }, {});
+  }, [weeklySchedules]);
+
   return (
     <div className="space-y-6">
-      <Form {...form}>
-        <form
-          onSubmit={form.handleSubmit((data) => createScheduleMutation.mutate(data))}
-          className="space-y-4"
-        >
-          <FormField
-            control={form.control}
-            name="dayOfWeek"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Day of Week</FormLabel>
-                <Select
-                  onValueChange={(value) => field.onChange(parseInt(value))}
-                  defaultValue={field.value.toString()}
-                >
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select day" />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    {daysOfWeek.map((day) => (
-                      <SelectItem key={day.value} value={day.value}>
-                        {day.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+      <div className="bg-slate-50 p-4 rounded-lg border">
+        <h3 className="text-lg font-medium mb-3">Add Time Window</h3>
+        <p className="text-sm text-muted-foreground mb-4">
+          Add multiple time windows for each day to give your customers more booking options.
+        </p>
 
-          <div className="grid grid-cols-2 gap-4">
-            <FormField
-              control={form.control}
-              name="startTime"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Start Time</FormLabel>
-                  <FormControl>
-                    <Input type="time" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="endTime"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>End Time</FormLabel>
-                  <FormControl>
-                    <Input type="time" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </div>
-
-          <FormField
-            control={form.control}
-            name="isAvailable"
-            render={({ field }) => (
-              <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                <div className="space-y-0.5">
-                  <FormLabel className="text-base">Available</FormLabel>
-                </div>
-                <FormControl>
-                  <Switch
-                    checked={field.value}
-                    onCheckedChange={field.onChange}
-                  />
-                </FormControl>
-              </FormItem>
-            )}
-          />
-
-          <Button
-            type="submit"
-            className="w-full"
-            disabled={createScheduleMutation.isPending}
+        <Form {...form}>
+          <form
+            onSubmit={form.handleSubmit((data) => createScheduleMutation.mutate(data))}
+            className="space-y-4"
           >
-            Add Schedule
-          </Button>
-        </form>
-      </Form>
+            <FormField
+              control={form.control}
+              name="dayOfWeek"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Day of Week</FormLabel>
+                  <Select
+                    onValueChange={(value) => field.onChange(parseInt(value))}
+                    defaultValue={field.value.toString()}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select day" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {daysOfWeek.map((day) => (
+                        <SelectItem key={day.value} value={day.value}>
+                          {day.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="startTime"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Start Time</FormLabel>
+                    <FormControl>
+                      <Input type="time" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="endTime"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>End Time</FormLabel>
+                    <FormControl>
+                      <Input type="time" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <FormField
+              control={form.control}
+              name="isAvailable"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                  <div className="space-y-0.5">
+                    <FormLabel className="text-base">Available</FormLabel>
+                  </div>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={createScheduleMutation.isPending}
+            >
+              Add Time Window
+            </Button>
+          </form>
+        </Form>
+      </div>
 
       <div>
         <h3 className="text-lg font-medium mb-3">Your Weekly Schedule</h3>
         {isLoading ? (
           <p>Loading schedules...</p>
         ) : weeklySchedules && weeklySchedules.length > 0 ? (
-          <div className="space-y-4">
-            {weeklySchedules.map((schedule) => (
-              <Card key={schedule.id}>
-                <CardContent className="p-4">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <p className="font-medium">
-                        {daysOfWeek.find(d => parseInt(d.value) === schedule.dayOfWeek)?.label}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {schedule.startTime} - {schedule.endTime}
-                      </p>
-                      <p className="text-sm">
-                        {schedule.isAvailable ? "Available" : "Unavailable"}
-                      </p>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          updateScheduleMutation.mutate({
-                            id: schedule.id,
-                            data: { isAvailable: !schedule.isAvailable }
-                          });
-                        }}
-                      >
-                        {schedule.isAvailable ? "Mark Unavailable" : "Mark Available"}
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => deleteScheduleMutation.mutate(schedule.id)}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
+          <div className="space-y-6">
+            {daysOfWeek.map((day) => {
+              const daySchedules = groupedSchedules[parseInt(day.value)] || [];
+              if (daySchedules.length === 0) return null;
+
+              return (
+                <div key={day.value} className="space-y-2">
+                  <h4 className="font-medium">{day.label}</h4>
+                  <div className="space-y-2">
+                    {daySchedules.map((schedule) => (
+                      <Card key={schedule.id}>
+                        <CardContent className="p-4">
+                          <div className="flex justify-between items-center">
+                            <div>
+                              <p className="text-sm text-muted-foreground">
+                                {schedule.startTime} - {schedule.endTime}
+                              </p>
+                              <p className="text-sm">
+                                {schedule.isAvailable ? "Available" : "Unavailable"}
+                              </p>
+                            </div>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  updateScheduleMutation.mutate({
+                                    id: schedule.id,
+                                    data: { isAvailable: !schedule.isAvailable }
+                                  });
+                                }}
+                              >
+                                {schedule.isAvailable ? "Mark Unavailable" : "Mark Available"}
+                              </Button>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => deleteScheduleMutation.mutate(schedule.id)}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
                   </div>
-                </CardContent>
-              </Card>
-            ))}
+                </div>
+              );
+            })}
           </div>
         ) : (
           <p>No schedules set up yet.</p>
@@ -605,16 +636,18 @@ function BlockedDatesManager() {
     queryKey: ["/api/blocked-dates"],
   });
 
+  const extendedBlockedDateSchema = insertBlockedDateSchema.extend({
+    date: z.date(),
+  });
+
   const form = useForm({
-    resolver: zodResolver(
-      insertBlockedDateSchema.extend({
-        date: z.date(),
-      })
-    ),
+    resolver: zodResolver(extendedBlockedDateSchema),
     defaultValues: {
+      date: undefined,
       isFullDay: true,
       startTime: "09:00",
       endTime: "17:00",
+      reason: ""
     }
   });
 

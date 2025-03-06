@@ -83,20 +83,26 @@ export default function ServiceDetails() {
 
   // Function to generate available time slots based on provider availability
   const generateTimeSlots = (date: Date, service: Service) => {
+    console.log("Generating time slots for date:", date);
+
     // Default business hours
     const defaultStart = "09:00";
     const defaultEnd = "17:00";
 
     // Get day of week (0 = Sunday, 1 = Monday, etc.)
     const dayOfWeek = date.getDay();
+    console.log("Day of week:", dayOfWeek);
 
-    // Find schedule for the selected day
-    const daySchedule = weeklySchedules?.find(
+    // Find all schedules for the selected day
+    const daySchedules = weeklySchedules?.filter(
       schedule => schedule.dayOfWeek === dayOfWeek && schedule.isAvailable
-    );
+    ) || [];
 
-    // If no schedule found or day not available, no time slots
-    if (!daySchedule) {
+    console.log("Available schedules for this day:", daySchedules);
+
+    // If no schedules found or day not available, no time slots
+    if (daySchedules.length === 0) {
+      console.log("No available schedules found for this day");
       setAvailableTimes([]);
       return;
     }
@@ -109,50 +115,66 @@ export default function ServiceDetails() {
     });
 
     if (isBlocked) {
+      console.log("Date is blocked");
       setAvailableTimes([]);
       return;
     }
 
-    // Get start and end times from schedule or use defaults
-    const startTime = daySchedule?.startTime || defaultStart;
-    const endTime = daySchedule?.endTime || defaultEnd;
+    // Create time slots for all available schedules for this day
+    let allSlots: string[] = [];
 
-    // Create time slots every 30 minutes
-    const slots: string[] = [];
-    let current = startTime;
+    // Process each schedule for this day
+    daySchedules.forEach(daySchedule => {
+      // Get start and end times from schedule
+      const startTime = daySchedule.startTime;
+      const endTime = daySchedule.endTime;
+      console.log(`Processing schedule window: ${startTime} - ${endTime}`);
 
-    while (current < endTime) {
-      // Get service duration and ensure we don't go past end time
-      const durationInMinutes = service.duration;
-      const [hours, minutes] = current.split(':').map(Number);
+      // Create time slots every 30 minutes for this schedule
+      const slots: string[] = [];
+      let current = startTime;
 
-      let endHour = hours;
-      let endMinute = minutes + durationInMinutes;
+      while (current < endTime) {
+        // Get service duration and ensure we don't go past end time
+        const durationInMinutes = service.duration;
+        const [hours, minutes] = current.split(':').map(Number);
 
-      while (endMinute >= 60) {
-        endHour += 1;
-        endMinute -= 60;
+        let endHour = hours;
+        let endMinute = minutes + durationInMinutes;
+
+        while (endMinute >= 60) {
+          endHour += 1;
+          endMinute -= 60;
+        }
+
+        const endTimeSlot = `${String(endHour).padStart(2, '0')}:${String(endMinute).padStart(2, '0')}`;
+
+        if (endTimeSlot <= endTime) {
+          slots.push(current);
+        }
+
+        // Increment by 30 minutes
+        let nextHour = hours;
+        let nextMinute = minutes + 30;
+
+        if (nextMinute >= 60) {
+          nextHour += 1;
+          nextMinute -= 60;
+        }
+
+        current = `${String(nextHour).padStart(2, '0')}:${String(nextMinute).padStart(2, '0')}`;
       }
 
-      const endTimeSlot = `${String(endHour).padStart(2, '0')}:${String(endMinute).padStart(2, '0')}`;
+      console.log(`Generated ${slots.length} time slots for this window`);
+      // Add slots from this schedule to all slots
+      allSlots = [...allSlots, ...slots];
+    });
 
-      if (endTimeSlot <= endTime) {
-        slots.push(current);
-      }
+    // Remove duplicates and sort
+    allSlots = Array.from(new Set(allSlots)).sort();
+    console.log("Final available time slots:", allSlots);
 
-      // Increment by 30 minutes
-      let nextHour = hours;
-      let nextMinute = minutes + 30;
-
-      if (nextMinute >= 60) {
-        nextHour += 1;
-        nextMinute -= 60;
-      }
-
-      current = `${String(nextHour).padStart(2, '0')}:${String(nextMinute).padStart(2, '0')}`;
-    }
-
-    setAvailableTimes(slots);
+    setAvailableTimes(allSlots);
   };
 
   // Format time for display
@@ -292,7 +314,7 @@ export default function ServiceDetails() {
                         const isBlocked = blockedDates?.some(blocked => {
                           const blockedDateStr = new Date(blocked.date).toISOString().split('T')[0];
                           return blockedDateStr === dateStr && blocked.isFullDay;
-                        });
+                        }) || false;
 
                         // Check day of week availability
                         const dayOfWeek = date.getDay();

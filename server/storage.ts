@@ -144,10 +144,20 @@ export class DatabaseStorage implements IStorage {
       return [];
     }
 
-    return await db
-      .select()
-      .from(appointments)
-      .where(eq(appointments.serviceId, serviceIds[0]));
+    // Query all appointments across all services
+    const allAppointments: Appointment[] = [];
+
+    // Get appointments for each service individually since we can't use `in` operator easily
+    for (const serviceId of serviceIds) {
+      const serviceAppointments = await db
+        .select()
+        .from(appointments)
+        .where(eq(appointments.serviceId, serviceId));
+
+      allAppointments.push(...serviceAppointments);
+    }
+
+    return allAppointments;
   }
 
   async updateAppointmentStatus(id: number, status: "accepted" | "completed" | "declined"): Promise<Appointment> {
@@ -272,22 +282,32 @@ export class DatabaseStorage implements IStorage {
 
     // Check weekly schedule
     const dayOfWeek = date.getDay();
-    const [schedule] = await db
+    const schedules = await db
       .select()
       .from(weeklySchedules)
       .where(
         and(
           eq(weeklySchedules.providerId, providerId),
-          eq(weeklySchedules.dayOfWeek, dayOfWeek)
+          eq(weeklySchedules.dayOfWeek, dayOfWeek),
+          eq(weeklySchedules.isAvailable, true)
         )
       );
 
-    if (!schedule || !schedule.isAvailable) {
+    // If no available schedules for this day, it's not available
+    if (schedules.length === 0) {
       return false;
     }
 
-    // Check if requested time is within schedule
-    if (startTime < schedule.startTime || endTime > schedule.endTime) {
+    // Check if requested time falls within any of the available schedule windows
+    let isWithinSchedule = false;
+    for (const schedule of schedules) {
+      if (startTime >= schedule.startTime && endTime <= schedule.endTime) {
+        isWithinSchedule = true;
+        break;
+      }
+    }
+
+    if (!isWithinSchedule) {
       return false;
     }
 
