@@ -1,8 +1,11 @@
-import { InsertUser, InsertService, InsertAppointment, User, Service, Appointment } from "@shared/schema";
+import { users, services, appointments, type User, type Service, type Appointment, type InsertUser, type InsertService, type InsertAppointment } from "@shared/schema";
+import { db } from "./db";
+import { eq, and } from "drizzle-orm";
 import session from "express-session";
-import createMemoryStore from "memorystore";
+import connectPg from "connect-pg-simple";
+import { pool } from "./db";
 
-const MemoryStore = createMemoryStore(session);
+const PostgresSessionStore = connectPg(session);
 
 export interface IStorage {
   // User operations
@@ -26,105 +29,110 @@ export interface IStorage {
   sessionStore: session.SessionStore;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<number, User>;
-  private services: Map<number, Service>;
-  private appointments: Map<number, Appointment>;
-  private currentId: { [key: string]: number };
+export class DatabaseStorage implements IStorage {
   sessionStore: session.SessionStore;
 
   constructor() {
-    this.users = new Map();
-    this.services = new Map();
-    this.appointments = new Map();
-    this.currentId = { users: 1, services: 1, appointments: 1 };
-    this.sessionStore = new MemoryStore({
-      checkPeriod: 86400000
+    this.sessionStore = new PostgresSessionStore({
+      pool,
+      createTableIfMissing: true,
     });
   }
 
   async getUser(id: number): Promise<User | undefined> {
-    return this.users.get(id);
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username
-    );
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const id = this.currentId.users++;
-    const user = { ...insertUser, id };
-    this.users.set(id, user);
+    const [user] = await db.insert(users).values(insertUser).returning();
     return user;
   }
 
   async createService(service: InsertService, providerId: number): Promise<Service> {
-    const id = this.currentId.services++;
-    const newService = { ...service, id, providerId };
-    this.services.set(id, newService);
+    const [newService] = await db
+      .insert(services)
+      .values({ ...service, providerId })
+      .returning();
     return newService;
   }
 
   async getService(id: number): Promise<Service | undefined> {
-    return this.services.get(id);
+    const [service] = await db.select().from(services).where(eq(services.id, id));
+    return service;
   }
 
   async getProviderServices(providerId: number): Promise<Service[]> {
-    return Array.from(this.services.values()).filter(
-      (service) => service.providerId === providerId
-    );
+    return await db
+      .select()
+      .from(services)
+      .where(eq(services.providerId, providerId));
   }
 
   async getAllServices(): Promise<Service[]> {
-    return Array.from(this.services.values());
+    return await db.select().from(services);
   }
 
   async createAppointment(appointment: InsertAppointment, customerId: number): Promise<Appointment> {
     const service = await this.getService(appointment.serviceId);
     if (!service) throw new Error("Service not found");
 
-    const id = this.currentId.appointments++;
-    const newAppointment = {
-      ...appointment,
-      id,
-      customerId,
-      status: "pending" as const,
-      totalAmount: service.price
-    };
-    
-    this.appointments.set(id, newAppointment);
+    const [newAppointment] = await db
+      .insert(appointments)
+      .values({
+        ...appointment,
+        customerId,
+        status: "pending",
+        totalAmount: service.price,
+      })
+      .returning();
     return newAppointment;
   }
 
   async getAppointment(id: number): Promise<Appointment | undefined> {
-    return this.appointments.get(id);
+    const [appointment] = await db
+      .select()
+      .from(appointments)
+      .where(eq(appointments.id, id));
+    return appointment;
   }
 
   async getCustomerAppointments(customerId: number): Promise<Appointment[]> {
-    return Array.from(this.appointments.values()).filter(
-      (apt) => apt.customerId === customerId
-    );
+    return await db
+      .select()
+      .from(appointments)
+      .where(eq(appointments.customerId, customerId));
   }
 
   async getProviderAppointments(providerId: number): Promise<Appointment[]> {
     const providerServices = await this.getProviderServices(providerId);
-    const serviceIds = new Set(providerServices.map(s => s.id));
-    
-    return Array.from(this.appointments.values()).filter(
-      (apt) => serviceIds.has(apt.serviceId)
-    );
+    const serviceIds = providerServices.map(s => s.id);
+
+    return await db
+      .select()
+      .from(appointments)
+      .where(
+        serviceIds.length > 0 
+          ? appointments.serviceId.in(serviceIds)
+          : eq(appointments.id, -1) // Return empty if no services
+      );
   }
 
   async updateAppointmentStatus(id: number, status: "accepted" | "completed" | "declined"): Promise<Appointment> {
-    const appointment = await this.getAppointment(id);
-    if (!appointment) throw new Error("Appointment not found");
+    const [appointment] = await db
+      .update(appointments)
+      .set({ status })
+      .where(eq(appointments.id, id))
+      .returning();
 
-    const updatedAppointment = { ...appointment, status };
-    this.appointments.set(id, updatedAppointment);
-    return updatedAppointment;
+    if (!appointment) throw new Error("Appointment not found");
+    return appointment;
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
