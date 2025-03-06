@@ -244,7 +244,7 @@ export class DatabaseStorage implements IStorage {
   async isTimeSlotAvailable(providerId: number, date: Date, startTime: string, endTime: string): Promise<boolean> {
     // Check if there's a blocked date for this day
     const dateOnly = date.toISOString().split('T')[0];
-    const [blockedDate] = await db
+    const blockedDatesForDay = await db
       .select()
       .from(blockedDates)
       .where(
@@ -254,17 +254,18 @@ export class DatabaseStorage implements IStorage {
         )
       );
 
-    if (blockedDate) {
-      if (blockedDate.isFullDay) {
-        return false;
-      }
+    // Check for full day blocks
+    if (blockedDatesForDay.some(block => block.isFullDay)) {
+      return false;
+    }
 
-      // Check if the requested time overlaps with blocked time
-      if (blockedDate.startTime && blockedDate.endTime) {
-        if (startTime >= blockedDate.startTime && startTime < blockedDate.endTime) {
-          return false;
-        }
-        if (endTime > blockedDate.startTime && endTime <= blockedDate.endTime) {
+    // Check for partial day blocks
+    for (const block of blockedDatesForDay) {
+      if (block.startTime && block.endTime) {
+        // Check if requested time overlaps with any blocked time
+        if ((startTime >= block.startTime && startTime < block.endTime) || 
+            (endTime > block.startTime && endTime <= block.endTime) ||
+            (startTime <= block.startTime && endTime >= block.endTime)) {
           return false;
         }
       }
@@ -272,7 +273,7 @@ export class DatabaseStorage implements IStorage {
 
     // Check weekly schedule
     const dayOfWeek = date.getDay();
-    const [schedule] = await db
+    const schedules = await db
       .select()
       .from(weeklySchedules)
       .where(
@@ -282,14 +283,22 @@ export class DatabaseStorage implements IStorage {
         )
       );
 
-    if (!schedule || !schedule.isAvailable) {
+    // If no schedules or none are available, time slot is not available
+    if (schedules.length === 0 || !schedules.some(s => s.isAvailable)) {
       return false;
     }
 
-    // Check if requested time is within schedule
-    if (startTime < schedule.startTime || endTime > schedule.endTime) {
-      return false;
+    // Check if requested time is within any available schedule
+    for (const schedule of schedules) {
+      if (schedule.isAvailable && 
+          startTime >= schedule.startTime && 
+          endTime <= schedule.endTime) {
+        return true;
+      }
     }
+    
+    // If we get here, the time is not within any available schedule
+    return false;
 
     // Check if there are any overlapping appointments
     const serviceIds = (await this.getProviderServices(providerId)).map(s => s.id);
