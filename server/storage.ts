@@ -424,47 +424,14 @@ export class DatabaseStorage implements IStorage {
       date: date.toISOString(),
       startTime,
       endTime,
-      serviceId,
-      address
+      serviceId
     });
 
-    // Get the service to check buffer time and max daily bookings
+    // Get the service
     const service = await this.getService(serviceId);
     if (!service) {
       console.log('Service not found');
       return false;
-    }
-
-    // Convert requested times to full timestamps
-    const requestStart = new Date(date);
-    requestStart.setHours(parseInt(startTime.split(':')[0]), parseInt(startTime.split(':')[1]), 0, 0);
-
-    const requestEnd = new Date(date);
-    requestEnd.setHours(parseInt(endTime.split(':')[0]), parseInt(endTime.split(':')[1]), 0, 0);
-
-    console.log('Request time range:', {
-      start: requestStart.toISOString(),
-      end: requestEnd.toISOString()
-    });
-
-    // Check if maximum daily bookings reached
-    if (service.maxDailyBookings) {
-      const dateStr = date.toISOString().split('T')[0];
-      const dailyBookings = await db
-        .select()
-        .from(appointments)
-        .where(
-          and(
-            eq(appointments.serviceId, serviceId),
-            eq(sql`DATE(${appointments.startTime} AT TIME ZONE 'UTC')`, dateStr)
-          )
-        );
-
-      console.log('Daily bookings count:', dailyBookings.length, 'max:', service.maxDailyBookings);
-
-      if (dailyBookings.length >= service.maxDailyBookings) {
-        return false;
-      }
     }
 
     // Check weekly schedule
@@ -489,7 +456,7 @@ export class DatabaseStorage implements IStorage {
       return false;
     }
 
-    // Get existing appointments for this date
+    // Check for existing appointments at this time
     const dateStr = date.toISOString().split('T')[0];
     const existingAppointments = await db
       .select()
@@ -497,56 +464,17 @@ export class DatabaseStorage implements IStorage {
       .where(
         and(
           eq(appointments.serviceId, serviceId),
-          eq(sql`DATE(${appointments.startTime} AT TIME ZONE 'UTC')`, dateStr)
+          eq(sql`DATE(${appointments.startTime} AT TIME ZONE 'UTC')`, dateStr),
+          eq(sql`TIME(${appointments.startTime} AT TIME ZONE 'UTC')`, startTime)
         )
       );
 
     console.log('Existing appointments:', existingAppointments);
 
-    // Check for overlapping appointments and conflicts
-    for (const appointment of existingAppointments) {
-      const appointmentStart = new Date(appointment.startTime);
-      const appointmentEnd = new Date(appointment.startTime);
-      appointmentEnd.setMinutes(appointmentEnd.getMinutes() + service.duration);
-
-      console.log('Checking overlap with appointment:', {
-        id: appointment.id,
-        start: appointmentStart.toISOString(),
-        end: appointmentEnd.toISOString(),
-        address: appointment.address
-      });
-
-      // Check address conflict
-      if (appointment.address !== address) {
-        // Check for overlap
-        const hasOverlap = (
-          (requestStart >= appointmentStart && requestStart < appointmentEnd) ||
-          (requestEnd > appointmentStart && requestEnd <= appointmentEnd) ||
-          (requestStart <= appointmentStart && requestEnd >= appointmentEnd)
-        );
-
-        if (hasOverlap) {
-          console.log('Found overlapping appointment at different address');
-          return false;
-        }
-
-        // Check buffer time
-        if (service.bufferTime) {
-          const bufferMs = service.bufferTime * 60 * 1000;
-          const startBuffer = new Date(appointmentStart.getTime() - bufferMs);
-          const endBuffer = new Date(appointmentEnd.getTime() + bufferMs);
-
-          const hasBufferConflict = (
-            (requestStart >= startBuffer && requestStart < endBuffer) ||
-            (requestEnd > startBuffer && requestEnd <= endBuffer)
-          );
-
-          if (hasBufferConflict) {
-            console.log('Found buffer time conflict');
-            return false;
-          }
-        }
-      }
+    // If there's any appointment at this exact time slot, it's not available
+    if (existingAppointments.length > 0) {
+      console.log('Time slot is already booked');
+      return false;
     }
 
     console.log('Time slot is available');
