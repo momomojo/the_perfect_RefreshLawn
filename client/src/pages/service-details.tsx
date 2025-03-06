@@ -137,8 +137,8 @@ export default function ServiceDetails() {
           const params = new URLSearchParams({
             providerId: service.providerId.toString(),
             date: dateStr,
-            startTime: current,
-            endTime: endTimeSlot,
+            startTime: `${current}:00`,  // Add seconds to match server expectation
+            endTime: `${endTimeSlot}:00`, // Add seconds to match server expectation
             serviceId: service.id.toString(),
             address: address,
           });

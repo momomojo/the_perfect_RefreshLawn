@@ -456,7 +456,7 @@ export class DatabaseStorage implements IStorage {
       return false;
     }
 
-    // Check for existing appointments at this time
+    // Check if there's already an appointment at this exact time
     const dateStr = date.toISOString().split('T')[0];
     const existingAppointments = await db
       .select()
@@ -464,8 +464,8 @@ export class DatabaseStorage implements IStorage {
       .where(
         and(
           eq(appointments.serviceId, serviceId),
-          eq(sql`DATE(${appointments.startTime} AT TIME ZONE 'UTC')`, dateStr),
-          eq(sql`TIME(${appointments.startTime} AT TIME ZONE 'UTC')`, startTime)
+          eq(sql`DATE(${appointments.startTime})`, dateStr),
+          eq(sql`TIME(${appointments.startTime})::time::text`, startTime)
         )
       );
 
