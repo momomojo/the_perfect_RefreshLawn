@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage as dbStorage } from "./storage";
 import { setupAuth } from "./auth";
-import { insertServiceSchema, insertAppointmentSchema } from "@shared/schema";
+import { insertServiceSchema, insertAppointmentSchema, insertWeeklyScheduleSchema, insertBlockedDateSchema } from "@shared/schema";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -126,6 +126,164 @@ export function registerRoutes(app: Express): Server {
       res.json(appointment);
     } catch (err) {
       res.status(404).send("Appointment not found");
+    }
+  });
+
+  // Weekly Schedule routes
+  app.post("/api/weekly-schedules", async (req, res) => {
+    if (!req.isAuthenticated() || req.user.role !== "provider") {
+      return res.status(403).send("Only providers can manage schedules");
+    }
+
+    const parsed = insertWeeklyScheduleSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json(parsed.error);
+    }
+
+    const schedule = await dbStorage.createWeeklySchedule(parsed.data, req.user.id);
+    res.status(201).json(schedule);
+  });
+
+  app.get("/api/weekly-schedules", async (req, res) => {
+    if (!req.isAuthenticated() || req.user.role !== "provider") {
+      return res.status(403).send("Access denied");
+    }
+
+    const schedules = await dbStorage.getProviderWeeklySchedules(req.user.id);
+    res.json(schedules);
+  });
+
+  app.patch("/api/weekly-schedules/:id", async (req, res) => {
+    if (!req.isAuthenticated() || req.user.role !== "provider") {
+      return res.status(403).send("Only providers can update schedules");
+    }
+
+    try {
+      const parsedUpdate = insertWeeklyScheduleSchema.partial().safeParse(req.body);
+      if (!parsedUpdate.success) {
+        return res.status(400).json(parsedUpdate.error);
+      }
+
+      const schedule = await dbStorage.updateWeeklySchedule(
+        parseInt(req.params.id), 
+        parsedUpdate.data
+      );
+      res.json(schedule);
+    } catch (err) {
+      res.status(404).send("Schedule not found");
+    }
+  });
+
+  app.delete("/api/weekly-schedules/:id", async (req, res) => {
+    if (!req.isAuthenticated() || req.user.role !== "provider") {
+      return res.status(403).send("Only providers can delete schedules");
+    }
+
+    try {
+      await dbStorage.deleteWeeklySchedule(parseInt(req.params.id));
+      res.sendStatus(204);
+    } catch (err) {
+      res.status(404).send("Schedule not found");
+    }
+  });
+
+  // Blocked Date routes
+  app.post("/api/blocked-dates", async (req, res) => {
+    if (!req.isAuthenticated() || req.user.role !== "provider") {
+      return res.status(403).send("Only providers can manage blocked dates");
+    }
+
+    const parsed = insertBlockedDateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json(parsed.error);
+    }
+
+    const blockedDate = await dbStorage.createBlockedDate(parsed.data, req.user.id);
+    res.status(201).json(blockedDate);
+  });
+
+  app.get("/api/blocked-dates", async (req, res) => {
+    if (!req.isAuthenticated() || req.user.role !== "provider") {
+      return res.status(403).send("Access denied");
+    }
+
+    const blockedDates = await dbStorage.getProviderBlockedDates(req.user.id);
+    res.json(blockedDates);
+  });
+
+  app.get("/api/blocked-dates/range", async (req, res) => {
+    if (!req.isAuthenticated() || req.user.role !== "provider") {
+      return res.status(403).send("Access denied");
+    }
+
+    const { startDate, endDate } = req.query;
+    if (!startDate || !endDate) {
+      return res.status(400).send("Start date and end date are required");
+    }
+
+    try {
+      const start = new Date(startDate as string);
+      const end = new Date(endDate as string);
+      const blockedDates = await dbStorage.getBlockedDatesByDateRange(req.user.id, start, end);
+      res.json(blockedDates);
+    } catch (err) {
+      res.status(400).send("Invalid date format");
+    }
+  });
+
+  app.patch("/api/blocked-dates/:id", async (req, res) => {
+    if (!req.isAuthenticated() || req.user.role !== "provider") {
+      return res.status(403).send("Only providers can update blocked dates");
+    }
+
+    try {
+      const parsedUpdate = insertBlockedDateSchema.partial().safeParse(req.body);
+      if (!parsedUpdate.success) {
+        return res.status(400).json(parsedUpdate.error);
+      }
+
+      const blockedDate = await dbStorage.updateBlockedDate(
+        parseInt(req.params.id), 
+        parsedUpdate.data
+      );
+      res.json(blockedDate);
+    } catch (err) {
+      res.status(404).send("Blocked date not found");
+    }
+  });
+
+  app.delete("/api/blocked-dates/:id", async (req, res) => {
+    if (!req.isAuthenticated() || req.user.role !== "provider") {
+      return res.status(403).send("Only providers can delete blocked dates");
+    }
+
+    try {
+      await dbStorage.deleteBlockedDate(parseInt(req.params.id));
+      res.sendStatus(204);
+    } catch (err) {
+      res.status(404).send("Blocked date not found");
+    }
+  });
+
+  // Check availability
+  app.get("/api/availability/check", async (req, res) => {
+    const { providerId, date, startTime, endTime } = req.query;
+
+    if (!providerId || !date || !startTime || !endTime) {
+      return res.status(400).send("Provider ID, date, start time, and end time are required");
+    }
+
+    try {
+      const checkDate = new Date(date as string);
+      const isAvailable = await dbStorage.isTimeSlotAvailable(
+        parseInt(providerId as string),
+        checkDate,
+        startTime as string,
+        endTime as string
+      );
+      res.json({ isAvailable });
+    } catch (err) {
+      res.status(400).send("Invalid parameters");
     }
   });
 

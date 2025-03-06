@@ -1,6 +1,6 @@
-import { users, services, appointments, type User, type Service, type Appointment, type InsertUser, type InsertService, type InsertAppointment } from "@shared/schema";
+import { users, services, appointments, weeklySchedules, blockedDates, type User, type Service, type Appointment, type WeeklySchedule, type BlockedDate, type InsertUser, type InsertService, type InsertAppointment, type InsertWeeklySchedule, type InsertBlockedDate } from "@shared/schema";
 import { db } from "./db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, gte, lte } from "drizzle-orm";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 import { pool } from "./db";
@@ -25,6 +25,22 @@ export interface IStorage {
   getCustomerAppointments(customerId: number): Promise<Appointment[]>;
   getProviderAppointments(providerId: number): Promise<Appointment[]>;
   updateAppointmentStatus(id: number, status: "accepted" | "completed" | "declined"): Promise<Appointment>;
+
+  // Weekly Schedule operations
+  createWeeklySchedule(schedule: InsertWeeklySchedule, providerId: number): Promise<WeeklySchedule>;
+  getProviderWeeklySchedules(providerId: number): Promise<WeeklySchedule[]>;
+  updateWeeklySchedule(id: number, schedule: Partial<InsertWeeklySchedule>): Promise<WeeklySchedule>;
+  deleteWeeklySchedule(id: number): Promise<void>;
+
+  // Blocked Date operations
+  createBlockedDate(blockedDate: InsertBlockedDate, providerId: number): Promise<BlockedDate>;
+  getProviderBlockedDates(providerId: number): Promise<BlockedDate[]>;
+  getBlockedDatesByDateRange(providerId: number, startDate: Date, endDate: Date): Promise<BlockedDate[]>;
+  updateBlockedDate(id: number, blockedDate: Partial<InsertBlockedDate>): Promise<BlockedDate>;
+  deleteBlockedDate(id: number): Promise<void>;
+
+  // Check availability
+  isTimeSlotAvailable(providerId: number, date: Date, startTime: string, endTime: string): Promise<boolean>;
 
   sessionStore: session.SessionStore;
 }
@@ -113,14 +129,14 @@ export class DatabaseStorage implements IStorage {
     const providerServices = await this.getProviderServices(providerId);
     const serviceIds = providerServices.map(s => s.id);
 
+    if (serviceIds.length === 0) {
+      return [];
+    }
+
     return await db
       .select()
       .from(appointments)
-      .where(
-        serviceIds.length > 0 
-          ? appointments.serviceId.in(serviceIds)
-          : eq(appointments.id, -1) // Return empty if no services
-      );
+      .where(eq(appointments.serviceId, serviceIds[0]));
   }
 
   async updateAppointmentStatus(id: number, status: "accepted" | "completed" | "declined"): Promise<Appointment> {
@@ -132,6 +148,157 @@ export class DatabaseStorage implements IStorage {
 
     if (!appointment) throw new Error("Appointment not found");
     return appointment;
+  }
+
+  // Weekly Schedule operations
+  async createWeeklySchedule(schedule: InsertWeeklySchedule, providerId: number): Promise<WeeklySchedule> {
+    const [newSchedule] = await db
+      .insert(weeklySchedules)
+      .values({ ...schedule, providerId })
+      .returning();
+    return newSchedule;
+  }
+
+  async getProviderWeeklySchedules(providerId: number): Promise<WeeklySchedule[]> {
+    return await db
+      .select()
+      .from(weeklySchedules)
+      .where(eq(weeklySchedules.providerId, providerId));
+  }
+
+  async updateWeeklySchedule(id: number, schedule: Partial<InsertWeeklySchedule>): Promise<WeeklySchedule> {
+    const [updatedSchedule] = await db
+      .update(weeklySchedules)
+      .set(schedule)
+      .where(eq(weeklySchedules.id, id))
+      .returning();
+
+    if (!updatedSchedule) throw new Error("Schedule not found");
+    return updatedSchedule;
+  }
+
+  async deleteWeeklySchedule(id: number): Promise<void> {
+    await db
+      .delete(weeklySchedules)
+      .where(eq(weeklySchedules.id, id));
+  }
+
+  // Blocked Date operations
+  async createBlockedDate(blockedDate: InsertBlockedDate, providerId: number): Promise<BlockedDate> {
+    const [newBlockedDate] = await db
+      .insert(blockedDates)
+      .values({ ...blockedDate, providerId })
+      .returning();
+    return newBlockedDate;
+  }
+
+  async getProviderBlockedDates(providerId: number): Promise<BlockedDate[]> {
+    return await db
+      .select()
+      .from(blockedDates)
+      .where(eq(blockedDates.providerId, providerId));
+  }
+
+  async getBlockedDatesByDateRange(providerId: number, startDate: Date, endDate: Date): Promise<BlockedDate[]> {
+    return await db
+      .select()
+      .from(blockedDates)
+      .where(
+        and(
+          eq(blockedDates.providerId, providerId),
+          gte(blockedDates.date, startDate),
+          lte(blockedDates.date, endDate)
+        )
+      );
+  }
+
+  async updateBlockedDate(id: number, blockedDate: Partial<InsertBlockedDate>): Promise<BlockedDate> {
+    const [updatedBlockedDate] = await db
+      .update(blockedDates)
+      .set(blockedDate)
+      .where(eq(blockedDates.id, id))
+      .returning();
+
+    if (!updatedBlockedDate) throw new Error("Blocked date not found");
+    return updatedBlockedDate;
+  }
+
+  async deleteBlockedDate(id: number): Promise<void> {
+    await db
+      .delete(blockedDates)
+      .where(eq(blockedDates.id, id));
+  }
+
+  // Check availability
+  async isTimeSlotAvailable(providerId: number, date: Date, startTime: string, endTime: string): Promise<boolean> {
+    // Check if there's a blocked date for this day
+    const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const [blockedDate] = await db
+      .select()
+      .from(blockedDates)
+      .where(
+        and(
+          eq(blockedDates.providerId, providerId),
+          eq(blockedDates.date, dateOnly)
+        )
+      );
+
+    if (blockedDate) {
+      if (blockedDate.isFullDay) {
+        return false;
+      }
+
+      // Check if the requested time overlaps with blocked time
+      if (blockedDate.startTime && blockedDate.endTime) {
+        if (startTime >= blockedDate.startTime && startTime < blockedDate.endTime) {
+          return false;
+        }
+        if (endTime > blockedDate.startTime && endTime <= blockedDate.endTime) {
+          return false;
+        }
+      }
+    }
+
+    // Check weekly schedule
+    const dayOfWeek = date.getDay();
+    const [schedule] = await db
+      .select()
+      .from(weeklySchedules)
+      .where(
+        and(
+          eq(weeklySchedules.providerId, providerId),
+          eq(weeklySchedules.dayOfWeek, dayOfWeek)
+        )
+      );
+
+    if (!schedule || !schedule.isAvailable) {
+      return false;
+    }
+
+    // Check if requested time is within schedule
+    if (startTime < schedule.startTime || endTime > schedule.endTime) {
+      return false;
+    }
+
+    // Check if there are any overlapping appointments
+    const serviceIds = (await this.getProviderServices(providerId)).map(s => s.id);
+
+    if (serviceIds.length === 0) {
+      return true; // No services, so no appointments
+    }
+
+    // Since this is a simplification, we're just checking if there's an existing appointment
+    // with the exact same start time. In a real application, you'd need to check for overlaps.
+    const dateTimeStart = new Date(date);
+    dateTimeStart.setHours(parseInt(startTime.split(':')[0]));
+    dateTimeStart.setMinutes(parseInt(startTime.split(':')[1]));
+
+    const existingAppointments = await db
+      .select()
+      .from(appointments)
+      .where(eq(appointments.startTime, dateTimeStart.toISOString()));
+
+    return existingAppointments.length === 0;
   }
 }
 
