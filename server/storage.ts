@@ -1,4 +1,4 @@
-import { users, services, appointments, weeklySchedules, blockedDates, type User, type Service, type Appointment, type WeeklySchedule, type BlockedDate, type InsertUser, type InsertService, type InsertAppointment, type InsertWeeklySchedule, type InsertBlockedDate } from "@shared/schema";
+import { users, services, appointments, weeklySchedules, blockedDates, breakTimes, waitlist, type User, type Service, type Appointment, type WeeklySchedule, type BlockedDate, type BreakTime, type Waitlist, type InsertUser, type InsertService, type InsertAppointment, type InsertWeeklySchedule, type InsertBlockedDate, type InsertBreakTime, type InsertWaitlist } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, gte, lte, inQuery } from "drizzle-orm";
 import session from "express-session";
@@ -24,7 +24,11 @@ export interface IStorage {
   getAppointment(id: number): Promise<Appointment | undefined>;
   getCustomerAppointments(customerId: number): Promise<Appointment[]>;
   getProviderAppointments(providerId: number): Promise<Appointment[]>;
-  updateAppointmentStatus(id: number, status: "accepted" | "completed" | "declined"): Promise<Appointment>;
+  updateAppointmentStatus(
+    id: number, 
+    status: "accepted" | "confirmed" | "in_progress" | "completed" | "cancelled" | "declined",
+    notes?: string
+  ): Promise<Appointment>;
 
   // Weekly Schedule operations
   createWeeklySchedule(schedule: InsertWeeklySchedule, providerId: number): Promise<WeeklySchedule>;
@@ -39,8 +43,38 @@ export interface IStorage {
   updateBlockedDate(id: number, blockedDate: Partial<InsertBlockedDate>): Promise<BlockedDate>;
   deleteBlockedDate(id: number): Promise<void>;
 
-  // Check availability
-  isTimeSlotAvailable(providerId: number, date: Date, startTime: string, endTime: string): Promise<boolean>;
+  // Break time operations
+  createBreakTime(breakTime: InsertBreakTime, providerId: number): Promise<BreakTime>;
+  getProviderBreakTimes(providerId: number): Promise<BreakTime[]>;
+  updateBreakTime(id: number, breakTime: Partial<InsertBreakTime>): Promise<BreakTime>;
+  deleteBreakTime(id: number): Promise<void>;
+
+  // Waitlist operations
+  addToWaitlist(waitlistEntry: InsertWaitlist, customerId: number): Promise<Waitlist>;
+  getCustomerWaitlistEntries(customerId: number): Promise<Waitlist[]>;
+  getServiceWaitlistEntries(serviceId: number): Promise<Waitlist[]>;
+  updateWaitlistStatus(id: number, status: "fulfilled" | "expired"): Promise<Waitlist>;
+
+  createRecurringAppointment(
+    appointment: InsertAppointment, 
+    customerId: number,
+    recurringInterval: "weekly" | "biweekly" | "monthly"
+  ): Promise<Appointment>;
+
+  getNextRecurringDate(
+    currentDate: Date,
+    interval: "weekly" | "biweekly" | "monthly"
+  ): Promise<Date>;
+
+
+  // Check availability with enhanced rules
+  isTimeSlotAvailable(
+    providerId: number,
+    date: Date,
+    startTime: string,
+    endTime: string,
+    serviceId: number
+  ): Promise<boolean>;
 
   sessionStore: session.SessionStore;
 }
@@ -150,10 +184,19 @@ export class DatabaseStorage implements IStorage {
       .where(eq(appointments.serviceId, serviceIds[0]));
   }
 
-  async updateAppointmentStatus(id: number, status: "accepted" | "completed" | "declined"): Promise<Appointment> {
+  async updateAppointmentStatus(
+    id: number,
+    status: "accepted" | "confirmed" | "in_progress" | "completed" | "cancelled" | "declined",
+    notes?: string
+  ): Promise<Appointment> {
+    const updates: any = { status };
+    if (notes && status === "completed") {
+      updates.completionNotes = notes;
+    }
+
     const [appointment] = await db
       .update(appointments)
-      .set({ status })
+      .set(updates)
       .where(eq(appointments.id, id))
       .returning();
 
@@ -161,7 +204,6 @@ export class DatabaseStorage implements IStorage {
     return appointment;
   }
 
-  // Weekly Schedule operations
   async createWeeklySchedule(schedule: InsertWeeklySchedule, providerId: number): Promise<WeeklySchedule> {
     const [newSchedule] = await db
       .insert(weeklySchedules)
@@ -194,7 +236,6 @@ export class DatabaseStorage implements IStorage {
       .where(eq(weeklySchedules.id, id));
   }
 
-  // Blocked Date operations
   async createBlockedDate(blockedDate: InsertBlockedDate, providerId: number): Promise<BlockedDate> {
     const [newBlockedDate] = await db
       .insert(blockedDates)
@@ -238,6 +279,206 @@ export class DatabaseStorage implements IStorage {
     await db
       .delete(blockedDates)
       .where(eq(blockedDates.id, id));
+  }
+
+  async createBreakTime(breakTime: InsertBreakTime, providerId: number): Promise<BreakTime> {
+    const [newBreakTime] = await db
+      .insert(breakTimes)
+      .values({ ...breakTime, providerId })
+      .returning();
+    return newBreakTime;
+  }
+
+  async getProviderBreakTimes(providerId: number): Promise<BreakTime[]> {
+    return await db
+      .select()
+      .from(breakTimes)
+      .where(eq(breakTimes.providerId, providerId));
+  }
+
+  async updateBreakTime(id: number, breakTime: Partial<InsertBreakTime>): Promise<BreakTime> {
+    const [updatedBreakTime] = await db
+      .update(breakTimes)
+      .set(breakTime)
+      .where(eq(breakTimes.id, id))
+      .returning();
+
+    if (!updatedBreakTime) throw new Error("Break time not found");
+    return updatedBreakTime;
+  }
+
+  async deleteBreakTime(id: number): Promise<void> {
+    await db
+      .delete(breakTimes)
+      .where(eq(breakTimes.id, id));
+  }
+
+  async addToWaitlist(waitlistEntry: InsertWaitlist, customerId: number): Promise<Waitlist> {
+    const [newEntry] = await db
+      .insert(waitlist)
+      .values({
+        ...waitlistEntry,
+        customerId,
+        status: "active",
+        createdAt: new Date()
+      })
+      .returning();
+    return newEntry;
+  }
+
+  async getCustomerWaitlistEntries(customerId: number): Promise<Waitlist[]> {
+    return await db
+      .select()
+      .from(waitlist)
+      .where(eq(waitlist.customerId, customerId));
+  }
+
+  async getServiceWaitlistEntries(serviceId: number): Promise<Waitlist[]> {
+    return await db
+      .select()
+      .from(waitlist)
+      .where(eq(waitlist.serviceId, serviceId));
+  }
+
+  async updateWaitlistStatus(id: number, status: "fulfilled" | "expired"): Promise<Waitlist> {
+    const [entry] = await db
+      .update(waitlist)
+      .set({ status, notificationSent: true })
+      .where(eq(waitlist.id, id))
+      .returning();
+
+    if (!entry) throw new Error("Waitlist entry not found");
+    return entry;
+  }
+
+  async createRecurringAppointment(
+    appointment: InsertAppointment,
+    customerId: number,
+    recurringInterval: "weekly" | "biweekly" | "monthly"
+  ): Promise<Appointment> {
+    const service = await this.getService(appointment.serviceId);
+    if (!service) throw new Error("Service not found");
+
+    let startTimeValue: Date;
+    if (typeof appointment.startTime === 'string') {
+      startTimeValue = new Date(appointment.startTime);
+    } else {
+      startTimeValue = appointment.startTime;
+    }
+
+    const nextRecurringDate = await this.getNextRecurringDate(startTimeValue, recurringInterval);
+
+    const [newAppointment] = await db
+      .insert(appointments)
+      .values({
+        serviceId: appointment.serviceId,
+        customerId,
+        status: "pending",
+        totalAmount: service.price,
+        address: appointment.address,
+        specialInstructions: appointment.specialInstructions,
+        startTime: startTimeValue,
+        recurring: true,
+        recurringInterval,
+        nextRecurringDate
+      })
+      .returning();
+
+    return newAppointment;
+  }
+
+  async getNextRecurringDate(
+    currentDate: Date,
+    interval: "weekly" | "biweekly" | "monthly"
+  ): Promise<Date> {
+    const nextDate = new Date(currentDate);
+
+    switch (interval) {
+      case "weekly":
+        nextDate.setDate(nextDate.getDate() + 7);
+        break;
+      case "biweekly":
+        nextDate.setDate(nextDate.getDate() + 14);
+        break;
+      case "monthly":
+        nextDate.setMonth(nextDate.getMonth() + 1);
+        break;
+    }
+
+    return nextDate;
+  }
+
+  async isTimeSlotAvailable(
+    providerId: number,
+    date: Date,
+    startTime: string,
+    endTime: string,
+    serviceId: number
+  ): Promise<boolean> {
+    // Get the service to check buffer time and max daily bookings
+    const service = await this.getService(serviceId);
+    if (!service) return false;
+
+    // Check if maximum daily bookings reached
+    if (service.maxDailyBookings) {
+      const dateStr = date.toISOString().split('T')[0];
+      const dailyBookings = await db
+        .select()
+        .from(appointments)
+        .where(
+          and(
+            eq(appointments.serviceId, serviceId),
+            eq(appointments.startTime, dateStr)
+          )
+        );
+
+      if (dailyBookings.length >= service.maxDailyBookings) {
+        return false;
+      }
+    }
+
+    // Check if there's a break time during this period
+    const dayOfWeek = date.getDay();
+    const [breakTime] = await db
+      .select()
+      .from(breakTimes)
+      .where(
+        and(
+          eq(breakTimes.providerId, providerId),
+          eq(breakTimes.dayOfWeek, dayOfWeek),
+          lte(breakTimes.startTime, startTime),
+          gte(breakTimes.endTime, endTime)
+        )
+      );
+
+    if (breakTime) return false;
+
+    // Calculate buffer times for existing appointments
+    const dateTimeStart = new Date(date);
+    dateTimeStart.setHours(parseInt(startTime.split(':')[0]));
+    dateTimeStart.setMinutes(parseInt(startTime.split(':')[1]));
+    dateTimeStart.setSeconds(0, 0);
+
+    // Get all appointments for this day
+    const existingAppointments = await db
+      .select()
+      .from(appointments)
+      .where(eq(appointments.startTime, dateTimeStart.toISOString()));
+
+    // Add buffer time check
+    if (service.bufferTime && existingAppointments.length > 0) {
+      for (const existing of existingAppointments) {
+        const existingTime = new Date(existing.startTime);
+        const timeDiff = Math.abs(dateTimeStart.getTime() - existingTime.getTime());
+        const bufferTimeMs = service.bufferTime * 60 * 1000; // Convert minutes to milliseconds
+
+        if (timeDiff < bufferTimeMs) {
+          return false;
+        }
+      }
+    }
+
+    return existingAppointments.length === 0;
   }
 
   // Check availability

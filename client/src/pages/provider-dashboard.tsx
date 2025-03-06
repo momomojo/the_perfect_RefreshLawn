@@ -1,6 +1,6 @@
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Service, Appointment, WeeklySchedule, BlockedDate } from "@shared/schema";
+import { Service, Appointment, WeeklySchedule, BlockedDate, BreakTime, Waitlist } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -13,10 +13,10 @@ import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertServiceSchema, insertWeeklyScheduleSchema, insertBlockedDateSchema } from "@shared/schema";
+import { insertServiceSchema, insertWeeklyScheduleSchema, insertBlockedDateSchema, insertBreakTimeSchema } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { CheckIcon, XIcon, ClockIcon, LogOutIcon, CalendarIcon, AlarmClock, Calendar as CalendarIcon2, Clock, X } from "lucide-react";
+import { CheckIcon, XIcon, ClockIcon, LogOutIcon, CalendarIcon, Clock, X, PlayIcon, PauseIcon, CalendarIcon as CalendarIcon2 } from "lucide-react";
 import { useLocation } from "wouter";
 import * as z from 'zod';
 import { format } from "date-fns";
@@ -35,9 +35,17 @@ export default function ProviderDashboard() {
     queryKey: ["/api/appointments/provider"],
   });
 
+  const { data: breakTimes } = useQuery<BreakTime[]>({
+    queryKey: ["/api/break-times"],
+  });
+
+  const { data: waitlistEntries } = useQuery<Waitlist[]>({
+    queryKey: ["/api/waitlist/service"],
+  });
+
   const updateAppointmentMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: number; status: string }) => {
-      const res = await apiRequest("PATCH", `/api/appointments/${id}/status`, { status });
+    mutationFn: async ({ id, status, notes }: { id: number; status: string; notes?: string }) => {
+      const res = await apiRequest("PATCH", `/api/appointments/${id}/status`, { status, notes });
       return res.json();
     },
     onSuccess: () => {
@@ -52,6 +60,93 @@ export default function ProviderDashboard() {
   const handleLogout = async () => {
     await logoutMutation.mutateAsync();
     setLocation("/auth");
+  };
+
+  const getStatusButtons = (appointment: Appointment) => {
+    switch (appointment.status) {
+      case "pending":
+        return (
+          <>
+            <Button
+              onClick={() =>
+                updateAppointmentMutation.mutate({
+                  id: appointment.id,
+                  status: "accepted",
+                })
+              }
+              size="sm"
+              className="flex items-center gap-2"
+            >
+              <CheckIcon className="h-4 w-4" />
+              Accept
+            </Button>
+            <Button
+              onClick={() =>
+                updateAppointmentMutation.mutate({
+                  id: appointment.id,
+                  status: "declined",
+                })
+              }
+              variant="destructive"
+              size="sm"
+              className="flex items-center gap-2"
+            >
+              <XIcon className="h-4 w-4" />
+              Decline
+            </Button>
+          </>
+        );
+      case "accepted":
+        return (
+          <Button
+            onClick={() =>
+              updateAppointmentMutation.mutate({
+                id: appointment.id,
+                status: "confirmed",
+              })
+            }
+            size="sm"
+            className="flex items-center gap-2"
+          >
+            <CheckIcon className="h-4 w-4" />
+            Confirm Arrival
+          </Button>
+        );
+      case "confirmed":
+        return (
+          <Button
+            onClick={() =>
+              updateAppointmentMutation.mutate({
+                id: appointment.id,
+                status: "in_progress",
+              })
+            }
+            size="sm"
+            className="flex items-center gap-2"
+          >
+            <PlayIcon className="h-4 w-4" />
+            Start Service
+          </Button>
+        );
+      case "in_progress":
+        return (
+          <Button
+            onClick={() =>
+              updateAppointmentMutation.mutate({
+                id: appointment.id,
+                status: "completed",
+              })
+            }
+            size="sm"
+            className="flex items-center gap-2"
+          >
+            <CheckIcon className="h-4 w-4" />
+            Complete Service
+          </Button>
+        );
+      default:
+        return null;
+    }
   };
 
   return (
@@ -74,6 +169,8 @@ export default function ProviderDashboard() {
             <TabsTrigger value="appointments">Appointments</TabsTrigger>
             <TabsTrigger value="services">Services</TabsTrigger>
             <TabsTrigger value="availability">Availability</TabsTrigger>
+            <TabsTrigger value="breaks">Break Times</TabsTrigger>
+            <TabsTrigger value="waitlist">Waitlist</TabsTrigger>
           </TabsList>
 
           <TabsContent value="appointments">
@@ -92,53 +189,15 @@ export default function ProviderDashboard() {
                     <p className="mb-4">
                       Status: {appointment.status}
                     </p>
+                    {appointment.recurring && (
+                      <p className="mb-4 text-sm text-muted-foreground">
+                        Recurring: {appointment.recurringInterval}
+                        <br />
+                        Next Date: {new Date(appointment.nextRecurringDate!).toLocaleDateString()}
+                      </p>
+                    )}
                     <div className="flex gap-2">
-                      {appointment.status === "pending" && (
-                        <>
-                          <Button
-                            onClick={() =>
-                              updateAppointmentMutation.mutate({
-                                id: appointment.id,
-                                status: "accepted",
-                              })
-                            }
-                            size="sm"
-                            className="flex items-center gap-2"
-                          >
-                            <CheckIcon className="h-4 w-4" />
-                            Accept
-                          </Button>
-                          <Button
-                            onClick={() =>
-                              updateAppointmentMutation.mutate({
-                                id: appointment.id,
-                                status: "declined",
-                              })
-                            }
-                            variant="destructive"
-                            size="sm"
-                            className="flex items-center gap-2"
-                          >
-                            <XIcon className="h-4 w-4" />
-                            Decline
-                          </Button>
-                        </>
-                      )}
-                      {appointment.status === "accepted" && (
-                        <Button
-                          onClick={() =>
-                            updateAppointmentMutation.mutate({
-                              id: appointment.id,
-                              status: "completed",
-                            })
-                          }
-                          size="sm"
-                          className="flex items-center gap-2"
-                        >
-                          <CheckIcon className="h-4 w-4" />
-                          Mark Complete
-                        </Button>
-                      )}
+                      {getStatusButtons(appointment)}
                     </div>
                   </CardContent>
                 </Card>
@@ -163,7 +222,7 @@ export default function ProviderDashboard() {
                         <p className="text-muted-foreground mb-2">
                           {service.description}
                         </p>
-                        <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-4 mb-4">
                           <div className="flex items-center gap-2">
                             <ClockIcon className="h-4 w-4" />
                             <span>{service.duration} mins</span>
@@ -171,6 +230,10 @@ export default function ProviderDashboard() {
                           <div className="font-bold">
                             ${service.price.toString()}
                           </div>
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          <p>Buffer Time: {service.bufferTime || 0} mins</p>
+                          <p>Max Daily Bookings: {service.maxDailyBookings || 'Unlimited'}</p>
                         </div>
                       </CardContent>
                     </Card>
@@ -197,6 +260,20 @@ export default function ProviderDashboard() {
               </div>
             </div>
           </TabsContent>
+
+          <TabsContent value="breaks">
+            <div>
+              <h2 className="text-2xl font-bold mb-6">Break Times</h2>
+              <BreakTimesManager />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="waitlist">
+            <div>
+              <h2 className="text-2xl font-bold mb-6">Waitlist Management</h2>
+              <WaitlistManager />
+            </div>
+          </TabsContent>
         </Tabs>
       </div>
     </div>
@@ -216,7 +293,9 @@ function CreateServiceForm() {
       description: "",
       duration: 60, // Default duration in minutes
       price: "0", // Changed to string type to match the schema expectation
-      imageUrl: ""
+      imageUrl: "",
+      bufferTime: 0,
+      maxDailyBookings: 0,
     }
   });
 
@@ -251,6 +330,8 @@ function CreateServiceForm() {
         duration: Number(data.duration), 
         price: data.price, // Keep as string as that's what the schema expects
         imageUrl,
+        bufferTime: Number(data.bufferTime),
+        maxDailyBookings: Number(data.maxDailyBookings),
       };
 
       const res = await apiRequest("POST", "/api/services", serviceData);
@@ -335,6 +416,42 @@ function CreateServiceForm() {
                 <Input 
                   type="text"
                   {...field}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="bufferTime"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Buffer Time (minutes)</FormLabel>
+              <FormControl>
+                <Input 
+                  type="number"
+                  {...field}
+                  onChange={(e) => field.onChange(Number(e.target.value))}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="maxDailyBookings"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Max Daily Bookings</FormLabel>
+              <FormControl>
+                <Input 
+                  type="number"
+                  {...field}
+                  onChange={(e) => field.onChange(Number(e.target.value))}
                 />
               </FormControl>
               <FormMessage />
@@ -824,6 +941,268 @@ function BlockedDatesManager() {
           <p>No blocked dates set up yet.</p>
         )}
       </div>
+    </div>
+  );
+}
+
+function BreakTimesManager() {
+  const { toast } = useToast();
+  const daysOfWeek = [
+    { label: "Sunday", value: "0" },
+    { label: "Monday", value: "1" },
+    { label: "Tuesday", value: "2" },
+    { label: "Wednesday", value: "3" },
+    { label: "Thursday", value: "4" },
+    { label: "Friday", value: "5" },
+    { label: "Saturday", value: "6" },
+  ];
+
+  const { data: breakTimes, isLoading } = useQuery<BreakTime[]>({
+    queryKey: ["/api/break-times"],
+  });
+
+  const form = useForm({
+    resolver: zodResolver(insertBreakTimeSchema),
+    defaultValues: {
+      dayOfWeek: 1,
+      startTime: "12:00",
+      endTime: "13:00",
+      reason: "Lunch Break"
+    }
+  });
+
+  const createBreakTimeMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const res = await apiRequest("POST", "/api/break-times", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/break-times"] });
+      form.reset();
+      toast({
+        title: "Success",
+        description: "Break time added successfully",
+      });
+    },
+  });
+
+  const deleteBreakTimeMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/break-times/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/break-times"] });
+      toast({
+        title: "Success",
+        description: "Break time deleted successfully",
+      });
+    },
+  });
+
+  return (
+    <div className="space-y-6">
+      <Form {...form}>
+        <form
+          onSubmit={form.handleSubmit((data) => createBreakTimeMutation.mutate(data))}
+          className="space-y-4"
+        >
+          <FormField
+            control={form.control}
+            name="dayOfWeek"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Day of Week</FormLabel>
+                <Select
+                  onValueChange={(value) => field.onChange(parseInt(value))}
+                  defaultValue={field.value.toString()}
+                >
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select day" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {daysOfWeek.map((day) => (
+                      <SelectItem key={day.value} value={day.value}>
+                        {day.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <div className="grid grid-cols-2 gap-4">
+            <FormField
+              control={form.control}
+              name="startTime"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Start Time</FormLabel>
+                  <FormControl>
+                    <Input type="time" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="endTime"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>End Time</FormLabel>
+                  <FormControl>
+                    <Input type="time" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+
+          <FormField
+            control={form.control}
+            name="reason"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Reason</FormLabel>
+                <FormControl>
+                  <Input {...field} placeholder="e.g., Lunch Break" />
+                </FormControl>
+                <FormMessage />              </FormItem>
+            )}
+          />
+
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={createBreakTimeMutation.isPending}
+          >
+            Add Break Time
+          </Button>
+        </form>
+      </Form>
+
+      <div>
+        <h3 className="text-lg font-medium mb-3">Your Break Times</h3>
+        {isLoading ? (
+          <p>Loading break times...</p>
+        ) : breakTimes && breakTimes.length > 0 ? (
+          <div className="space-y-4">
+            {breakTimes.map((breakTime) => (
+              <Card key={breakTime.id}>
+                <CardContent className="p-4">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <p className="font-medium">
+                        {daysOfWeek.find(d => parseInt(d.value) === breakTime.dayOfWeek)?.label}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {breakTime.startTime} - {breakTime.endTime}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {breakTime.reason}
+                      </p>
+                    </div>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => deleteBreakTimeMutation.mutate(breakTime.id)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <p>No break times set up yet.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function WaitlistManager() {
+  const { toast } = useToast();
+
+  const { data: waitlistEntries, isLoading } = useQuery<Waitlist[]>({
+    queryKey: ["/api/waitlist/service"],
+  });
+
+  const updateWaitlistStatusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: number; status: "fulfilled" | "expired" }) => {
+      const res = await apiRequest("PATCH", `/api/waitlist/${id}/status`, { status });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/waitlist/service"] });
+      toast({
+        title: "Success",
+        description: "Waitlist entry updated successfully",
+      });
+    },
+  });
+
+  return (
+    <div className="space-y-6">
+      {isLoading ? (
+        <p>Loading waitlist entries...</p>
+      ) : waitlistEntries && waitlistEntries.length > 0 ? (
+        <div className="grid md:grid-cols-2 gap-4">
+          {waitlistEntries.map((entry) => (
+            <Card key={entry.id}>
+              <CardContent className="p-4">
+                <div className="space-y-2">
+                  <p className="font-medium">
+                    Preferred Date: {new Date(entry.preferredDate).toLocaleDateString()}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Time Preference: {entry.preferredTimeRange}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Status: {entry.status}
+                  </p>
+                  <div className="flex gap-2 mt-4">
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        updateWaitlistStatusMutation.mutate({
+                          id: entry.id,
+                          status: "fulfilled",
+                        })
+                      }
+                      disabled={entry.status !== "active"}
+                    >
+                      Mark Fulfilled
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        updateWaitlistStatusMutation.mutate({
+                          id: entry.id,
+                          status: "expired",
+                        })
+                      }
+                      disabled={entry.status !== "active"}
+                    >
+                      Mark Expired
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <p>No waitlist entries found.</p>
+      )}
     </div>
   );
 }
