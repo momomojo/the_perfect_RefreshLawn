@@ -15,12 +15,12 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { format } from "date-fns";
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
 } from "@/components/ui/select";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -294,33 +294,38 @@ export default function ServiceDetails() {
                           return blockedDateStr === dateStr && blocked.isFullDay;
                         });
 
-                        // Check day of week availability - only disable if there's an explicit unavailable schedule
-                        // or if no schedules exist for this day
+                        // Check day of week availability
                         const dayOfWeek = date.getDay();
 
-                        // If no schedules at all for this provider, assume available
+                        // If no schedules at all are defined, consider all days available
                         if (!weeklySchedules || weeklySchedules.length === 0) {
                           return date < today || isBlocked;
                         }
 
-                        // Check if this day has an explicit schedule
-                        const daySchedule = weeklySchedules.find(schedule => schedule.dayOfWeek === dayOfWeek);
+                        // Find if there's an explicit schedule for this day of week
+                        const daySchedules = weeklySchedules.filter(
+                          schedule => schedule.dayOfWeek === dayOfWeek
+                        );
 
-                        // If day has a schedule, check if it's available
-                        if (daySchedule) {
-                          return date < today || isBlocked || !daySchedule.isAvailable;
+                        // If no schedules for this day are defined, consider it available
+                        if (daySchedules.length === 0) {
+                          return date < today || isBlocked;
                         }
 
-                        // If no schedule for this day but other days have schedules, assume unavailable
-                        return true;
+                        // If there are schedules for this day, check if at least one is available
+                        const hasAvailableSchedule = daySchedules.some(
+                          schedule => schedule.isAvailable
+                        );
+
+                        return date < today || isBlocked || !hasAvailableSchedule;
                       }}
                       className="mb-4"
                     />
 
                     {/* Back button to return to services */}
                     <div className="flex justify-between mt-4">
-                      <Button 
-                        variant="outline" 
+                      <Button
+                        variant="outline"
                         onClick={handleBackToServices}
                         className="flex items-center gap-2"
                       >
@@ -329,7 +334,7 @@ export default function ServiceDetails() {
                       </Button>
 
                       {selectedDate && (
-                        <Button 
+                        <Button
                           onClick={() => setBookingStep("time")}
                         >
                           Continue
@@ -367,7 +372,7 @@ export default function ServiceDetails() {
                       <Button variant="outline" onClick={handleBack}>
                         Back
                       </Button>
-                      <Button 
+                      <Button
                         onClick={() => setBookingStep("details")}
                         disabled={!selectedTime}
                       >
@@ -403,9 +408,9 @@ export default function ServiceDetails() {
                             <FormItem>
                               <FormLabel>Special Instructions (Optional)</FormLabel>
                               <FormControl>
-                                <Textarea 
-                                  placeholder="Enter any special instructions or requirements..." 
-                                  {...field} 
+                                <Textarea
+                                  placeholder="Enter any special instructions or requirements..."
+                                  {...field}
                                 />
                               </FormControl>
                               <FormMessage />
@@ -476,7 +481,7 @@ export default function ServiceDetails() {
                       <Button variant="outline" onClick={handleBack}>
                         Back
                       </Button>
-                      <Button 
+                      <Button
                         onClick={() => handleBookSubmit(form.getValues())}
                         disabled={bookAppointmentMutation.isPending}
                         className="flex items-center gap-2"
