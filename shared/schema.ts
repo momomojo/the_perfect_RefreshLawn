@@ -71,12 +71,20 @@ export const insertServiceSchema = createInsertSchema(services).pick({
   imageUrl: true
 });
 
-export const insertAppointmentSchema = createInsertSchema(appointments).pick({
-  serviceId: true,
-  startTime: true,
-  address: true,
-  specialInstructions: true
-});
+// Modify the appointment schema to accept a string for startTime
+export const insertAppointmentSchema = createInsertSchema(appointments)
+  .pick({
+    serviceId: true,
+    address: true,
+    specialInstructions: true
+  })
+  .extend({
+    // Override the startTime field to accept string (ISO format)
+    startTime: z.string().refine(
+      (val) => !isNaN(Date.parse(val)),
+      { message: "Invalid date format. Please provide a valid ISO date string." }
+    )
+  });
 
 export const insertWeeklyScheduleSchema = createInsertSchema(weeklySchedules).pick({
   dayOfWeek: true,

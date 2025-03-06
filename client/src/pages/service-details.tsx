@@ -4,7 +4,7 @@ import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { ClockIcon, DollarSignIcon, MapPinIcon, FileTextIcon, CheckCircleIcon } from "lucide-react";
+import { ClockIcon, DollarSignIcon, MapPinIcon, FileTextIcon, CheckCircleIcon, ArrowLeftIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useState, useEffect } from "react";
@@ -33,7 +33,7 @@ const bookingSchema = z.object({
 type BookingData = z.infer<typeof bookingSchema>;
 
 export default function ServiceDetails() {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const { toast } = useToast();
   const { user } = useAuth(); // Get user data to auto-populate address
   const serviceId = parseInt(location.split("/").pop() || "0");
@@ -164,6 +164,11 @@ export default function ServiceDetails() {
     return `${hour12}:${minutes} ${ampm}`;
   };
 
+  // Handle going back to the services list
+  const handleBackToServices = () => {
+    setLocation("/customer/dashboard");
+  };
+
   // Book appointment mutation
   const bookAppointmentMutation = useMutation({
     mutationFn: async (bookingData: {
@@ -227,6 +232,9 @@ export default function ServiceDetails() {
     );
   }
 
+  // Debug log to help diagnose available days issue
+  console.log("Weekly Schedules:", weeklySchedules);
+
   return (
     <div className="min-h-screen bg-[#F5F7F3] p-8">
       <div className="container mx-auto">
@@ -286,16 +294,48 @@ export default function ServiceDetails() {
                           return blockedDateStr === dateStr && blocked.isFullDay;
                         });
 
-                        // Check day of week availability
+                        // Check day of week availability - only disable if there's an explicit unavailable schedule
+                        // or if no schedules exist for this day
                         const dayOfWeek = date.getDay();
-                        const isDayAvailable = weeklySchedules?.some(
-                          schedule => schedule.dayOfWeek === dayOfWeek && schedule.isAvailable
-                        );
 
-                        return date < today || isBlocked || !isDayAvailable;
+                        // If no schedules at all for this provider, assume available
+                        if (!weeklySchedules || weeklySchedules.length === 0) {
+                          return date < today || isBlocked;
+                        }
+
+                        // Check if this day has an explicit schedule
+                        const daySchedule = weeklySchedules.find(schedule => schedule.dayOfWeek === dayOfWeek);
+
+                        // If day has a schedule, check if it's available
+                        if (daySchedule) {
+                          return date < today || isBlocked || !daySchedule.isAvailable;
+                        }
+
+                        // If no schedule for this day but other days have schedules, assume unavailable
+                        return true;
                       }}
                       className="mb-4"
                     />
+
+                    {/* Back button to return to services */}
+                    <div className="flex justify-between mt-4">
+                      <Button 
+                        variant="outline" 
+                        onClick={handleBackToServices}
+                        className="flex items-center gap-2"
+                      >
+                        <ArrowLeftIcon className="h-4 w-4" />
+                        Back to Services
+                      </Button>
+
+                      {selectedDate && (
+                        <Button 
+                          onClick={() => setBookingStep("time")}
+                        >
+                          Continue
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 )}
 
