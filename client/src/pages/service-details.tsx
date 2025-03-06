@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Service, WeeklySchedule, BlockedDate } from "@shared/schema";
 import { useLocation } from "wouter";
@@ -13,6 +14,7 @@ import * as z from "zod";
 import { format } from "date-fns";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ClockIcon, DollarSignIcon, MapPinIcon, FileTextIcon, CheckCircleIcon, ArrowLeftIcon } from "lucide-react";
 
 // Define booking schema with Zod for validation
