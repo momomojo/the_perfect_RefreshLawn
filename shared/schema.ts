@@ -27,7 +27,9 @@ export const appointments = pgTable("appointments", {
   customerId: integer("customer_id").notNull(),
   startTime: timestamp("start_time").notNull(),
   status: text("status", { enum: ["pending", "accepted", "completed", "declined"] }).notNull(),
-  totalAmount: decimal("total_amount").notNull()
+  totalAmount: decimal("total_amount").notNull(),
+  address: text("address").notNull(), // Added address field
+  specialInstructions: text("special_instructions") // Added special instructions field
 });
 
 // New tables for availability management
@@ -69,7 +71,9 @@ export const insertServiceSchema = createInsertSchema(services).pick({
 
 export const insertAppointmentSchema = createInsertSchema(appointments).pick({
   serviceId: true,
-  startTime: true
+  startTime: true,
+  address: true,
+  specialInstructions: true
 });
 
 export const insertWeeklyScheduleSchema = createInsertSchema(weeklySchedules).pick({

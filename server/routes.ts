@@ -153,6 +153,12 @@ export function registerRoutes(app: Express): Server {
     res.json(schedules);
   });
 
+  app.get("/api/weekly-schedules/provider/:providerId", async (req, res) => {
+    const providerId = parseInt(req.params.providerId);
+    const schedules = await dbStorage.getProviderWeeklySchedules(providerId);
+    res.json(schedules);
+  });
+
   app.patch("/api/weekly-schedules/:id", async (req, res) => {
     if (!req.isAuthenticated() || req.user.role !== "provider") {
       return res.status(403).send("Only providers can update schedules");
@@ -208,6 +214,12 @@ export function registerRoutes(app: Express): Server {
     }
 
     const blockedDates = await dbStorage.getProviderBlockedDates(req.user.id);
+    res.json(blockedDates);
+  });
+
+  app.get("/api/blocked-dates/provider/:providerId", async (req, res) => {
+    const providerId = parseInt(req.params.providerId);
+    const blockedDates = await dbStorage.getProviderBlockedDates(providerId);
     res.json(blockedDates);
   });
 
