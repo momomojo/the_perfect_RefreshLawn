@@ -5,10 +5,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
-import { CalendarIcon, ClockIcon } from "lucide-react";
+import { CalendarIcon, ClockIcon, LogOutIcon } from "lucide-react";
 
 export default function CustomerDashboard() {
-  const { user } = useAuth();
+  const { user, logoutMutation } = useAuth();
   const [, setLocation] = useLocation();
 
   const { data: services } = useQuery<Service[]>({
@@ -34,10 +34,25 @@ export default function CustomerDashboard() {
     }
   };
 
+  const handleLogout = async () => {
+    await logoutMutation.mutateAsync();
+    setLocation("/auth");
+  };
+
   return (
     <div className="min-h-screen bg-[#F5F7F3] p-8">
       <div className="container mx-auto">
-        <h1 className="text-3xl font-bold mb-8">Welcome, {user?.name}</h1>
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-3xl font-bold">Welcome, {user?.name}</h1>
+          <Button 
+            variant="outline" 
+            onClick={handleLogout}
+            className="flex items-center gap-2"
+          >
+            <LogOutIcon className="h-4 w-4" />
+            Logout
+          </Button>
+        </div>
 
         <Tabs defaultValue="services">
           <TabsList className="mb-8">
