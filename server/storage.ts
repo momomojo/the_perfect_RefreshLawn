@@ -1,6 +1,6 @@
 import { users, services, appointments, weeklySchedules, blockedDates, type User, type Service, type Appointment, type WeeklySchedule, type BlockedDate, type InsertUser, type InsertService, type InsertAppointment, type InsertWeeklySchedule, type InsertBlockedDate } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, gte, lte, inQuery } from "drizzle-orm";
+import { eq, and, gte, lte, inArray } from "drizzle-orm";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 import { pool } from "./db";
@@ -42,11 +42,11 @@ export interface IStorage {
   // Check availability
   isTimeSlotAvailable(providerId: number, date: Date, startTime: string, endTime: string): Promise<boolean>;
 
-  sessionStore: session.SessionStore;
+  sessionStore: any; // Use any type to avoid conflicts with session.SessionStore
 }
 
 export class DatabaseStorage implements IStorage {
-  sessionStore: session.SessionStore;
+  sessionStore: any;
 
   constructor() {
     this.sessionStore = new PostgresSessionStore({
@@ -147,7 +147,7 @@ export class DatabaseStorage implements IStorage {
     return await db
       .select()
       .from(appointments)
-      .where(eq(appointments.serviceId, serviceIds[0]));
+      .where(inArray(appointments.serviceId, serviceIds));
   }
 
   async updateAppointmentStatus(id: number, status: "accepted" | "completed" | "declined"): Promise<Appointment> {
@@ -296,36 +296,9 @@ export class DatabaseStorage implements IStorage {
         return true;
       }
     }
-    
+
     // If we get here, the time is not within any available schedule
     return false;
-
-    // Check if there are any overlapping appointments
-    const serviceIds = (await this.getProviderServices(providerId)).map(s => s.id);
-
-    if (serviceIds.length === 0) {
-      return true; // No services, so no appointments
-    }
-
-    // Since this is a simplification, we're just checking if there's an existing appointment
-    // with the exact same start time. In a real application, you'd need to check for overlaps.
-    const dateTimeStart = new Date(date);
-    dateTimeStart.setHours(parseInt(startTime.split(':')[0]));
-    dateTimeStart.setMinutes(parseInt(startTime.split(':')[1]));
-    dateTimeStart.setSeconds(0, 0);
-
-    // Use a simpler approach to avoid the in() method issues
-    const existingAppointments = await db
-      .select()
-      .from(appointments)
-      .where(eq(appointments.startTime, dateTimeStart.toISOString()));
-
-    // Filter appointments by service ID in JavaScript
-    const matchingAppointments = existingAppointments.filter(
-      app => serviceIds.includes(app.serviceId)
-    );
-
-    return matchingAppointments.length === 0;
   }
 }
 

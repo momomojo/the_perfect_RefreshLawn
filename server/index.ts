@@ -1,6 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import net from "net";
 
 const app = express();
 app.use(express.json());
@@ -36,6 +37,34 @@ app.use((req, res, next) => {
   next();
 });
 
+// Function to check if a port is available
+function isPortAvailable(port: number): Promise<boolean> {
+  return new Promise(resolve => {
+    const server = net.createServer();
+
+    server.once('error', () => {
+      resolve(false);
+    });
+
+    server.once('listening', () => {
+      server.close();
+      resolve(true);
+    });
+
+    server.listen(port, '0.0.0.0');
+  });
+}
+
+// Function to find an available port
+async function findAvailablePort(startPort: number, maxPort: number): Promise<number> {
+  for (let port = startPort; port <= maxPort; port++) {
+    if (await isPortAvailable(port)) {
+      return port;
+    }
+  }
+  return startPort; // Fallback to the start port
+}
+
 (async () => {
   const server = await registerRoutes(app);
 
@@ -56,9 +85,14 @@ app.use((req, res, next) => {
     serveStatic(app);
   }
 
-  // ALWAYS serve the app on port 5000
-  // this serves both the API and the client
-  const port = 5000;
+  // Try to use the preferred port or find an available one
+  const preferredPort = 5000;
+  const port = await findAvailablePort(preferredPort, preferredPort + 10);
+
+  if (port !== preferredPort) {
+    log(`Port ${preferredPort} is already in use, using port ${port} instead`);
+  }
+
   server.listen({
     port,
     host: "0.0.0.0",

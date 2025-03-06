@@ -83,10 +83,6 @@ export default function ServiceDetails() {
 
   // Function to generate available time slots based on provider availability
   const generateTimeSlots = (date: Date, service: Service) => {
-    // Default business hours
-    const defaultStart = "09:00";
-    const defaultEnd = "17:00";
-
     // Get day of week (0 = Sunday, 1 = Monday, etc.)
     const dayOfWeek = date.getDay();
 
@@ -112,41 +108,47 @@ export default function ServiceDetails() {
       setAvailableTimes([]);
       return;
     }
-    
+
+    // Get partial blocks for this date
+    const partialBlocks = blockedDates?.filter(blocked => {
+      const blockedDateStr = new Date(blocked.date).toISOString().split('T')[0];
+      return blockedDateStr === dateStr && !blocked.isFullDay;
+    }) || [];
+
     // Get all available time slots from all schedules for this day
     let allTimeSlots: string[] = [];
-    
+
     for (const schedule of daySchedules) {
       const scheduleStart = schedule.startTime.slice(0, 5); // Convert "09:00:00" to "09:00"
       const scheduleEnd = schedule.endTime.slice(0, 5);
-      
+
       // Generate slots in 30-minute increments
       const slotDuration = 30; // minutes
       const serviceDuration = service.duration;
-      
+
       // Convert start/end times to minutes since midnight
       const startMinutes = timeToMinutes(scheduleStart);
       const endMinutes = timeToMinutes(scheduleEnd);
-      
+
       // Generate slots
       for (let time = startMinutes; time <= endMinutes - serviceDuration; time += slotDuration) {
         const slotTime = minutesToTime(time);
         allTimeSlots.push(slotTime);
       }
     }
-    
+
     // Filter out times that overlap with partial blocks
     const filteredTimes = allTimeSlots.filter(slot => {
       const slotStartMinutes = timeToMinutes(slot);
       const slotEndMinutes = slotStartMinutes + service.duration;
-      
+
       // Check if slot overlaps with any partial block
       return !partialBlocks.some(block => {
         if (!block.startTime || !block.endTime) return false;
-        
+
         const blockStartMinutes = timeToMinutes(block.startTime.slice(0, 5));
         const blockEndMinutes = timeToMinutes(block.endTime.slice(0, 5));
-        
+
         return (
           (slotStartMinutes >= blockStartMinutes && slotStartMinutes < blockEndMinutes) ||
           (slotEndMinutes > blockStartMinutes && slotEndMinutes <= blockEndMinutes) ||
@@ -154,69 +156,23 @@ export default function ServiceDetails() {
         );
       });
     });
-    
+
     // Remove duplicates and sort
-    setAvailableTimes([...new Set(filteredTimes)].sort());
+    const uniqueTimes = Array.from(new Set(filteredTimes)).sort();
+    setAvailableTimes(uniqueTimes);
   };
-  
+
   // Helper function to convert time string (HH:MM) to minutes since midnight
   const timeToMinutes = (time: string): number => {
     const [hours, minutes] = time.split(':').map(Number);
     return hours * 60 + minutes;
   };
-  
+
   // Helper function to convert minutes since midnight to time string (HH:MM)
   const minutesToTime = (minutes: number): string => {
     const hours = Math.floor(minutes / 60);
     const mins = minutes % 60;
     return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
-    
-    // Get partial blocks for this date
-    const partialBlocks = blockedDates?.filter(blocked => {
-      const blockedDateStr = new Date(blocked.date).toISOString().split('T')[0];
-      return blockedDateStr === dateStr && !blocked.isFullDay;
-    }) || [];
-
-    // Get start and end times from schedule or use defaults
-    const startTime = daySchedule?.startTime || defaultStart;
-    const endTime = daySchedule?.endTime || defaultEnd;
-
-    // Create time slots every 30 minutes
-    const slots: string[] = [];
-    let current = startTime;
-
-    while (current < endTime) {
-      // Get service duration and ensure we don't go past end time
-      const durationInMinutes = service.duration;
-      const [hours, minutes] = current.split(':').map(Number);
-
-      let endHour = hours;
-      let endMinute = minutes + durationInMinutes;
-
-      while (endMinute >= 60) {
-        endHour += 1;
-        endMinute -= 60;
-      }
-
-      const endTimeSlot = `${String(endHour).padStart(2, '0')}:${String(endMinute).padStart(2, '0')}`;
-
-      if (endTimeSlot <= endTime) {
-        slots.push(current);
-      }
-
-      // Increment by 30 minutes
-      let nextHour = hours;
-      let nextMinute = minutes + 30;
-
-      if (nextMinute >= 60) {
-        nextHour += 1;
-        nextMinute -= 60;
-      }
-
-      current = `${String(nextHour).padStart(2, '0')}:${String(nextMinute).padStart(2, '0')}`;
-    }
-
-    setAvailableTimes(slots);
   };
 
   // Format time for display
@@ -250,7 +206,7 @@ export default function ServiceDetails() {
         title: "Success",
         description: "Appointment booked successfully",
       });
-      window.location.href = "/customer/dashboard";
+      setLocation("/customer/dashboard");
     },
     onError: (error: Error) => {
       toast({
