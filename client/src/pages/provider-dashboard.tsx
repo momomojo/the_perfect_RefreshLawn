@@ -215,7 +215,7 @@ function CreateServiceForm() {
       title: "",
       description: "",
       duration: 60, // Default duration in minutes
-      price: 0,
+      price: "0", // Changed to string type to match the schema expectation
       imageUrl: ""
     }
   });
@@ -235,21 +235,23 @@ function CreateServiceForm() {
 
   const createServiceMutation = useMutation({
     mutationFn: async (data: any) => {
-      let imageUrl = data.imageUrl;
+      let imageUrl = "";
 
       if (data.imageFile) {
         const uploadResult = await uploadImageMutation.mutateAsync(data.imageFile);
         imageUrl = uploadResult.url;
+      } else {
+        throw new Error('Please upload an image for your service');
       }
 
-      // Ensure numeric fields are properly converted to numbers
+      // Ensure numeric fields are properly formatted
       const serviceData = {
-        ...data,
-        duration: Number(data.duration),
-        price: Number(data.price),
+        title: data.title,
+        description: data.description,
+        duration: Number(data.duration), 
+        price: data.price, // Keep as string as that's what the schema expects
         imageUrl,
       };
-      delete serviceData.imageFile;
 
       const res = await apiRequest("POST", "/api/services", serviceData);
       return res.json();
@@ -331,10 +333,8 @@ function CreateServiceForm() {
               <FormLabel>Price ($)</FormLabel>
               <FormControl>
                 <Input 
-                  type="number" 
-                  step="0.01" 
-                  {...field} 
-                  onChange={(e) => field.onChange(Number(e.target.value))}
+                  type="text"
+                  {...field}
                 />
               </FormControl>
               <FormMessage />
@@ -358,20 +358,6 @@ function CreateServiceForm() {
                   }}
                   {...field}
                 />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name="imageUrl"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Or Image URL</FormLabel>
-              <FormControl>
-                <Input {...field} placeholder="https://..." />
               </FormControl>
               <FormMessage />
             </FormItem>
