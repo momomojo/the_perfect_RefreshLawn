@@ -10,13 +10,21 @@ import { insertUserSchema } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
 import { LeafIcon } from "lucide-react";
+import { useEffect } from "react";
 
 export default function AuthPage() {
-  const { user, loginMutation, registerMutation } = useAuth();
+  const { user } = useAuth();
   const [, setLocation] = useLocation();
 
+  // Use useEffect for navigation instead of during render
+  useEffect(() => {
+    if (user) {
+      setLocation("/");
+    }
+  }, [user, setLocation]);
+
+  // Don't render anything while redirecting
   if (user) {
-    setLocation("/");
     return null;
   }
 

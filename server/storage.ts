@@ -419,9 +419,33 @@ export class DatabaseStorage implements IStorage {
     serviceId: number,
     address: string
   ): Promise<boolean> {
+    console.log('Checking availability:', {
+      providerId,
+      date: date.toISOString(),
+      startTime,
+      endTime,
+      serviceId,
+      address
+    });
+
     // Get the service to check buffer time and max daily bookings
     const service = await this.getService(serviceId);
-    if (!service) return false;
+    if (!service) {
+      console.log('Service not found');
+      return false;
+    }
+
+    // Convert requested times to full timestamps
+    const requestStart = new Date(date);
+    requestStart.setHours(parseInt(startTime.split(':')[0]), parseInt(startTime.split(':')[1]), 0, 0);
+
+    const requestEnd = new Date(date);
+    requestEnd.setHours(parseInt(endTime.split(':')[0]), parseInt(endTime.split(':')[1]), 0, 0);
+
+    console.log('Request time range:', {
+      start: requestStart.toISOString(),
+      end: requestEnd.toISOString()
+    });
 
     // Check if maximum daily bookings reached
     if (service.maxDailyBookings) {
@@ -432,67 +456,19 @@ export class DatabaseStorage implements IStorage {
         .where(
           and(
             eq(appointments.serviceId, serviceId),
-            eq(sql`DATE(${appointments.startTime})`, dateStr)
+            eq(sql`DATE(${appointments.startTime} AT TIME ZONE 'UTC')`, dateStr)
           )
         );
+
+      console.log('Daily bookings count:', dailyBookings.length, 'max:', service.maxDailyBookings);
 
       if (dailyBookings.length >= service.maxDailyBookings) {
         return false;
       }
     }
 
-    // Check if there's a break time during this period
-    const dayOfWeek = date.getDay();
-    const [breakTime] = await db
-      .select()
-      .from(breakTimes)
-      .where(
-        and(
-          eq(breakTimes.providerId, providerId),
-          eq(breakTimes.dayOfWeek, dayOfWeek),
-          lte(breakTimes.startTime, startTime),
-          gte(breakTimes.endTime, endTime)
-        )
-      );
-
-    if (breakTime) return false;
-
-    // Calculate buffer times for existing appointments
-    const dateTimeStart = new Date(date);
-    dateTimeStart.setHours(parseInt(startTime.split(':')[0]));
-    dateTimeStart.setMinutes(parseInt(startTime.split(':')[1]));
-    dateTimeStart.setSeconds(0, 0);
-
-    // Get all appointments for this date
-    const existingAppointments = await db
-      .select()
-      .from(appointments)
-      .where(
-        and(
-          eq(appointments.serviceId, serviceId),
-          eq(sql`DATE(${appointments.startTime})`, dateTimeStart.toISOString().split('T')[0])
-        )
-      );
-
-    // Check for address conflicts
-    for (const appointment of existingAppointments) {
-      if (appointment.address !== address) {
-        return false;
-      }
-
-      // Add buffer time check for appointments at the same address
-      if (service.bufferTime) {
-        const existingTime = new Date(appointment.startTime);
-        const timeDiff = Math.abs(dateTimeStart.getTime() - existingTime.getTime());
-        const bufferTimeMs = service.bufferTime * 60 * 1000; // Convert minutes to milliseconds
-
-        if (timeDiff < bufferTimeMs) {
-          return false;
-        }
-      }
-    }
-
     // Check weekly schedule
+    const dayOfWeek = date.getDay();
     const [schedule] = await db
       .select()
       .from(weeklySchedules)
@@ -504,14 +480,76 @@ export class DatabaseStorage implements IStorage {
       );
 
     if (!schedule || !schedule.isAvailable) {
+      console.log('No available schedule for day:', dayOfWeek);
       return false;
     }
 
-    // Check if requested time is within schedule
     if (startTime < schedule.startTime || endTime > schedule.endTime) {
+      console.log('Time outside schedule hours:', schedule.startTime, '-', schedule.endTime);
       return false;
     }
 
+    // Get existing appointments for this date
+    const dateStr = date.toISOString().split('T')[0];
+    const existingAppointments = await db
+      .select()
+      .from(appointments)
+      .where(
+        and(
+          eq(appointments.serviceId, serviceId),
+          eq(sql`DATE(${appointments.startTime} AT TIME ZONE 'UTC')`, dateStr)
+        )
+      );
+
+    console.log('Existing appointments:', existingAppointments);
+
+    // Check for overlapping appointments and conflicts
+    for (const appointment of existingAppointments) {
+      const appointmentStart = new Date(appointment.startTime);
+      const appointmentEnd = new Date(appointment.startTime);
+      appointmentEnd.setMinutes(appointmentEnd.getMinutes() + service.duration);
+
+      console.log('Checking overlap with appointment:', {
+        id: appointment.id,
+        start: appointmentStart.toISOString(),
+        end: appointmentEnd.toISOString(),
+        address: appointment.address
+      });
+
+      // Check address conflict
+      if (appointment.address !== address) {
+        // Check for overlap
+        const hasOverlap = (
+          (requestStart >= appointmentStart && requestStart < appointmentEnd) ||
+          (requestEnd > appointmentStart && requestEnd <= appointmentEnd) ||
+          (requestStart <= appointmentStart && requestEnd >= appointmentEnd)
+        );
+
+        if (hasOverlap) {
+          console.log('Found overlapping appointment at different address');
+          return false;
+        }
+
+        // Check buffer time
+        if (service.bufferTime) {
+          const bufferMs = service.bufferTime * 60 * 1000;
+          const startBuffer = new Date(appointmentStart.getTime() - bufferMs);
+          const endBuffer = new Date(appointmentEnd.getTime() + bufferMs);
+
+          const hasBufferConflict = (
+            (requestStart >= startBuffer && requestStart < endBuffer) ||
+            (requestEnd > startBuffer && requestEnd <= endBuffer)
+          );
+
+          if (hasBufferConflict) {
+            console.log('Found buffer time conflict');
+            return false;
+          }
+        }
+      }
+    }
+
+    console.log('Time slot is available');
     return true;
   }
 }
