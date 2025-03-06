@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
-import { CalendarIcon, ClockIcon, LogOutIcon } from "lucide-react";
+import { CalendarIcon, ClockIcon, LogOutIcon, MapPinIcon, CheckCircleIcon, PlayCircleIcon } from "lucide-react";
 
 export default function CustomerDashboard() {
   const { user, logoutMutation } = useAuth();
@@ -17,6 +17,8 @@ export default function CustomerDashboard() {
 
   const { data: appointments } = useQuery<Appointment[]>({
     queryKey: ["/api/appointments/customer"],
+    // Increase polling frequency to get status updates more quickly
+    refetchInterval: 5000, // Poll every 5 seconds
   });
 
   const getStatusColor = (status: string) => {
@@ -24,13 +26,53 @@ export default function CustomerDashboard() {
       case "pending":
         return "bg-yellow-100 text-yellow-800";
       case "accepted":
-        return "bg-green-100 text-green-800";
-      case "completed":
         return "bg-blue-100 text-blue-800";
+      case "confirmed":
+        return "bg-indigo-100 text-indigo-800";
+      case "in_progress":
+        return "bg-purple-100 text-purple-800";
+      case "completed":
+        return "bg-green-100 text-green-800";
+      case "cancelled":
+        return "bg-red-100 text-red-800";
       case "declined":
         return "bg-red-100 text-red-800";
       default:
         return "bg-gray-100 text-gray-800";
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case "confirmed":
+        return <CheckCircleIcon className="h-4 w-4" />;
+      case "in_progress":
+        return <PlayCircleIcon className="h-4 w-4" />;
+      case "completed":
+        return <CheckCircleIcon className="h-4 w-4" />;
+      default:
+        return null;
+    }
+  };
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case "pending":
+        return "Waiting for provider confirmation";
+      case "accepted":
+        return "Provider accepted your booking";
+      case "confirmed":
+        return "Provider is on their way";
+      case "in_progress":
+        return "Service in progress";
+      case "completed":
+        return "Service completed";
+      case "cancelled":
+        return "Service cancelled";
+      case "declined":
+        return "Service declined by provider";
+      default:
+        return status;
     }
   };
 
@@ -98,23 +140,56 @@ export default function CustomerDashboard() {
               {appointments?.map((appointment) => (
                 <Card key={appointment.id}>
                   <CardContent className="p-6">
-                    <div className="flex items-center gap-2 mb-4">
-                      <CalendarIcon className="h-4 w-4" />
-                      <span>
-                        {new Date(appointment.startTime).toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between mb-4">
-                      <span
-                        className={`px-3 py-1 rounded-full text-sm ${getStatusColor(
-                          appointment.status
-                        )}`}
-                      >
-                        {appointment.status}
-                      </span>
-                      <span className="font-bold">
-                        ${appointment.totalAmount.toString()}
-                      </span>
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2">
+                        <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+                        <span>
+                          {new Date(appointment.startTime).toLocaleString()}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <MapPinIcon className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm text-muted-foreground">
+                          {appointment.address}
+                        </span>
+                      </div>
+
+                      {appointment.specialInstructions && (
+                        <p className="text-sm text-muted-foreground">
+                          Special Instructions: {appointment.specialInstructions}
+                        </p>
+                      )}
+
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`px-3 py-1 rounded-full text-sm flex items-center gap-2 ${getStatusColor(
+                              appointment.status
+                            )}`}
+                          >
+                            {getStatusIcon(appointment.status)}
+                            {getStatusText(appointment.status)}
+                          </span>
+                        </div>
+                        <span className="font-bold">
+                          ${appointment.totalAmount.toString()}
+                        </span>
+                      </div>
+
+                      {appointment.recurring && (
+                        <div className="text-sm text-muted-foreground">
+                          <p>Recurring: {appointment.recurringInterval}</p>
+                          <p>Next Date: {new Date(appointment.nextRecurringDate!).toLocaleDateString()}</p>
+                        </div>
+                      )}
+
+                      {appointment.completionNotes && (
+                        <div className="text-sm border-t pt-2 mt-2">
+                          <p className="font-medium">Completion Notes:</p>
+                          <p className="text-muted-foreground">{appointment.completionNotes}</p>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
