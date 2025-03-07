@@ -206,13 +206,13 @@ export class DatabaseStorage implements IStorage {
         recurring: appointments.recurring,
         recurringInterval: appointments.recurringInterval,
         nextRecurringDate: appointments.nextRecurringDate,
-        hiddenFromCustomer: appointments.hiddenFromCustomer
+        hiddenFromCustomer: appointments.hidden_from_customer
       })
       .from(appointments)
       .where(
         and(
           eq(appointments.customerId, customerId),
-          eq(appointments.hiddenFromCustomer, false)
+          eq(appointments.hidden_from_customer, false)
         )
       );
 

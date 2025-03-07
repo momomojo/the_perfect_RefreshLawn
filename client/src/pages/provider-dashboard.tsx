@@ -992,7 +992,7 @@ function BlockedDatesManager() {
   const form= useForm({
     resolver: zodResolver(
       insertBlockedDateSchema.extend({
-        date: z.date(),
+                date: z.date(),
       })
     ),
     defaultValues: {
