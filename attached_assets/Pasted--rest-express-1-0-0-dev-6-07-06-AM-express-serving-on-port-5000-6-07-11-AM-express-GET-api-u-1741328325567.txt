@@ -1,0 +1,64 @@
+> rest-express@1.0.0 dev
+6:07:06 AM [express] serving on port 5000
+6:07:11 AM [express] GET /api/user 401 in 3ms
+6:07:16 AM [express] GET /api/user 304 in 47ms :: {"id":1,"username":"claireherman","password":"57e1…
+6:15:12 AM [express] GET /api/waitlist/service 200 in 778ms
+6:15:12 AM [express] GET /api/services/provider 304 in 781ms :: [{"id":1,"providerId":1,"title":"law…
+6:15:12 AM [express] GET /api/break-times 304 in 796ms :: []
+6:15:12 AM [express] GET /api/appointments/provider 304 in 798ms :: [{"id":3,"serviceId":2,"customer…
+Error in clearCustomerAppointmentHistory: error: operator does not exist: integer = text
+    at file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:1345:74
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async DatabaseStorage.clearCustomerAppointmentHistory (/home/runner/workspace/server/storage.ts:594:7)
+    at async <anonymous> (/home/runner/workspace/server/routes.ts:164:7) {
+  length: 199,
+  severity: 'ERROR',
+  code: '42883',
+  detail: undefined,
+  hint: 'No operator matches the given name and argument types. You might need to add explicit type casts.',
+  position: '98',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'parse_oper.c',
+  line: '647',
+  routine: 'op_error'
+}
+Error clearing customer appointment history: Error: Failed to clear appointment history
+    at DatabaseStorage.clearCustomerAppointmentHistory (/home/runner/workspace/server/storage.ts:602:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async <anonymous> (/home/runner/workspace/server/routes.ts:164:7)
+6:15:15 AM [express] POST /api/appointments/clear-customer-history 500 in 97ms
+Error in deleteAppointmentHistory: error: operator does not exist: integer = text
+    at file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:1345:74
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async DatabaseStorage.deleteAppointmentHistory (/home/runner/workspace/server/storage.ts:617:7)
+    at async <anonymous> (/home/runner/workspace/server/routes.ts:179:7) {
+  length: 199,
+  severity: 'ERROR',
+  code: '42883',
+  detail: undefined,
+  hint: 'No operator matches the given name and argument types. You might need to add explicit type casts.',
+  position: '58',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'parse_oper.c',
+  line: '647',
+  routine: 'op_error'
+}
+Error deleting appointment history: Error: Failed to delete appointment history
+    at DatabaseStorage.deleteAppointmentHistory (/home/runner/workspace/server/storage.ts:624:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async <anonymous> (/home/runner/workspace/server/routes.ts:179:7)
+6:18:15 AM [express] DELETE /api/appointments/delete-history 500 in 4870ms
