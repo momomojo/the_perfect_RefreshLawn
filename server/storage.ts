@@ -1,6 +1,6 @@
 import { users, services, appointments, weeklySchedules, blockedDates, breakTimes, waitlist, type User, type Service, type Appointment, type WeeklySchedule, type BlockedDate, type BreakTime, type Waitlist, type InsertUser, type InsertService, type InsertAppointment, type InsertWeeklySchedule, type InsertBlockedDate, type InsertBreakTime, type InsertWaitlist } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, gte, lte, inArray, sql } from "drizzle-orm";
+import { eq, and, gte, lte, inArray, sql, or } from "drizzle-orm";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 import { pool } from "./db";
@@ -170,7 +170,8 @@ export class DatabaseStorage implements IStorage {
           totalAmount: service.price,
           address: appointment.address,
           specialInstructions: appointment.specialInstructions,
-          startTime: startTimeValue
+          startTime: startTimeValue,
+          hiddenFromCustomer: false // Explicitly set default value
         })
         .returning();
 
@@ -192,31 +193,21 @@ export class DatabaseStorage implements IStorage {
     if (!customer) throw new Error("Customer not found");
 
     // Get all appointments for this customer with proper filtering
-    const appointments = await db
-      .select({
-        id: appointments.id,
-        serviceId: appointments.serviceId,
-        customerId: appointments.customerId,
-        status: appointments.status,
-        startTime: appointments.startTime,
-        totalAmount: appointments.totalAmount,
-        address: appointments.address,
-        specialInstructions: appointments.specialInstructions,
-        completionNotes: appointments.completionNotes,
-        recurring: appointments.recurring,
-        recurringInterval: appointments.recurringInterval,
-        nextRecurringDate: appointments.nextRecurringDate,
-        hiddenFromCustomer: appointments.hiddenFromCustomer
-      })
+    return await db
+      .select()
       .from(appointments)
       .where(
         and(
           eq(appointments.customerId, customerId),
-          eq(appointments.hiddenFromCustomer, false)
+          or(
+            eq(appointments.hiddenFromCustomer, false),
+            eq(appointments.status, "pending"),
+            eq(appointments.status, "accepted"),
+            eq(appointments.status, "confirmed"),
+            eq(appointments.status, "in_progress")
+          )
         )
       );
-
-    return appointments;
   }
 
   async getProviderAppointments(providerId: number): Promise<Appointment[]> {
