@@ -466,73 +466,7 @@ export class DatabaseStorage implements IStorage {
     const service = await this.getService(serviceId);
     if (!service) return false;
 
-    // Check if there's a blocked date for this day
-    const dateOnly = date.toISOString().split('T')[0];
-    const [blockedDate] = await db
-      .select()
-      .from(blockedDates)
-      .where(
-        and(
-          eq(blockedDates.providerId, providerId),
-          eq(blockedDates.date, dateOnly)
-        )
-      );
-
-    if (blockedDate) {
-      if (blockedDate.isFullDay) return false;
-
-      if (blockedDate.startTime && blockedDate.endTime) {
-        const blockedStart = blockedDate.startTime;
-        const blockedEnd = blockedDate.endTime;
-
-        if (startTime >= blockedStart && startTime < blockedEnd) return false;
-        if (endTime > blockedStart && endTime <= blockedEnd) return false;
-      }
-    }
-
-    // Check if there are any overlapping appointments for this day
-    const existingAppointments = await db
-      .select()
-      .from(appointments)
-      .where(
-        and(
-          eq(appointments.serviceId, serviceId),
-          sql`DATE(${appointments.startTime}) = ${dateOnly}`
-        )
-      );
-
-    if (existingAppointments.length > 0) {
-      // Get service duration in milliseconds
-      const durationMs = service.duration * 60 * 1000;
-      const bufferMs = (service.bufferTime || 0) * 60 * 1000;
-
-      // Convert request times to milliseconds since midnight
-      const requestStart = this.parseTimeToMs(startTime);
-      const requestEnd = requestStart + durationMs;
-
-      for (const existing of existingAppointments) {
-        const existingStart = new Date(existing.startTime);
-        const existingTimeMs = existingStart.getHours() * 3600000 + 
-                               existingStart.getMinutes() * 60000;
-        const existingEnd = existingTimeMs + durationMs;
-
-        // Add buffer time to both appointments
-        const bufferedRequestStart = requestStart - bufferMs;
-        const bufferedRequestEnd = requestEnd + bufferMs;
-        const bufferedExistingStart = existingTimeMs - bufferMs;
-        const bufferedExistingEnd = existingEnd + bufferMs;
-
-        // Check for overlap
-        if (
-          (bufferedRequestStart <= bufferedExistingEnd && 
-           bufferedRequestEnd >= bufferedExistingStart)
-        ) {
-          return false;
-        }
-      }
-    }
-
-    // Check weekly schedule
+    // Check weekly schedule first
     const dayOfWeek = date.getDay();
     const [schedule] = await db
       .select()
@@ -549,20 +483,88 @@ export class DatabaseStorage implements IStorage {
     // Check if requested time is within schedule
     if (startTime < schedule.startTime || endTime > schedule.endTime) return false;
 
+    // Check if there's a blocked date for this day
+    const dateOnly = date.toISOString().split('T')[0];
+    const [blockedDate] = await db
+      .select()
+      .from(blockedDates)
+      .where(
+        and(
+          eq(blockedDates.providerId, providerId),
+          eq(blockedDates.date, dateOnly)
+        )
+      );
+
+    if (blockedDate) {
+      if (blockedDate.isFullDay) return false;
+      if (blockedDate.startTime && blockedDate.endTime) {
+        if (startTime >= blockedDate.startTime && startTime < blockedDate.endTime) return false;
+        if (endTime > blockedDate.startTime && endTime <= blockedDate.endTime) return false;
+      }
+    }
+
     // Check break times
-    const [breakTime] = await db
+    const breakTime = await db
       .select()
       .from(breakTimes)
       .where(
         and(
           eq(breakTimes.providerId, providerId),
-          eq(breakTimes.dayOfWeek, dayOfWeek),
-          lte(breakTimes.startTime, startTime),
-          gte(breakTimes.endTime, endTime)
+          eq(breakTimes.dayOfWeek, dayOfWeek)
+        )
+      )
+      .orderBy(breakTimes.startTime);
+
+    for (const break_ of breakTime) {
+      if (startTime >= break_.startTime && startTime < break_.endTime) return false;
+      if (endTime > break_.startTime && endTime <= break_.endTime) return false;
+    }
+
+    // Check existing appointments
+    const existingAppointments = await db
+      .select()
+      .from(appointments)
+      .where(
+        and(
+          eq(appointments.serviceId, serviceId),
+          sql`DATE(${appointments.startTime}) = ${dateOnly}`,
+          or(
+            eq(appointments.status, "pending"),
+            eq(appointments.status, "accepted"),
+            eq(appointments.status, "confirmed"),
+            eq(appointments.status, "in_progress")
+          )
         )
       );
 
-    if (breakTime) return false;
+    // Calculate service duration and buffer in milliseconds
+    const durationMs = service.duration * 60 * 1000;
+    const bufferMs = (service.bufferTime || 0) * 60 * 1000;
+
+    // Convert request times to milliseconds since midnight
+    const requestStart = this.parseTimeToMs(startTime);
+    const requestEnd = requestStart + durationMs;
+
+    for (const existing of existingAppointments) {
+      const existingStart = new Date(existing.startTime);
+      const existingTimeMs = existingStart.getHours() * 3600000 + 
+                            existingStart.getMinutes() * 60000;
+      const existingEnd = existingTimeMs + durationMs;
+
+      // Add buffer time to both appointments
+      const bufferedRequestStart = requestStart - bufferMs;
+      const bufferedRequestEnd = requestEnd + bufferMs;
+      const bufferedExistingStart = existingTimeMs - bufferMs;
+      const bufferedExistingEnd = existingEnd + bufferMs;
+
+      // Check for overlap
+      if (
+        (bufferedRequestStart <= bufferedExistingEnd && 
+         bufferedRequestEnd >= bufferedExistingStart)
+      ) {
+        return false;
+      }
+    }
 
     return true;
   }
