@@ -211,12 +211,19 @@ export class DatabaseStorage implements IStorage {
       return [];
     }
 
-    return await db
-      .select()
+    // Get appointments with customer details
+    const appointments = await db
+      .select({
+        ...appointments,
+        customerName: users.name,
+        customerUsername: users.username
+      })
       .from(appointments)
-      .where(
-        inArray(appointments.serviceId, serviceIds)
-      );
+      .where(inArray(appointments.serviceId, serviceIds))
+      .leftJoin(users, eq(appointments.customerId, users.id))
+      .orderBy(appointments.startTime);
+
+    return appointments;
   }
 
   async updateAppointmentStatus(

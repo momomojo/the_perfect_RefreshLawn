@@ -26,6 +26,7 @@ export default function ProviderDashboard() {
   const { user, logoutMutation } = useAuth();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+  const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
 
   const { data: services } = useQuery<Service[]>({
     queryKey: ["/api/services/provider"],
@@ -53,7 +54,6 @@ export default function ProviderDashboard() {
       return res.json();
     },
     onSuccess: () => {
-      // Invalidate both provider and customer appointment queries to ensure sync
       queryClient.invalidateQueries({ queryKey: ["/api/appointments/provider"] });
       queryClient.invalidateQueries({ queryKey: ["/api/appointments/customer"] });
       toast({
@@ -75,7 +75,6 @@ export default function ProviderDashboard() {
     setLocation("/auth");
   };
 
-  // Filter and sort appointments
   const pendingAppointments = appointments?.filter(
     app => app.status === "pending"
   ).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()) || [];
@@ -91,6 +90,14 @@ export default function ProviderDashboard() {
   const cancelledAppointments = appointments?.filter(
     app => ["cancelled", "declined"].includes(app.status)
   ).sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()) || [];
+
+  const customersWithCancelledAppointments = Array.from(new Set(
+    cancelledAppointments.map(app => app.customerId)
+  ));
+
+  const filteredCancelledAppointments = selectedCustomerId
+    ? cancelledAppointments.filter(app => app.customerId === selectedCustomerId)
+    : cancelledAppointments;
 
   return (
     <div className="min-h-screen bg-[#F5F7F3] p-8">
@@ -118,7 +125,6 @@ export default function ProviderDashboard() {
 
           <TabsContent value="appointments">
             <div className="space-y-8">
-              {/* Pending Appointments */}
               <div>
                 <h2 className="text-xl font-semibold mb-4">Pending Appointments</h2>
                 {pendingAppointments.length > 0 ? (
@@ -136,7 +142,6 @@ export default function ProviderDashboard() {
                 )}
               </div>
 
-              {/* Active Appointments */}
               <div>
                 <h2 className="text-xl font-semibold mb-4">Active Appointments</h2>
                 {activeAppointments.length > 0 ? (
@@ -154,7 +159,6 @@ export default function ProviderDashboard() {
                 )}
               </div>
 
-              {/* Completed Appointments */}
               <div>
                 <h2 className="text-xl font-semibold mb-4">Completed Appointments</h2>
                 {completedAppointments.length > 0 ? (
@@ -172,12 +176,29 @@ export default function ProviderDashboard() {
                 )}
               </div>
 
-              {/* Cancelled/Declined Appointments */}
               <div>
-                <h2 className="text-xl font-semibold mb-4">Cancelled & Declined Appointments</h2>
-                {cancelledAppointments.length > 0 ? (
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-xl font-semibold">Cancelled & Declined Appointments</h2>
+                  <Select
+                    value={selectedCustomerId?.toString() || ""}
+                    onValueChange={(value) => setSelectedCustomerId(value ? parseInt(value) : null)}
+                  >
+                    <SelectTrigger className="w-[200px]">
+                      <SelectValue placeholder="Filter by customer" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">All Customers</SelectItem>
+                      {customersWithCancelledAppointments.map((customerId) => (
+                        <SelectItem key={customerId} value={customerId.toString()}>
+                          Customer #{customerId}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {filteredCancelledAppointments.length > 0 ? (
                   <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {cancelledAppointments.map((appointment) => (
+                    {filteredCancelledAppointments.map((appointment) => (
                       <AppointmentCard
                         key={appointment.id}
                         appointment={appointment}
@@ -186,7 +207,11 @@ export default function ProviderDashboard() {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-muted-foreground">No cancelled appointments</p>
+                  <p className="text-muted-foreground">
+                    {selectedCustomerId
+                      ? "No cancelled appointments for this customer"
+                      : "No cancelled appointments"}
+                  </p>
                 )}
               </div>
             </div>
@@ -267,7 +292,6 @@ export default function ProviderDashboard() {
   );
 }
 
-// New AppointmentCard component for better organization
 interface AppointmentCardProps {
   appointment: Appointment;
   updateStatus: (params: { id: number; status: string; notes?: string }) => void;
@@ -414,8 +438,8 @@ function CreateServiceForm() {
     defaultValues: {
       title: "",
       description: "",
-      duration: 60, // Default duration in minutes
-      price: "0", // Changed to string type to match the schema expectation
+      duration: 60, 
+      price: "0", 
       imageUrl: "",
       bufferTime: 0,
       maxDailyBookings: 0,
@@ -446,12 +470,11 @@ function CreateServiceForm() {
         throw new Error('Please upload an image for your service');
       }
 
-      // Ensure numeric fields are properly formatted
       const serviceData = {
         title: data.title,
         description: data.description,
         duration: Number(data.duration),
-        price: data.price, // Keep as string as that's what the schema expects
+        price: data.price, 
         imageUrl,
         bufferTime: Number(data.bufferTime),
         maxDailyBookings: Number(data.maxDailyBookings),
@@ -635,7 +658,7 @@ function WeeklyScheduleManager() {
   const form = useForm({
     resolver: zodResolver(insertWeeklyScheduleSchema),
     defaultValues: {
-      dayOfWeek: 1, // Monday
+      dayOfWeek: 1, 
       startTime: "09:00",
       endTime: "17:00",
       isAvailable: true
@@ -860,7 +883,6 @@ function BlockedDatesManager() {
 
   const createBlockedDateMutation = useMutation({
     mutationFn: async (data: any) => {
-      // Format date as ISO string for backend
       const formattedData = {
         ...data,
         date: data.date.toISOString().split('T')[0],
@@ -896,7 +918,6 @@ function BlockedDatesManager() {
     },
   });
 
-  // Monitor changes on the selectedDate
   useEffect(() => {
     if (selectedDate) {
       form.setValue("date", selectedDate);
