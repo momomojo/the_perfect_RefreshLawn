@@ -139,19 +139,43 @@ export class DatabaseStorage implements IStorage {
       startTimeValue = appointment.startTime;
     }
 
-    const [newAppointment] = await db
-      .insert(appointments)
-      .values({
-        serviceId: appointment.serviceId,
-        customerId,
-        status: "pending",
-        totalAmount: service.price,
-        address: appointment.address,
-        specialInstructions: appointment.specialInstructions,
-        startTime: startTimeValue
-      })
-      .returning();
-    return newAppointment;
+    // Calculate end time based on service duration
+    const endTimeValue = new Date(startTimeValue);
+    endTimeValue.setMinutes(endTimeValue.getMinutes() + service.duration);
+
+    // Format times for availability check
+    const startTimeStr = startTimeValue.toTimeString().split(' ')[0];
+    const endTimeStr = endTimeValue.toTimeString().split(' ')[0];
+
+    // Check availability within a transaction to prevent race conditions
+    return await db.transaction(async (tx) => {
+      const isAvailable = await this.isTimeSlotAvailable(
+        service.providerId,
+        startTimeValue,
+        startTimeStr,
+        endTimeStr,
+        service.id
+      );
+
+      if (!isAvailable) {
+        throw new Error("This time slot is no longer available");
+      }
+
+      const [newAppointment] = await tx
+        .insert(appointments)
+        .values({
+          serviceId: appointment.serviceId,
+          customerId,
+          status: "pending",
+          totalAmount: service.price,
+          address: appointment.address,
+          specialInstructions: appointment.specialInstructions,
+          startTime: startTimeValue
+        })
+        .returning();
+
+      return newAppointment;
+    });
   }
 
   async getAppointment(id: number): Promise<Appointment | undefined> {
@@ -416,6 +440,10 @@ export class DatabaseStorage implements IStorage {
     endTime: string,
     serviceId: number
   ): Promise<boolean> {
+    // Get the service to check duration, buffer time and max daily bookings
+    const service = await this.getService(serviceId);
+    if (!service) return false;
+
     // Check if there's a blocked date for this day
     const dateOnly = date.toISOString().split('T')[0];
     const [blockedDate] = await db
@@ -481,9 +509,6 @@ export class DatabaseStorage implements IStorage {
     }
 
     // Check if maximum daily bookings reached
-    const service = await this.getService(serviceId);
-    if (!service) return false;
-
     if (service.maxDailyBookings) {
       const dailyBookings = await db
         .select()
@@ -491,7 +516,7 @@ export class DatabaseStorage implements IStorage {
         .where(
           and(
             eq(appointments.serviceId, serviceId),
-            eq(appointments.startTime, date.toISOString())
+            eq(appointments.startTime, date.toISOString().split('T')[0])
           )
         );
 
@@ -500,32 +525,48 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    // Calculate buffer times for existing appointments
-    const dateTimeStart = new Date(date);
-    dateTimeStart.setHours(parseInt(startTime.split(':')[0]));
-    dateTimeStart.setMinutes(parseInt(startTime.split(':')[1]));
-    dateTimeStart.setSeconds(0, 0);
+    // Convert requested times to Date objects for comparison
+    const requestedStart = new Date(date);
+    requestedStart.setHours(parseInt(startTime.split(':')[0]));
+    requestedStart.setMinutes(parseInt(startTime.split(':')[1]));
+    requestedStart.setSeconds(0, 0);
+
+    const requestedEnd = new Date(requestedStart);
+    requestedEnd.setMinutes(requestedEnd.getMinutes() + service.duration);
 
     // Get all appointments for this day
     const existingAppointments = await db
       .select()
       .from(appointments)
-      .where(eq(appointments.startTime, dateTimeStart.toISOString()));
+      .where(
+        and(
+          inArray(appointments.serviceId, [serviceId]),
+          eq(appointments.startTime, dateOnly)
+        )
+      );
 
-    // Add buffer time check
-    if (service.bufferTime && existingAppointments.length > 0) {
-      for (const existing of existingAppointments) {
-        const existingTime = new Date(existing.startTime);
-        const timeDiff = Math.abs(dateTimeStart.getTime() - existingTime.getTime());
-        const bufferTimeMs = service.bufferTime * 60 * 1000; // Convert minutes to milliseconds
+    // Check for overlapping appointments including buffer time
+    for (const existing of existingAppointments) {
+      const existingStart = new Date(existing.startTime);
+      const existingEnd = new Date(existingStart);
+      existingEnd.setMinutes(existingEnd.getMinutes() + service.duration);
 
-        if (timeDiff < bufferTimeMs) {
-          return false;
-        }
+      // Add buffer time to both start and end times
+      const bufferMs = (service.bufferTime || 0) * 60 * 1000;
+      const existingStartWithBuffer = new Date(existingStart.getTime() - bufferMs);
+      const existingEndWithBuffer = new Date(existingEnd.getTime() + bufferMs);
+
+      // Check if appointments overlap
+      if (
+        (requestedStart >= existingStartWithBuffer && requestedStart < existingEndWithBuffer) ||
+        (requestedEnd > existingStartWithBuffer && requestedEnd <= existingEndWithBuffer) ||
+        (requestedStart <= existingStartWithBuffer && requestedEnd >= existingEndWithBuffer)
+      ) {
+        return false;
       }
     }
 
-    return existingAppointments.length === 0;
+    return true;
   }
 }
 
