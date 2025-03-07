@@ -166,12 +166,13 @@ export class DatabaseStorage implements IStorage {
         .values({
           service_id: appointment.serviceId,
           customer_id: customerId,
+          start_time: startTimeValue,
           status: "pending",
           total_amount: service.price,
           address: appointment.address,
           special_instructions: appointment.specialInstructions,
-          start_time: startTimeValue,
-          hidden_from_customer: false
+          hidden_from_customer: false,
+          recurring: false
         })
         .returning();
 
@@ -193,17 +194,15 @@ export class DatabaseStorage implements IStorage {
     if (!customer) throw new Error("Customer not found");
 
     // Get all appointments for this customer with proper filtering
-    const customerAppointments = await db
+    return await db
       .select()
       .from(appointments)
       .where(
         and(
           eq(appointments.customerId, customerId),
-          eq(appointments.hidden_from_customer, false)
+          eq(appointments.hiddenFromCustomer, false)
         )
       );
-
-    return customerAppointments;
   }
 
   async getProviderAppointments(providerId: number): Promise<Appointment[]> {
@@ -580,8 +579,8 @@ export class DatabaseStorage implements IStorage {
       // Use raw SQL to ensure proper query formation
       await db.execute(
         sql`UPDATE "appointments" 
-            SET hidden_from_customer = true 
-            WHERE service_id IN (${sql.join(serviceIds, sql`, `)})
+            SET "hidden_from_customer" = true 
+            WHERE "service_id" IN (${sql.join(serviceIds, sql`, `)})
             AND status IN ('completed', 'cancelled', 'declined')`
       );
     } catch (error) {
@@ -603,7 +602,7 @@ export class DatabaseStorage implements IStorage {
       // Use raw SQL for the delete operation
       await db.execute(
         sql`DELETE FROM "appointments" 
-            WHERE service_id IN (${sql.join(serviceIds, sql`, `)})
+            WHERE "service_id" IN (${sql.join(serviceIds, sql`, `)})
             AND status IN ('completed', 'cancelled', 'declined')`
       );
     } catch (error) {
