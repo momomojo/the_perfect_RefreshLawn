@@ -33,7 +33,6 @@ export default function CustomerDashboard() {
       case "completed":
         return "bg-green-100 text-green-800";
       case "cancelled":
-        return "bg-red-100 text-red-800";
       case "declined":
         return "bg-red-100 text-red-800";
       default:
@@ -54,8 +53,6 @@ export default function CustomerDashboard() {
   const pastAppointments = appointments?.filter(
     app => ["completed", "cancelled", "declined"].includes(app.status)
   ).sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()) || [];
-
-  console.log("Customer Appointments:", appointments); // Debug log
 
   return (
     <div className="min-h-screen bg-[#F5F7F3] p-8">
