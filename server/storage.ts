@@ -192,7 +192,7 @@ export class DatabaseStorage implements IStorage {
     const customer = await this.getUser(customerId);
     if (!customer) throw new Error("Customer not found");
 
-    // Get all appointments for this customer with proper filtering
+    // Get all appointments for this customer that should be visible
     return await db
       .select()
       .from(appointments)
@@ -201,13 +201,14 @@ export class DatabaseStorage implements IStorage {
           eq(appointments.customerId, customerId),
           or(
             eq(appointments.hiddenFromCustomer, false),
-            eq(appointments.status, "pending"),
-            eq(appointments.status, "accepted"),
-            eq(appointments.status, "confirmed"),
-            eq(appointments.status, "in_progress")
+            inArray(
+              appointments.status,
+              ["pending", "accepted", "confirmed", "in_progress"]
+            )
           )
         )
-      );
+      )
+      .orderBy(appointments.startTime);
   }
 
   async getProviderAppointments(providerId: number): Promise<Appointment[]> {

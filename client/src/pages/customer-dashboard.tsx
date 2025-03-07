@@ -16,7 +16,7 @@ export default function CustomerDashboard() {
     queryKey: ["/api/services"],
   });
 
-  const { data: appointments, isLoading: isLoadingAppointments } = useQuery<Appointment[]>({
+  const { data: appointments = [], isLoading: isLoadingAppointments } = useQuery<Appointment[]>({
     queryKey: ["/api/appointments/customer"],
   });
 
@@ -45,14 +45,13 @@ export default function CustomerDashboard() {
     setLocation("/auth");
   };
 
-  // Filter and sort appointments
-  const activeAppointments = appointments?.filter(
-    app => !["cancelled", "declined", "completed"].includes(app.status)
-  ).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()) || [];
+  const activeAppointments = appointments.filter(
+    app => !["completed", "cancelled", "declined"].includes(app.status)
+  ).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
 
-  const pastAppointments = appointments?.filter(
-    app => ["completed", "cancelled", "declined"].includes(app.status)
-  ).sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()) || [];
+  const pastAppointments = appointments.filter(
+    app => !app.hiddenFromCustomer && ["completed", "cancelled", "declined"].includes(app.status)
+  ).sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
 
   return (
     <div className="min-h-screen bg-[#F5F7F3] p-8">
