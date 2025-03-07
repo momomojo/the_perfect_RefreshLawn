@@ -164,13 +164,14 @@ export class DatabaseStorage implements IStorage {
       const [newAppointment] = await tx
         .insert(appointments)
         .values({
-          serviceId: appointment.serviceId,
-          customerId,
+          service_id: appointment.serviceId,
+          customer_id: customerId,
           status: "pending",
-          totalAmount: service.price,
+          total_amount: service.price,
           address: appointment.address,
-          specialInstructions: appointment.specialInstructions,
-          startTime: startTimeValue
+          special_instructions: appointment.specialInstructions,
+          start_time: startTimeValue,
+          hidden_from_customer: false
         })
         .returning();
 
