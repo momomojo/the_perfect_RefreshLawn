@@ -592,9 +592,9 @@ export class DatabaseStorage implements IStorage {
 
       // Use raw SQL to ensure proper query formation
       await db.execute(
-        sql`UPDATE appointments 
+        sql`UPDATE "appointments" 
             SET "hiddenFromCustomer" = true 
-            WHERE "serviceId" IN (${sql.join(serviceIds, sql`, `)})
+            WHERE service_id IN (${sql.join(serviceIds, sql`, `)})
             AND status IN ('completed', 'cancelled', 'declined')`
       );
     } catch (error) {
@@ -615,8 +615,8 @@ export class DatabaseStorage implements IStorage {
 
       // Use raw SQL for the delete operation
       await db.execute(
-        sql`DELETE FROM appointments 
-            WHERE "serviceId" IN (${sql.join(serviceIds, sql`, `)})
+        sql`DELETE FROM "appointments" 
+            WHERE service_id IN (${sql.join(serviceIds, sql`, `)})
             AND status IN ('completed', 'cancelled', 'declined')`
       );
     } catch (error) {

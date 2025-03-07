@@ -1,0 +1,63 @@
+6:20:04 AM [express] serving on port 5000
+6:20:08 AM [express] GET /api/user 401 in 2ms
+6:20:10 AM [express] GET /api/user 304 in 60ms :: {"id":1,"username":"claireherman","password":"57e1…
+6:22:10 AM [express] GET /api/break-times 304 in 636ms :: []
+6:22:10 AM [express] GET /api/appointments/provider 304 in 684ms :: [{"id":3,"serviceId":2,"customer…
+6:22:12 AM [express] GET /api/services/provider 304 in 2137ms :: [{"id":1,"providerId":1,"title":"la…
+6:22:12 AM [express] GET /api/waitlist/service 200 in 2134ms
+Error in deleteAppointmentHistory: error: column "serviceId" does not exist
+    at file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:1345:74
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async DatabaseStorage.deleteAppointmentHistory (/home/runner/workspace/server/storage.ts:617:7)
+    at async <anonymous> (/home/runner/workspace/server/routes.ts:179:7) {
+  length: 179,
+  severity: 'ERROR',
+  code: '42703',
+  detail: undefined,
+  hint: 'Perhaps you meant to reference the column "appointments.service_id".',
+  position: '45',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'parse_relation.c',
+  line: '3729',
+  routine: 'errorMissingColumn'
+}
+Error deleting appointment history: Error: Failed to delete appointment history
+    at DatabaseStorage.deleteAppointmentHistory (/home/runner/workspace/server/storage.ts:624:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async <anonymous> (/home/runner/workspace/server/routes.ts:179:7)
+6:22:15 AM [express] DELETE /api/appointments/delete-history 500 in 103ms
+Error in deleteAppointmentHistory: error: column "serviceId" does not exist
+    at file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:1345:74
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async DatabaseStorage.deleteAppointmentHistory (/home/runner/workspace/server/storage.ts:617:7)
+    at async <anonymous> (/home/runner/workspace/server/routes.ts:179:7) {
+  length: 179,
+  severity: 'ERROR',
+  code: '42703',
+  detail: undefined,
+  hint: 'Perhaps you meant to reference the column "appointments.service_id".',
+  position: '45',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'parse_relation.c',
+  line: '3729',
+  routine: 'errorMissingColumn'
+}
+Error deleting appointment history: Error: Failed to delete appointment history
+    at DatabaseStorage.deleteAppointmentHistory (/home/runner/workspace/server/storage.ts:624:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async <anonymous> (/home/runner/workspace/server/routes.ts:179:7)
+6:24:22 AM [express] DELETE /api/appointments/delete-history 500 in 4915ms
