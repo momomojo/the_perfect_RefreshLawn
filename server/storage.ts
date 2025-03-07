@@ -594,7 +594,7 @@ export class DatabaseStorage implements IStorage {
       await db.execute(
         sql`UPDATE appointments 
             SET "hiddenFromCustomer" = true 
-            WHERE "serviceId" = ANY(${serviceIds})
+            WHERE "service_id" = ANY(${serviceIds})
             AND status IN ('completed', 'cancelled', 'declined')`
       );
     } catch (error) {
@@ -616,7 +616,7 @@ export class DatabaseStorage implements IStorage {
       // Use raw SQL for the delete operation
       await db.execute(
         sql`DELETE FROM appointments 
-            WHERE "serviceId" = ANY(${serviceIds})
+            WHERE "service_id" = ANY(${serviceIds})
             AND status IN ('completed', 'cancelled', 'declined')`
       );
     } catch (error) {
