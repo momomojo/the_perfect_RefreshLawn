@@ -16,7 +16,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { insertServiceSchema, insertWeeklyScheduleSchema, insertBlockedDateSchema, insertBreakTimeSchema } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { CheckIcon, XIcon, ClockIcon, LogOutIcon, CalendarIcon, Clock, X, PlayIcon, PauseIcon, CalendarIcon as CalendarIcon2 } from "lucide-react";
+import { CheckIcon, XIcon, ClockIcon, LogOutIcon, CalendarIcon, Clock, X, PlayIcon, PauseIcon, CalendarIcon as CalendarIcon2, MapPinIcon, AlertCircle } from "lucide-react";
 import { useLocation } from "wouter";
 import * as z from 'zod';
 import { format } from "date-fns";
@@ -62,92 +62,22 @@ export default function ProviderDashboard() {
     setLocation("/auth");
   };
 
-  const getStatusButtons = (appointment: Appointment) => {
-    switch (appointment.status) {
-      case "pending":
-        return (
-          <>
-            <Button
-              onClick={() =>
-                updateAppointmentMutation.mutate({
-                  id: appointment.id,
-                  status: "accepted",
-                })
-              }
-              size="sm"
-              className="flex items-center gap-2"
-            >
-              <CheckIcon className="h-4 w-4" />
-              Accept
-            </Button>
-            <Button
-              onClick={() =>
-                updateAppointmentMutation.mutate({
-                  id: appointment.id,
-                  status: "declined",
-                })
-              }
-              variant="destructive"
-              size="sm"
-              className="flex items-center gap-2"
-            >
-              <XIcon className="h-4 w-4" />
-              Decline
-            </Button>
-          </>
-        );
-      case "accepted":
-        return (
-          <Button
-            onClick={() =>
-              updateAppointmentMutation.mutate({
-                id: appointment.id,
-                status: "confirmed",
-              })
-            }
-            size="sm"
-            className="flex items-center gap-2"
-          >
-            <CheckIcon className="h-4 w-4" />
-            Confirm Arrival
-          </Button>
-        );
-      case "confirmed":
-        return (
-          <Button
-            onClick={() =>
-              updateAppointmentMutation.mutate({
-                id: appointment.id,
-                status: "in_progress",
-              })
-            }
-            size="sm"
-            className="flex items-center gap-2"
-          >
-            <PlayIcon className="h-4 w-4" />
-            Start Service
-          </Button>
-        );
-      case "in_progress":
-        return (
-          <Button
-            onClick={() =>
-              updateAppointmentMutation.mutate({
-                id: appointment.id,
-                status: "completed",
-              })
-            }
-            size="sm"
-            className="flex items-center gap-2"
-          >
-            <CheckIcon className="h-4 w-4" />
-            Complete Service
-          </Button>
-        );
-      default:
-        return null;
-    }
-  };
+  // Filter and sort appointments
+  const pendingAppointments = appointments?.filter(
+    app => app.status === "pending"
+  ).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()) || [];
+
+  const activeAppointments = appointments?.filter(
+    app => ["accepted", "confirmed", "in_progress"].includes(app.status)
+  ).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()) || [];
+
+  const completedAppointments = appointments?.filter(
+    app => app.status === "completed"
+  ).sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()) || [];
+
+  const cancelledAppointments = appointments?.filter(
+    app => ["cancelled", "declined"].includes(app.status)
+  ).sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()) || [];
 
   return (
     <div className="min-h-screen bg-[#F5F7F3] p-8">
@@ -174,74 +104,78 @@ export default function ProviderDashboard() {
           </TabsList>
 
           <TabsContent value="appointments">
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {appointments?.map((appointment) => (
-                <Card key={appointment.id}>
-                  <CardHeader>
-                    <CardTitle>
-                      Appointment #{appointment.id}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      <div>
-                        <p className="font-medium">Date & Time:</p>
-                        <p className="text-muted-foreground">
-                          {new Date(appointment.startTime).toLocaleString()}
-                        </p>
-                      </div>
+            <div className="space-y-8">
+              {/* Pending Appointments */}
+              <div>
+                <h2 className="text-xl font-semibold mb-4">Pending Appointments</h2>
+                {pendingAppointments.length > 0 ? (
+                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {pendingAppointments.map((appointment) => (
+                      <AppointmentCard 
+                        key={appointment.id} 
+                        appointment={appointment}
+                        updateStatus={updateAppointmentMutation.mutate}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground">No pending appointments</p>
+                )}
+              </div>
 
-                      <div>
-                        <p className="font-medium">Service Location:</p>
-                        <p className="text-muted-foreground">{appointment.address}</p>
-                      </div>
+              {/* Active Appointments */}
+              <div>
+                <h2 className="text-xl font-semibold mb-4">Active Appointments</h2>
+                {activeAppointments.length > 0 ? (
+                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {activeAppointments.map((appointment) => (
+                      <AppointmentCard 
+                        key={appointment.id} 
+                        appointment={appointment}
+                        updateStatus={updateAppointmentMutation.mutate}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground">No active appointments</p>
+                )}
+              </div>
 
-                      {appointment.specialInstructions && (
-                        <div>
-                          <p className="font-medium">Special Instructions:</p>
-                          <p className="text-muted-foreground">{appointment.specialInstructions}</p>
-                        </div>
-                      )}
+              {/* Completed Appointments */}
+              <div>
+                <h2 className="text-xl font-semibold mb-4">Completed Appointments</h2>
+                {completedAppointments.length > 0 ? (
+                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {completedAppointments.map((appointment) => (
+                      <AppointmentCard 
+                        key={appointment.id} 
+                        appointment={appointment}
+                        updateStatus={updateAppointmentMutation.mutate}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground">No completed appointments</p>
+                )}
+              </div>
 
-                      <div>
-                        <p className="font-medium">Status:</p>
-                        <span
-                          className={`inline-block px-2 py-1 rounded-full text-sm ${
-                            appointment.status === "pending"
-                              ? "bg-yellow-100 text-yellow-800"
-                              : appointment.status === "accepted"
-                              ? "bg-blue-100 text-blue-800"
-                              : appointment.status === "confirmed"
-                              ? "bg-purple-100 text-purple-800"
-                              : appointment.status === "in_progress"
-                              ? "bg-orange-100 text-orange-800"
-                              : appointment.status === "completed"
-                              ? "bg-green-100 text-green-800"
-                              : "bg-red-100 text-red-800"
-                          }`}
-                        >
-                          {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
-                        </span>
-                      </div>
-
-                      {appointment.recurring && (
-                        <div>
-                          <p className="font-medium">Recurring:</p>
-                          <p className="text-muted-foreground">
-                            {appointment.recurringInterval}
-                            <br />
-                            Next Date: {new Date(appointment.nextRecurringDate!).toLocaleDateString()}
-                          </p>
-                        </div>
-                      )}
-
-                      <div className="flex gap-2 pt-4">
-                        {getStatusButtons(appointment)}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+              {/* Cancelled/Declined Appointments */}
+              <div>
+                <h2 className="text-xl font-semibold mb-4">Cancelled & Declined Appointments</h2>
+                {cancelledAppointments.length > 0 ? (
+                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {cancelledAppointments.map((appointment) => (
+                      <AppointmentCard 
+                        key={appointment.id} 
+                        appointment={appointment}
+                        updateStatus={updateAppointmentMutation.mutate}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground">No cancelled appointments</p>
+                )}
+              </div>
             </div>
           </TabsContent>
 
@@ -317,6 +251,142 @@ export default function ProviderDashboard() {
         </Tabs>
       </div>
     </div>
+  );
+}
+
+// New AppointmentCard component for better organization
+interface AppointmentCardProps {
+  appointment: Appointment;
+  updateStatus: (params: { id: number; status: string; notes?: string }) => void;
+}
+
+function AppointmentCard({ appointment, updateStatus }: AppointmentCardProps) {
+  return (
+    <Card key={appointment.id}>
+      <CardContent className="p-6">
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <CalendarIcon className="h-4 w-4" />
+            <span>
+              {new Date(appointment.startTime).toLocaleString()}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <MapPinIcon className="h-4 w-4" />
+            <span>{appointment.address}</span>
+          </div>
+
+          {appointment.specialInstructions && (
+            <div className="flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 mt-1" />
+              <span className="text-sm">{appointment.specialInstructions}</span>
+            </div>
+          )}
+
+          <div>
+            <p className="font-medium">Status:</p>
+            <span
+              className={`inline-block px-2 py-1 rounded-full text-sm ${
+                appointment.status === "pending"
+                  ? "bg-yellow-100 text-yellow-800"
+                  : appointment.status === "accepted"
+                  ? "bg-blue-100 text-blue-800"
+                  : appointment.status === "confirmed"
+                  ? "bg-purple-100 text-purple-800"
+                  : appointment.status === "in_progress"
+                  ? "bg-orange-100 text-orange-800"
+                  : appointment.status === "completed"
+                  ? "bg-green-100 text-green-800"
+                  : "bg-red-100 text-red-800"
+              }`}
+            >
+              {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
+            </span>
+          </div>
+
+          {appointment.recurring && (
+            <div>
+              <p className="font-medium">Recurring:</p>
+              <p className="text-sm text-muted-foreground">
+                {appointment.recurringInterval}
+                <br />
+                Next Date: {new Date(appointment.nextRecurringDate!).toLocaleDateString()}
+              </p>
+            </div>
+          )}
+
+          <div className="flex gap-2 pt-4">
+            {appointment.status === "pending" && (
+              <>
+                <Button
+                  onClick={() => updateStatus({ id: appointment.id, status: "accepted" })}
+                  size="sm"
+                  className="flex items-center gap-2"
+                >
+                  <CheckIcon className="h-4 w-4" />
+                  Accept
+                </Button>
+                <Button
+                  onClick={() => updateStatus({ id: appointment.id, status: "declined" })}
+                  variant="destructive"
+                  size="sm"
+                  className="flex items-center gap-2"
+                >
+                  <XIcon className="h-4 w-4" />
+                  Decline
+                </Button>
+              </>
+            )}
+
+            {appointment.status === "accepted" && (
+              <Button
+                onClick={() => updateStatus({ id: appointment.id, status: "confirmed" })}
+                size="sm"
+                className="flex items-center gap-2"
+              >
+                <CheckIcon className="h-4 w-4" />
+                Confirm Arrival
+              </Button>
+            )}
+
+            {appointment.status === "confirmed" && (
+              <Button
+                onClick={() => updateStatus({ id: appointment.id, status: "in_progress" })}
+                size="sm"
+                className="flex items-center gap-2"
+              >
+                <PlayIcon className="h-4 w-4" />
+                Start Service
+              </Button>
+            )}
+
+            {appointment.status === "in_progress" && (
+              <Button
+                onClick={() => updateStatus({ id: appointment.id, status: "completed" })}
+                size="sm"
+                className="flex items-center gap-2"
+              >
+                <CheckIcon className="h-4 w-4" />
+                Complete Service
+              </Button>
+            )}
+
+            {["accepted", "confirmed"].includes(appointment.status) && (
+              <Button
+                onClick={() => updateStatus({ id: appointment.id, status: "cancelled" })}
+                variant="destructive"
+                size="sm"
+                className="flex items-center gap-2"
+              >
+                <XIcon className="h-4 w-4" />
+                Cancel
+              </Button>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -945,8 +1015,7 @@ function BlockedDatesManager() {
       <div>
         <h3 className="text-lg font-medium mb-3">Your Blocked Dates</h3>
         {isLoading ? (
-          <p>Loading blocked dates...</p>
-        ) : blockedDates && blockedDates.length > 0 ? (
+          <p>Loading blocked dates...</p>        ) : blockedDates && blockedDates.length > 0 ? (
           <div className="space-y-4">
             {blockedDates.map((blockedDate) => (
               <Card key={blockedDate.id}>

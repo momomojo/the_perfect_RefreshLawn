@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
-import { CalendarIcon, ClockIcon, LogOutIcon } from "lucide-react";
+import { CalendarIcon, ClockIcon, LogOutIcon, MapPinIcon, AlertCircle } from "lucide-react";
 
 export default function CustomerDashboard() {
   const { user, logoutMutation } = useAuth();
@@ -24,9 +24,15 @@ export default function CustomerDashboard() {
       case "pending":
         return "bg-yellow-100 text-yellow-800";
       case "accepted":
-        return "bg-green-100 text-green-800";
-      case "completed":
         return "bg-blue-100 text-blue-800";
+      case "confirmed":
+        return "bg-purple-100 text-purple-800";
+      case "in_progress":
+        return "bg-orange-100 text-orange-800";
+      case "completed":
+        return "bg-green-100 text-green-800";
+      case "cancelled":
+        return "bg-red-100 text-red-800";
       case "declined":
         return "bg-red-100 text-red-800";
       default:
@@ -38,6 +44,15 @@ export default function CustomerDashboard() {
     await logoutMutation.mutateAsync();
     setLocation("/auth");
   };
+
+  // Filter and sort appointments
+  const activeAppointments = appointments?.filter(
+    app => !["cancelled", "declined", "completed"].includes(app.status)
+  ).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()) || [];
+
+  const pastAppointments = appointments?.filter(
+    app => ["completed", "cancelled", "declined"].includes(app.status)
+  ).sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()) || [];
 
   return (
     <div className="min-h-screen bg-[#F5F7F3] p-8">
@@ -54,11 +69,109 @@ export default function CustomerDashboard() {
           </Button>
         </div>
 
-        <Tabs defaultValue="services">
+        <Tabs defaultValue="appointments">
           <TabsList className="mb-8">
-            <TabsTrigger value="services">Available Services</TabsTrigger>
             <TabsTrigger value="appointments">My Appointments</TabsTrigger>
+            <TabsTrigger value="services">Available Services</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="appointments">
+            <div className="space-y-8">
+              {/* Active Appointments */}
+              <div>
+                <h2 className="text-xl font-semibold mb-4">Upcoming Appointments</h2>
+                {activeAppointments.length > 0 ? (
+                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {activeAppointments.map((appointment) => (
+                      <Card key={appointment.id}>
+                        <CardContent className="p-6">
+                          <div className="space-y-4">
+                            <div className="flex items-center gap-2">
+                              <CalendarIcon className="h-4 w-4" />
+                              <span>
+                                {new Date(appointment.startTime).toLocaleString()}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <MapPinIcon className="h-4 w-4" />
+                              <span>{appointment.address}</span>
+                            </div>
+                            {appointment.specialInstructions && (
+                              <div className="flex items-start gap-2">
+                                <AlertCircle className="h-4 w-4 mt-1" />
+                                <span className="text-sm">{appointment.specialInstructions}</span>
+                              </div>
+                            )}
+                            <div className="flex items-center justify-between">
+                              <span
+                                className={`px-3 py-1 rounded-full text-sm ${getStatusColor(
+                                  appointment.status
+                                )}`}
+                              >
+                                {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
+                              </span>
+                              <span className="font-bold">
+                                ${appointment.totalAmount.toString()}
+                              </span>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground">No upcoming appointments</p>
+                )}
+              </div>
+
+              {/* Past Appointments */}
+              <div>
+                <h2 className="text-xl font-semibold mb-4">Past & Cancelled Appointments</h2>
+                {pastAppointments.length > 0 ? (
+                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {pastAppointments.map((appointment) => (
+                      <Card key={appointment.id} className="opacity-75">
+                        <CardContent className="p-6">
+                          <div className="space-y-4">
+                            <div className="flex items-center gap-2">
+                              <CalendarIcon className="h-4 w-4" />
+                              <span>
+                                {new Date(appointment.startTime).toLocaleString()}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <MapPinIcon className="h-4 w-4" />
+                              <span>{appointment.address}</span>
+                            </div>
+                            {appointment.specialInstructions && (
+                              <div className="flex items-start gap-2">
+                                <AlertCircle className="h-4 w-4 mt-1" />
+                                <span className="text-sm">{appointment.specialInstructions}</span>
+                              </div>
+                            )}
+                            <div className="flex items-center justify-between">
+                              <span
+                                className={`px-3 py-1 rounded-full text-sm ${getStatusColor(
+                                  appointment.status
+                                )}`}
+                              >
+                                {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
+                              </span>
+                              <span className="font-bold">
+                                ${appointment.totalAmount.toString()}
+                              </span>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground">No past appointments</p>
+                )}
+              </div>
+            </div>
+          </TabsContent>
 
           <TabsContent value="services">
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -87,35 +200,6 @@ export default function CustomerDashboard() {
                     >
                       Book Now
                     </Button>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </TabsContent>
-
-          <TabsContent value="appointments">
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {appointments?.map((appointment) => (
-                <Card key={appointment.id}>
-                  <CardContent className="p-6">
-                    <div className="flex items-center gap-2 mb-4">
-                      <CalendarIcon className="h-4 w-4" />
-                      <span>
-                        {new Date(appointment.startTime).toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between mb-4">
-                      <span
-                        className={`px-3 py-1 rounded-full text-sm ${getStatusColor(
-                          appointment.status
-                        )}`}
-                      >
-                        {appointment.status}
-                      </span>
-                      <span className="font-bold">
-                        ${appointment.totalAmount.toString()}
-                      </span>
-                    </div>
                   </CardContent>
                 </Card>
               ))}
