@@ -171,7 +171,8 @@ export class DatabaseStorage implements IStorage {
           address: appointment.address,
           specialInstructions: appointment.specialInstructions,
           startTime: startTimeValue,
-          hiddenFromCustomer: false // Explicitly set default value
+          hiddenFromCustomer: false,
+          recurring: false
         })
         .returning();
 

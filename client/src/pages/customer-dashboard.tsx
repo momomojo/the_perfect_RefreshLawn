@@ -12,7 +12,7 @@ export default function CustomerDashboard() {
   const { user, logoutMutation } = useAuth();
   const [, setLocation] = useLocation();
 
-  const { data: services } = useQuery<Service[]>({
+  const { data: services = [] } = useQuery<Service[]>({
     queryKey: ["/api/services"],
   });
 
@@ -80,7 +80,6 @@ export default function CustomerDashboard() {
                 <div>Loading appointments...</div>
               ) : (
                 <>
-                  {/* Active Appointments */}
                   <div>
                     <h2 className="text-xl font-semibold mb-4">Upcoming Appointments</h2>
                     {activeAppointments.length > 0 ? (
@@ -127,7 +126,6 @@ export default function CustomerDashboard() {
                     )}
                   </div>
 
-                  {/* Past Appointments */}
                   <div>
                     <h2 className="text-xl font-semibold mb-4">Past & Cancelled Appointments</h2>
                     {pastAppointments.length > 0 ? (
@@ -180,7 +178,7 @@ export default function CustomerDashboard() {
 
           <TabsContent value="services">
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {services?.map((service) => (
+              {services.map((service) => (
                 <Card key={service.id} className="overflow-hidden">
                   <img
                     src={service.imageUrl}
@@ -193,10 +191,8 @@ export default function CustomerDashboard() {
                       {service.description}
                     </p>
                     <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-2">
-                        <span>{service.duration} mins</span>
-                      </div>
-                      <div className="font-bold">${Number(service.price).toFixed(2)}</div>
+                      <span>{service.duration} mins</span>
+                      <span className="font-bold">${Number(service.price).toFixed(2)}</span>
                     </div>
                     <Button
                       className="w-full"
