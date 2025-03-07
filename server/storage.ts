@@ -1,6 +1,6 @@
 import { users, services, appointments, weeklySchedules, blockedDates, breakTimes, waitlist, type User, type Service, type Appointment, type WeeklySchedule, type BlockedDate, type BreakTime, type Waitlist, type InsertUser, type InsertService, type InsertAppointment, type InsertWeeklySchedule, type InsertBlockedDate, type InsertBreakTime, type InsertWaitlist } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, gte, lte, inQuery, inArray } from "drizzle-orm";
+import { eq, and, gte, lte, inArray } from "drizzle-orm";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 import { pool } from "./db";
@@ -66,7 +66,6 @@ export interface IStorage {
     interval: "weekly" | "biweekly" | "monthly"
   ): Promise<Date>;
 
-
   // Check availability with enhanced rules
   isTimeSlotAvailable(
     providerId: number,
@@ -76,11 +75,11 @@ export interface IStorage {
     serviceId: number
   ): Promise<boolean>;
 
-  sessionStore: session.SessionStore;
+  sessionStore: session.Store;
 }
 
 export class DatabaseStorage implements IStorage {
-  sessionStore: session.SessionStore;
+  sessionStore: session.Store;
 
   constructor() {
     this.sessionStore = new PostgresSessionStore({
@@ -417,74 +416,6 @@ export class DatabaseStorage implements IStorage {
     endTime: string,
     serviceId: number
   ): Promise<boolean> {
-    // Get the service to check buffer time and max daily bookings
-    const service = await this.getService(serviceId);
-    if (!service) return false;
-
-    // Check if maximum daily bookings reached
-    if (service.maxDailyBookings) {
-      const dateStr = date.toISOString().split('T')[0];
-      const dailyBookings = await db
-        .select()
-        .from(appointments)
-        .where(
-          and(
-            eq(appointments.serviceId, serviceId),
-            eq(appointments.startTime, dateStr)
-          )
-        );
-
-      if (dailyBookings.length >= service.maxDailyBookings) {
-        return false;
-      }
-    }
-
-    // Check if there's a break time during this period
-    const dayOfWeek = date.getDay();
-    const [breakTime] = await db
-      .select()
-      .from(breakTimes)
-      .where(
-        and(
-          eq(breakTimes.providerId, providerId),
-          eq(breakTimes.dayOfWeek, dayOfWeek),
-          lte(breakTimes.startTime, startTime),
-          gte(breakTimes.endTime, endTime)
-        )
-      );
-
-    if (breakTime) return false;
-
-    // Calculate buffer times for existing appointments
-    const dateTimeStart = new Date(date);
-    dateTimeStart.setHours(parseInt(startTime.split(':')[0]));
-    dateTimeStart.setMinutes(parseInt(startTime.split(':')[1]));
-    dateTimeStart.setSeconds(0, 0);
-
-    // Get all appointments for this day
-    const existingAppointments = await db
-      .select()
-      .from(appointments)
-      .where(eq(appointments.startTime, dateTimeStart.toISOString()));
-
-    // Add buffer time check
-    if (service.bufferTime && existingAppointments.length > 0) {
-      for (const existing of existingAppointments) {
-        const existingTime = new Date(existing.startTime);
-        const timeDiff = Math.abs(dateTimeStart.getTime() - existingTime.getTime());
-        const bufferTimeMs = service.bufferTime * 60 * 1000; // Convert minutes to milliseconds
-
-        if (timeDiff < bufferTimeMs) {
-          return false;
-        }
-      }
-    }
-
-    return existingAppointments.length === 0;
-  }
-
-  // Check availability
-  async isTimeSlotAvailable(providerId: number, date: Date, startTime: string, endTime: string): Promise<boolean> {
     // Check if there's a blocked date for this day
     const dateOnly = date.toISOString().split('T')[0];
     const [blockedDate] = await db
@@ -513,8 +444,23 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    // Check weekly schedule
+    // Check if there's a break time during this period
     const dayOfWeek = date.getDay();
+    const [breakTime] = await db
+      .select()
+      .from(breakTimes)
+      .where(
+        and(
+          eq(breakTimes.providerId, providerId),
+          eq(breakTimes.dayOfWeek, dayOfWeek),
+          lte(breakTimes.startTime, startTime),
+          gte(breakTimes.endTime, endTime)
+        )
+      );
+
+    if (breakTime) return false;
+
+    // Check weekly schedule
     const [schedule] = await db
       .select()
       .from(weeklySchedules)
@@ -534,32 +480,52 @@ export class DatabaseStorage implements IStorage {
       return false;
     }
 
-    // Check if there are any overlapping appointments
-    const serviceIds = (await this.getProviderServices(providerId)).map(s => s.id);
+    // Check if maximum daily bookings reached
+    const service = await this.getService(serviceId);
+    if (!service) return false;
 
-    if (serviceIds.length === 0) {
-      return true; // No services, so no appointments
+    if (service.maxDailyBookings) {
+      const dailyBookings = await db
+        .select()
+        .from(appointments)
+        .where(
+          and(
+            eq(appointments.serviceId, serviceId),
+            eq(appointments.startTime, date.toISOString())
+          )
+        );
+
+      if (dailyBookings.length >= service.maxDailyBookings) {
+        return false;
+      }
     }
 
-    // Since this is a simplification, we're just checking if there's an existing appointment
-    // with the exact same start time. In a real application, you'd need to check for overlaps.
+    // Calculate buffer times for existing appointments
     const dateTimeStart = new Date(date);
     dateTimeStart.setHours(parseInt(startTime.split(':')[0]));
     dateTimeStart.setMinutes(parseInt(startTime.split(':')[1]));
     dateTimeStart.setSeconds(0, 0);
 
-    // Use a simpler approach to avoid the in() method issues
+    // Get all appointments for this day
     const existingAppointments = await db
       .select()
       .from(appointments)
       .where(eq(appointments.startTime, dateTimeStart.toISOString()));
 
-    // Filter appointments by service ID in JavaScript
-    const matchingAppointments = existingAppointments.filter(
-      app => serviceIds.includes(app.serviceId)
-    );
+    // Add buffer time check
+    if (service.bufferTime && existingAppointments.length > 0) {
+      for (const existing of existingAppointments) {
+        const existingTime = new Date(existing.startTime);
+        const timeDiff = Math.abs(dateTimeStart.getTime() - existingTime.getTime());
+        const bufferTimeMs = service.bufferTime * 60 * 1000; // Convert minutes to milliseconds
 
-    return matchingAppointments.length === 0;
+        if (timeDiff < bufferTimeMs) {
+          return false;
+        }
+      }
+    }
+
+    return existingAppointments.length === 0;
   }
 }
 
