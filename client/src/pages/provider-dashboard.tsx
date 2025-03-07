@@ -154,8 +154,8 @@ export default function ProviderDashboard() {
       <div className="container mx-auto">
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold">Welcome, {user?.name}</h1>
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             onClick={handleLogout}
             className="flex items-center gap-2"
           >
@@ -183,21 +183,61 @@ export default function ProviderDashboard() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <p className="mb-4">
-                      {new Date(appointment.startTime).toLocaleString()}
-                    </p>
-                    <p className="mb-4">
-                      Status: {appointment.status}
-                    </p>
-                    {appointment.recurring && (
-                      <p className="mb-4 text-sm text-muted-foreground">
-                        Recurring: {appointment.recurringInterval}
-                        <br />
-                        Next Date: {new Date(appointment.nextRecurringDate!).toLocaleDateString()}
-                      </p>
-                    )}
-                    <div className="flex gap-2">
-                      {getStatusButtons(appointment)}
+                    <div className="space-y-4">
+                      <div>
+                        <p className="font-medium">Date & Time:</p>
+                        <p className="text-muted-foreground">
+                          {new Date(appointment.startTime).toLocaleString()}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="font-medium">Service Location:</p>
+                        <p className="text-muted-foreground">{appointment.address}</p>
+                      </div>
+
+                      {appointment.specialInstructions && (
+                        <div>
+                          <p className="font-medium">Special Instructions:</p>
+                          <p className="text-muted-foreground">{appointment.specialInstructions}</p>
+                        </div>
+                      )}
+
+                      <div>
+                        <p className="font-medium">Status:</p>
+                        <span
+                          className={`inline-block px-2 py-1 rounded-full text-sm ${
+                            appointment.status === "pending"
+                              ? "bg-yellow-100 text-yellow-800"
+                              : appointment.status === "accepted"
+                              ? "bg-blue-100 text-blue-800"
+                              : appointment.status === "confirmed"
+                              ? "bg-purple-100 text-purple-800"
+                              : appointment.status === "in_progress"
+                              ? "bg-orange-100 text-orange-800"
+                              : appointment.status === "completed"
+                              ? "bg-green-100 text-green-800"
+                              : "bg-red-100 text-red-800"
+                          }`}
+                        >
+                          {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
+                        </span>
+                      </div>
+
+                      {appointment.recurring && (
+                        <div>
+                          <p className="font-medium">Recurring:</p>
+                          <p className="text-muted-foreground">
+                            {appointment.recurringInterval}
+                            <br />
+                            Next Date: {new Date(appointment.nextRecurringDate!).toLocaleDateString()}
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="flex gap-2 pt-4">
+                        {getStatusButtons(appointment)}
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -327,7 +367,7 @@ function CreateServiceForm() {
       const serviceData = {
         title: data.title,
         description: data.description,
-        duration: Number(data.duration), 
+        duration: Number(data.duration),
         price: data.price, // Keep as string as that's what the schema expects
         imageUrl,
         bufferTime: Number(data.bufferTime),
@@ -395,9 +435,9 @@ function CreateServiceForm() {
             <FormItem>
               <FormLabel>Duration (minutes)</FormLabel>
               <FormControl>
-                <Input 
-                  type="number" 
-                  {...field} 
+                <Input
+                  type="number"
+                  {...field}
                   onChange={(e) => field.onChange(Number(e.target.value))}
                 />
               </FormControl>
@@ -413,7 +453,7 @@ function CreateServiceForm() {
             <FormItem>
               <FormLabel>Price ($)</FormLabel>
               <FormControl>
-                <Input 
+                <Input
                   type="text"
                   {...field}
                 />
@@ -430,7 +470,7 @@ function CreateServiceForm() {
             <FormItem>
               <FormLabel>Buffer Time (minutes)</FormLabel>
               <FormControl>
-                <Input 
+                <Input
                   type="number"
                   {...field}
                   onChange={(e) => field.onChange(Number(e.target.value))}
@@ -448,7 +488,7 @@ function CreateServiceForm() {
             <FormItem>
               <FormLabel>Max Daily Bookings</FormLabel>
               <FormControl>
-                <Input 
+                <Input
                   type="number"
                   {...field}
                   onChange={(e) => field.onChange(Number(e.target.value))}
@@ -466,8 +506,8 @@ function CreateServiceForm() {
             <FormItem>
               <FormLabel>Image</FormLabel>
               <FormControl>
-                <Input 
-                  type="file" 
+                <Input
+                  type="file"
                   accept="image/*"
                   onChange={(e) => {
                     const file = e.target.files?.[0];

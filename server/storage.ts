@@ -1,6 +1,6 @@
 import { users, services, appointments, weeklySchedules, blockedDates, breakTimes, waitlist, type User, type Service, type Appointment, type WeeklySchedule, type BlockedDate, type BreakTime, type Waitlist, type InsertUser, type InsertService, type InsertAppointment, type InsertWeeklySchedule, type InsertBlockedDate, type InsertBreakTime, type InsertWaitlist } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, gte, lte, inQuery } from "drizzle-orm";
+import { eq, and, gte, lte, inQuery, inArray } from "drizzle-orm";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 import { pool } from "./db";
@@ -181,7 +181,9 @@ export class DatabaseStorage implements IStorage {
     return await db
       .select()
       .from(appointments)
-      .where(eq(appointments.serviceId, serviceIds[0]));
+      .where(
+        inArray(appointments.serviceId, serviceIds)
+      );
   }
 
   async updateAppointmentStatus(
