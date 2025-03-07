@@ -593,7 +593,7 @@ export class DatabaseStorage implements IStorage {
       // Use raw SQL to ensure proper query formation
       await db.execute(
         sql`UPDATE "appointments" 
-            SET "hiddenFromCustomer" = true 
+            SET hidden_from_customer = true 
             WHERE service_id IN (${sql.join(serviceIds, sql`, `)})
             AND status IN ('completed', 'cancelled', 'declined')`
       );
