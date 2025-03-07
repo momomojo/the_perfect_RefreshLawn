@@ -212,9 +212,20 @@ export class DatabaseStorage implements IStorage {
     }
 
     // Get appointments with customer details
-    const appointments = await db
+    const result = await db
       .select({
-        ...appointments,
+        id: appointments.id,
+        serviceId: appointments.serviceId,
+        customerId: appointments.customerId,
+        status: appointments.status,
+        startTime: appointments.startTime,
+        totalAmount: appointments.totalAmount,
+        address: appointments.address,
+        specialInstructions: appointments.specialInstructions,
+        completionNotes: appointments.completionNotes,
+        recurring: appointments.recurring,
+        recurringInterval: appointments.recurringInterval,
+        nextRecurringDate: appointments.nextRecurringDate,
         customerName: users.name,
         customerUsername: users.username
       })
@@ -223,7 +234,7 @@ export class DatabaseStorage implements IStorage {
       .leftJoin(users, eq(appointments.customerId, users.id))
       .orderBy(appointments.startTime);
 
-    return appointments;
+    return result;
   }
 
   async updateAppointmentStatus(
