@@ -95,8 +95,14 @@ export function registerRoutes(app: Express): Server {
       return res.status(403).send("Access denied");
     }
 
-    const appointments = await dbStorage.getCustomerAppointments(req.user.id);
-    res.json(appointments);
+    try {
+      // Only allow customers to see their own appointments
+      const appointments = await dbStorage.getCustomerAppointments(req.user.id);
+      res.json(appointments);
+    } catch (err) {
+      console.error("Error fetching customer appointments:", err);
+      res.status(500).send("Failed to fetch appointments");
+    }
   });
 
   app.get("/api/appointments/provider", async (req, res) => {

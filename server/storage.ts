@@ -187,10 +187,30 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getCustomerAppointments(customerId: number): Promise<Appointment[]> {
-    return await db
-      .select()
+    // First verify that the customer exists
+    const customer = await this.getUser(customerId);
+    if (!customer) throw new Error("Customer not found");
+
+    // Get all appointments for this customer with proper filtering
+    const appointments = await db
+      .select({
+        id: appointments.id,
+        serviceId: appointments.serviceId,
+        customerId: appointments.customerId,
+        status: appointments.status,
+        startTime: appointments.startTime,
+        totalAmount: appointments.totalAmount,
+        address: appointments.address,
+        specialInstructions: appointments.specialInstructions,
+        completionNotes: appointments.completionNotes,
+        recurring: appointments.recurring,
+        recurringInterval: appointments.recurringInterval,
+        nextRecurringDate: appointments.nextRecurringDate
+      })
       .from(appointments)
       .where(eq(appointments.customerId, customerId));
+
+    return appointments;
   }
 
   async getProviderAppointments(providerId: number): Promise<Appointment[]> {
