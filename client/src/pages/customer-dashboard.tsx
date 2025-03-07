@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
-import { CalendarIcon, ClockIcon, LogOutIcon, MapPinIcon, AlertCircle } from "lucide-react";
+import { CalendarIcon, LogOutIcon, MapPinIcon, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
 
 export default function CustomerDashboard() {
@@ -194,7 +194,6 @@ export default function CustomerDashboard() {
                     </p>
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-2">
-                        <ClockIcon className="h-4 w-4" />
                         <span>{service.duration} mins</span>
                       </div>
                       <div className="font-bold">${Number(service.price).toFixed(2)}</div>
