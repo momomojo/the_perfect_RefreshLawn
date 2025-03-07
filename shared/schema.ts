@@ -44,8 +44,8 @@ export const appointments = pgTable("appointments", {
   address: text("address").notNull(),
   specialInstructions: text("special_instructions"),
   completionNotes: text("completion_notes"),
-  recurring: boolean("recurring").default(false),
-  recurringInterval: text("recurring_interval"),
+  recurring: boolean("recurring").default(false), 
+  recurringInterval: text("recurring_interval"), 
   nextRecurringDate: timestamp("next_recurring_date"),
   hiddenFromCustomer: boolean("hidden_from_customer").default(false)
 });

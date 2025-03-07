@@ -5,18 +5,17 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
-import { CalendarIcon, LogOutIcon, MapPinIcon, AlertCircle } from "lucide-react";
-import { format } from "date-fns";
+import { CalendarIcon, ClockIcon, LogOutIcon, MapPinIcon, AlertCircle } from "lucide-react";
 
 export default function CustomerDashboard() {
   const { user, logoutMutation } = useAuth();
   const [, setLocation] = useLocation();
 
-  const { data: services = [] } = useQuery<Service[]>({
+  const { data: services } = useQuery<Service[]>({
     queryKey: ["/api/services"],
   });
 
-  const { data: appointments = [], isLoading: isLoadingAppointments } = useQuery<Appointment[]>({
+  const { data: appointments } = useQuery<Appointment[]>({
     queryKey: ["/api/appointments/customer"],
   });
 
@@ -33,6 +32,7 @@ export default function CustomerDashboard() {
       case "completed":
         return "bg-green-100 text-green-800";
       case "cancelled":
+        return "bg-red-100 text-red-800";
       case "declined":
         return "bg-red-100 text-red-800";
       default:
@@ -45,13 +45,14 @@ export default function CustomerDashboard() {
     setLocation("/auth");
   };
 
-  const activeAppointments = appointments.filter(
-    app => !["completed", "cancelled", "declined"].includes(app.status)
-  ).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+  // Filter and sort appointments
+  const activeAppointments = appointments?.filter(
+    app => !["cancelled", "declined", "completed"].includes(app.status)
+  ).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()) || [];
 
-  const pastAppointments = appointments.filter(
-    app => !app.hiddenFromCustomer && ["completed", "cancelled", "declined"].includes(app.status)
-  ).sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+  const pastAppointments = appointments?.filter(
+    app => ["completed", "cancelled", "declined"].includes(app.status)
+  ).sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()) || [];
 
   return (
     <div className="min-h-screen bg-[#F5F7F3] p-8">
@@ -76,109 +77,105 @@ export default function CustomerDashboard() {
 
           <TabsContent value="appointments">
             <div className="space-y-8">
-              {isLoadingAppointments ? (
-                <div>Loading appointments...</div>
-              ) : (
-                <>
-                  <div>
-                    <h2 className="text-xl font-semibold mb-4">Upcoming Appointments</h2>
-                    {activeAppointments.length > 0 ? (
-                      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {activeAppointments.map((appointment) => (
-                          <Card key={appointment.id}>
-                            <CardContent className="p-6">
-                              <div className="space-y-4">
-                                <div className="flex items-center gap-2">
-                                  <CalendarIcon className="h-4 w-4" />
-                                  <span>
-                                    {format(new Date(appointment.startTime), "PPP p")}
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <MapPinIcon className="h-4 w-4" />
-                                  <span>{appointment.address}</span>
-                                </div>
-                                {appointment.specialInstructions && (
-                                  <div className="flex items-start gap-2">
-                                    <AlertCircle className="h-4 w-4 mt-1" />
-                                    <span className="text-sm">{appointment.specialInstructions}</span>
-                                  </div>
-                                )}
-                                <div className="flex items-center justify-between">
-                                  <span
-                                    className={`px-3 py-1 rounded-full text-sm ${getStatusColor(
-                                      appointment.status
-                                    )}`}
-                                  >
-                                    {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
-                                  </span>
-                                  <span className="font-bold">
-                                    ${Number(appointment.totalAmount).toFixed(2)}
-                                  </span>
-                                </div>
+              {/* Active Appointments */}
+              <div>
+                <h2 className="text-xl font-semibold mb-4">Upcoming Appointments</h2>
+                {activeAppointments.length > 0 ? (
+                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {activeAppointments.map((appointment) => (
+                      <Card key={appointment.id}>
+                        <CardContent className="p-6">
+                          <div className="space-y-4">
+                            <div className="flex items-center gap-2">
+                              <CalendarIcon className="h-4 w-4" />
+                              <span>
+                                {new Date(appointment.startTime).toLocaleString()}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <MapPinIcon className="h-4 w-4" />
+                              <span>{appointment.address}</span>
+                            </div>
+                            {appointment.specialInstructions && (
+                              <div className="flex items-start gap-2">
+                                <AlertCircle className="h-4 w-4 mt-1" />
+                                <span className="text-sm">{appointment.specialInstructions}</span>
                               </div>
-                            </CardContent>
-                          </Card>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-muted-foreground">No upcoming appointments</p>
-                    )}
+                            )}
+                            <div className="flex items-center justify-between">
+                              <span
+                                className={`px-3 py-1 rounded-full text-sm ${getStatusColor(
+                                  appointment.status
+                                )}`}
+                              >
+                                {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
+                              </span>
+                              <span className="font-bold">
+                                ${appointment.totalAmount.toString()}
+                              </span>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
                   </div>
+                ) : (
+                  <p className="text-muted-foreground">No upcoming appointments</p>
+                )}
+              </div>
 
-                  <div>
-                    <h2 className="text-xl font-semibold mb-4">Past & Cancelled Appointments</h2>
-                    {pastAppointments.length > 0 ? (
-                      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {pastAppointments.map((appointment) => (
-                          <Card key={appointment.id} className="opacity-75">
-                            <CardContent className="p-6">
-                              <div className="space-y-4">
-                                <div className="flex items-center gap-2">
-                                  <CalendarIcon className="h-4 w-4" />
-                                  <span>
-                                    {format(new Date(appointment.startTime), "PPP p")}
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <MapPinIcon className="h-4 w-4" />
-                                  <span>{appointment.address}</span>
-                                </div>
-                                {appointment.specialInstructions && (
-                                  <div className="flex items-start gap-2">
-                                    <AlertCircle className="h-4 w-4 mt-1" />
-                                    <span className="text-sm">{appointment.specialInstructions}</span>
-                                  </div>
-                                )}
-                                <div className="flex items-center justify-between">
-                                  <span
-                                    className={`px-3 py-1 rounded-full text-sm ${getStatusColor(
-                                      appointment.status
-                                    )}`}
-                                  >
-                                    {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
-                                  </span>
-                                  <span className="font-bold">
-                                    ${Number(appointment.totalAmount).toFixed(2)}
-                                  </span>
-                                </div>
+              {/* Past Appointments */}
+              <div>
+                <h2 className="text-xl font-semibold mb-4">Past & Cancelled Appointments</h2>
+                {pastAppointments.length > 0 ? (
+                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {pastAppointments.map((appointment) => (
+                      <Card key={appointment.id} className="opacity-75">
+                        <CardContent className="p-6">
+                          <div className="space-y-4">
+                            <div className="flex items-center gap-2">
+                              <CalendarIcon className="h-4 w-4" />
+                              <span>
+                                {new Date(appointment.startTime).toLocaleString()}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <MapPinIcon className="h-4 w-4" />
+                              <span>{appointment.address}</span>
+                            </div>
+                            {appointment.specialInstructions && (
+                              <div className="flex items-start gap-2">
+                                <AlertCircle className="h-4 w-4 mt-1" />
+                                <span className="text-sm">{appointment.specialInstructions}</span>
                               </div>
-                            </CardContent>
-                          </Card>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-muted-foreground">No past appointments</p>
-                    )}
+                            )}
+                            <div className="flex items-center justify-between">
+                              <span
+                                className={`px-3 py-1 rounded-full text-sm ${getStatusColor(
+                                  appointment.status
+                                )}`}
+                              >
+                                {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
+                              </span>
+                              <span className="font-bold">
+                                ${appointment.totalAmount.toString()}
+                              </span>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
                   </div>
-                </>
-              )}
+                ) : (
+                  <p className="text-muted-foreground">No past appointments</p>
+                )}
+              </div>
             </div>
           </TabsContent>
 
           <TabsContent value="services">
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {services.map((service) => (
+              {services?.map((service) => (
                 <Card key={service.id} className="overflow-hidden">
                   <img
                     src={service.imageUrl}
@@ -191,8 +188,11 @@ export default function CustomerDashboard() {
                       {service.description}
                     </p>
                     <div className="flex items-center justify-between mb-4">
-                      <span>{service.duration} mins</span>
-                      <span className="font-bold">${Number(service.price).toFixed(2)}</span>
+                      <div className="flex items-center gap-2">
+                        <ClockIcon className="h-4 w-4" />
+                        <span>{service.duration} mins</span>
+                      </div>
+                      <div className="font-bold">${service.price.toString()}</div>
                     </div>
                     <Button
                       className="w-full"

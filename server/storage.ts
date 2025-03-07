@@ -1,6 +1,6 @@
 import { users, services, appointments, weeklySchedules, blockedDates, breakTimes, waitlist, type User, type Service, type Appointment, type WeeklySchedule, type BlockedDate, type BreakTime, type Waitlist, type InsertUser, type InsertService, type InsertAppointment, type InsertWeeklySchedule, type InsertBlockedDate, type InsertBreakTime, type InsertWaitlist } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, gte, lte, inArray, sql, or } from "drizzle-orm";
+import { eq, and, gte, lte, inArray, sql } from "drizzle-orm";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 import { pool } from "./db";
@@ -147,36 +147,35 @@ export class DatabaseStorage implements IStorage {
     const startTimeStr = startTimeValue.toLocaleTimeString('en-US', { hour12: false });
     const endTimeStr = endTimeValue.toLocaleTimeString('en-US', { hour12: false });
 
-    // Check availability
-    const isAvailable = await this.isTimeSlotAvailable(
-      service.providerId,
-      startTimeValue,
-      startTimeStr,
-      endTimeStr,
-      service.id
-    );
+    // Check availability within a transaction to prevent race conditions
+    return await db.transaction(async (tx) => {
+      const isAvailable = await this.isTimeSlotAvailable(
+        service.providerId,
+        startTimeValue,
+        startTimeStr,
+        endTimeStr,
+        service.id
+      );
 
-    if (!isAvailable) {
-      throw new Error("This time slot is no longer available");
-    }
+      if (!isAvailable) {
+        throw new Error("This time slot is no longer available");
+      }
 
-    // Create appointment if slot is available
-    const [newAppointment] = await db
-      .insert(appointments)
-      .values({
-        serviceId: appointment.serviceId,
-        customerId,
-        status: "pending",
-        totalAmount: service.price,
-        address: appointment.address,
-        specialInstructions: appointment.specialInstructions,
-        startTime: startTimeValue,
-        hiddenFromCustomer: false,
-        recurring: false
-      })
-      .returning();
+      const [newAppointment] = await tx
+        .insert(appointments)
+        .values({
+          serviceId: appointment.serviceId,
+          customerId,
+          status: "pending",
+          totalAmount: service.price,
+          address: appointment.address,
+          specialInstructions: appointment.specialInstructions,
+          startTime: startTimeValue
+        })
+        .returning();
 
-    return newAppointment;
+      return newAppointment;
+    });
   }
 
   async getAppointment(id: number): Promise<Appointment | undefined> {
@@ -192,23 +191,32 @@ export class DatabaseStorage implements IStorage {
     const customer = await this.getUser(customerId);
     if (!customer) throw new Error("Customer not found");
 
-    // Get all appointments for this customer that should be visible
-    return await db
-      .select()
+    // Get all appointments for this customer with proper filtering
+    const appointments = await db
+      .select({
+        id: appointments.id,
+        serviceId: appointments.serviceId,
+        customerId: appointments.customerId,
+        status: appointments.status,
+        startTime: appointments.startTime,
+        totalAmount: appointments.totalAmount,
+        address: appointments.address,
+        specialInstructions: appointments.specialInstructions,
+        completionNotes: appointments.completionNotes,
+        recurring: appointments.recurring,
+        recurringInterval: appointments.recurringInterval,
+        nextRecurringDate: appointments.nextRecurringDate,
+        hiddenFromCustomer: appointments.hiddenFromCustomer
+      })
       .from(appointments)
       .where(
         and(
           eq(appointments.customerId, customerId),
-          or(
-            eq(appointments.hiddenFromCustomer, false),
-            inArray(
-              appointments.status,
-              ["pending", "accepted", "confirmed", "in_progress"]
-            )
-          )
+          eq(appointments.hiddenFromCustomer, false)
         )
-      )
-      .orderBy(appointments.startTime);
+      );
+
+    return appointments;
   }
 
   async getProviderAppointments(providerId: number): Promise<Appointment[]> {
@@ -465,37 +473,7 @@ export class DatabaseStorage implements IStorage {
     const service = await this.getService(serviceId);
     if (!service) return false;
 
-    // Check weekly schedule first
-    const dayOfWeek = date.getDay();
-    const schedules = await db
-      .select()
-      .from(weeklySchedules)
-      .where(
-        and(
-          eq(weeklySchedules.providerId, providerId),
-          eq(weeklySchedules.dayOfWeek, dayOfWeek)
-        )
-      );
-
-    // No schedule found for this day or not available
-    if (!schedules.length || !schedules.some(s => s.isAvailable)) {
-      return false;
-    }
-
-    // Convert times to minutes for easier comparison
-    const requestStart = this.timeToMinutes(startTime);
-    const requestEnd = this.timeToMinutes(endTime);
-
-    // Check if time falls within any schedule
-    const isWithinSchedule = schedules.some(schedule => {
-      const scheduleStart = this.timeToMinutes(schedule.startTime);
-      const scheduleEnd = this.timeToMinutes(schedule.endTime);
-      return requestStart >= scheduleStart && requestEnd <= scheduleEnd;
-    });
-
-    if (!isWithinSchedule) return false;
-
-    // Check blocked dates
+    // Check if there's a blocked date for this day
     const dateOnly = date.toISOString().split('T')[0];
     const [blockedDate] = await db
       .select()
@@ -509,57 +487,97 @@ export class DatabaseStorage implements IStorage {
 
     if (blockedDate) {
       if (blockedDate.isFullDay) return false;
+
       if (blockedDate.startTime && blockedDate.endTime) {
-        const blockStart = this.timeToMinutes(blockedDate.startTime);
-        const blockEnd = this.timeToMinutes(blockedDate.endTime);
-        if (requestStart >= blockStart && requestStart < blockEnd) return false;
-        if (requestEnd > blockStart && requestEnd <= blockEnd) return false;
+        const blockedStart = blockedDate.startTime;
+        const blockedEnd = blockedDate.endTime;
+
+        if (startTime >= blockedStart && startTime < blockedEnd) return false;
+        if (endTime > blockedStart && endTime <= blockedEnd) return false;
       }
     }
 
-    // Check existing appointments
+    // Check if there are any overlapping appointments for this day
     const existingAppointments = await db
       .select()
       .from(appointments)
       .where(
         and(
           eq(appointments.serviceId, serviceId),
-          sql`DATE(${appointments.startTime}) = ${dateOnly}`,
-          inArray(
-            appointments.status,
-            ["pending", "accepted", "confirmed", "in_progress"]
-          )
+          sql`DATE(${appointments.startTime}) = ${dateOnly}`
         )
       );
 
-    const buffer = (service.bufferTime || 0);
+    if (existingAppointments.length > 0) {
+      // Get service duration in milliseconds
+      const durationMs = service.duration * 60 * 1000;
+      const bufferMs = (service.bufferTime || 0) * 60 * 1000;
 
-    for (const existing of existingAppointments) {
-      const existingStart = new Date(existing.startTime);
-      const existingEnd = new Date(existingStart);
-      existingEnd.setMinutes(existingEnd.getMinutes() + service.duration);
+      // Convert request times to milliseconds since midnight
+      const requestStart = this.parseTimeToMs(startTime);
+      const requestEnd = requestStart + durationMs;
 
-      const existingStartMin = this.timeToMinutes(existingStart.toLocaleTimeString('en-US', { hour12: false }));
-      const existingEndMin = this.timeToMinutes(existingEnd.toLocaleTimeString('en-US', { hour12: false }));
+      for (const existing of existingAppointments) {
+        const existingStart = new Date(existing.startTime);
+        const existingTimeMs = existingStart.getHours() * 3600000 + 
+                               existingStart.getMinutes() * 60000;
+        const existingEnd = existingTimeMs + durationMs;
 
-      // Add buffer time
-      const bufferedRequestStart = requestStart - buffer;
-      const bufferedRequestEnd = requestEnd + buffer;
-      const bufferedExistingStart = existingStartMin - buffer;
-      const bufferedExistingEnd = existingEndMin + buffer;
+        // Add buffer time to both appointments
+        const bufferedRequestStart = requestStart - bufferMs;
+        const bufferedRequestEnd = requestEnd + bufferMs;
+        const bufferedExistingStart = existingTimeMs - bufferMs;
+        const bufferedExistingEnd = existingEnd + bufferMs;
 
-      // Check for overlap
-      if (bufferedRequestStart < bufferedExistingEnd && bufferedRequestEnd > bufferedExistingStart) {
-        return false;
+        // Check for overlap
+        if (
+          (bufferedRequestStart <= bufferedExistingEnd && 
+           bufferedRequestEnd >= bufferedExistingStart)
+        ) {
+          return false;
+        }
       }
     }
+
+    // Check weekly schedule
+    const dayOfWeek = date.getDay();
+    const [schedule] = await db
+      .select()
+      .from(weeklySchedules)
+      .where(
+        and(
+          eq(weeklySchedules.providerId, providerId),
+          eq(weeklySchedules.dayOfWeek, dayOfWeek)
+        )
+      );
+
+    if (!schedule || !schedule.isAvailable) return false;
+
+    // Check if requested time is within schedule
+    if (startTime < schedule.startTime || endTime > schedule.endTime) return false;
+
+    // Check break times
+    const [breakTime] = await db
+      .select()
+      .from(breakTimes)
+      .where(
+        and(
+          eq(breakTimes.providerId, providerId),
+          eq(breakTimes.dayOfWeek, dayOfWeek),
+          lte(breakTimes.startTime, startTime),
+          gte(breakTimes.endTime, endTime)
+        )
+      );
+
+    if (breakTime) return false;
 
     return true;
   }
 
-  private timeToMinutes(time: string): number {
+  // Helper function to parse time string to milliseconds since midnight
+  private parseTimeToMs(time: string): number {
     const [hours, minutes] = time.split(':').map(Number);
-    return hours * 60 + minutes;
+    return (hours * 3600 + minutes * 60) * 1000;
   }
 
   async clearCustomerAppointmentHistory(providerId: number): Promise<void> {
