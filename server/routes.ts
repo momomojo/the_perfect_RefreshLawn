@@ -120,14 +120,29 @@ export function registerRoutes(app: Express): Server {
     }
 
     try {
-      const appointment = await dbStorage.updateAppointmentStatus(
+      // First verify the appointment exists and belongs to this provider
+      const appointment = await dbStorage.getAppointment(parseInt(req.params.id));
+      if (!appointment) {
+        return res.status(404).send("Appointment not found");
+      }
+
+      const service = await dbStorage.getService(appointment.serviceId);
+      if (!service || service.providerId !== req.user.id) {
+        return res.status(403).send("Not authorized to update this appointment");
+      }
+
+      // Update the appointment status
+      const updatedAppointment = await dbStorage.updateAppointmentStatus(
         parseInt(req.params.id),
         status,
         notes
       );
-      res.json(appointment);
+
+      // Send the updated appointment back
+      res.json(updatedAppointment);
     } catch (err) {
-      res.status(404).send("Appointment not found");
+      console.error("Error updating appointment status:", err);
+      res.status(500).send("Failed to update appointment status");
     }
   });
 

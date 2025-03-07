@@ -46,15 +46,28 @@ export default function ProviderDashboard() {
   const updateAppointmentMutation = useMutation({
     mutationFn: async ({ id, status, notes }: { id: number; status: string; notes?: string }) => {
       const res = await apiRequest("PATCH", `/api/appointments/${id}/status`, { status, notes });
+      if (!res.ok) {
+        const error = await res.text();
+        throw new Error(error);
+      }
       return res.json();
     },
     onSuccess: () => {
+      // Invalidate both provider and customer appointment queries to ensure sync
       queryClient.invalidateQueries({ queryKey: ["/api/appointments/provider"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/appointments/customer"] });
       toast({
         title: "Success",
-        description: "Appointment status updated",
+        description: "Appointment status updated successfully",
       });
     },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: "Failed to update appointment status: " + error.message,
+        variant: "destructive"
+      });
+    }
   });
 
   const handleLogout = async () => {
@@ -1012,8 +1025,7 @@ function BlockedDatesManager() {
         </form>
       </Form>
 
-      <div>
-        <h3 className="text-lg font-medium mb-3">Your Blocked Dates</h3>
+      <div>        <h3 className="text-lg font-medium mb-3">Your Blocked Dates</h3>
         {isLoading ? (
           <p>Loading blocked dates...</p>        ) : blockedDates && blockedDates.length > 0 ? (
           <div className="space-y-4">

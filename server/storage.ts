@@ -214,19 +214,26 @@ export class DatabaseStorage implements IStorage {
     status: "accepted" | "confirmed" | "in_progress" | "completed" | "cancelled" | "declined",
     notes?: string
   ): Promise<Appointment> {
-    const updates: any = { status };
-    if (notes && status === "completed") {
-      updates.completionNotes = notes;
-    }
-
-    const [appointment] = await db
-      .update(appointments)
-      .set(updates)
-      .where(eq(appointments.id, id))
-      .returning();
-
+    // Verify the appointment exists
+    const appointment = await this.getAppointment(id);
     if (!appointment) throw new Error("Appointment not found");
-    return appointment;
+
+    // Use transaction to ensure data consistency
+    return await db.transaction(async (tx) => {
+      const updates: any = { status };
+      if (notes && status === "completed") {
+        updates.completionNotes = notes;
+      }
+
+      const [updatedAppointment] = await tx
+        .update(appointments)
+        .set(updates)
+        .where(eq(appointments.id, id))
+        .returning();
+
+      if (!updatedAppointment) throw new Error("Failed to update appointment");
+      return updatedAppointment;
+    });
   }
 
   async createWeeklySchedule(schedule: InsertWeeklySchedule, providerId: number): Promise<WeeklySchedule> {
