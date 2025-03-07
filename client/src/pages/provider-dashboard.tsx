@@ -16,23 +16,11 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { insertServiceSchema, insertWeeklyScheduleSchema, insertBlockedDateSchema, insertBreakTimeSchema } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { CheckIcon, XIcon, ClockIcon, LogOutIcon, CalendarIcon, Clock, X, PlayIcon, PauseIcon, CalendarIcon as CalendarIcon2, MapPinIcon, AlertCircle, Settings as SettingsIcon } from "lucide-react";
+import { CheckIcon, XIcon, ClockIcon, LogOutIcon, CalendarIcon, Clock, X, PlayIcon, PauseIcon, CalendarIcon as CalendarIcon2, MapPinIcon, AlertCircle } from "lucide-react";
 import { useLocation } from "wouter";
 import * as z from 'zod';
 import { format } from "date-fns";
 import { useState, useEffect } from "react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-
 
 export default function ProviderDashboard() {
   const { user, logoutMutation } = useAuth();
@@ -82,58 +70,6 @@ export default function ProviderDashboard() {
     }
   });
 
-  const clearCustomerHistoryMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/appointments/clear-customer-history");
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.message || "Failed to clear history");
-      }
-      return res.json();
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/appointments/provider"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/appointments/customer"] });
-      toast({
-        title: "Success",
-        description: data.message || "Appointment history cleared from customer view",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive"
-      });
-    }
-  });
-
-  const deleteAppointmentHistoryMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("DELETE", "/api/appointments/delete-history");
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.message || "Failed to delete history");
-      }
-      return res.json();
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/appointments/provider"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/appointments/customer"] });
-      toast({
-        title: "Success",
-        description: data.message || "Appointment history permanently deleted",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive"
-      });
-    }
-  });
-
   const handleLogout = async () => {
     await logoutMutation.mutateAsync();
     setLocation("/auth");
@@ -178,12 +114,6 @@ export default function ProviderDashboard() {
             <TabsTrigger value="availability">Availability</TabsTrigger>
             <TabsTrigger value="breaks">Break Times</TabsTrigger>
             <TabsTrigger value="waitlist">Waitlist</TabsTrigger>
-            <TabsTrigger value="settings">
-              <div className="flex items-center gap-2">
-                <SettingsIcon className="h-4 w-4" />
-                Settings
-              </div>
-            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="appointments">
@@ -329,80 +259,6 @@ export default function ProviderDashboard() {
             <div>
               <h2 className="text-2xl font-bold mb-6">Waitlist Management</h2>
               <WaitlistManager />
-            </div>
-          </TabsContent>
-
-          <TabsContent value="settings">
-            <div className="space-y-8">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Appointment History Management</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div>
-                    <h3 className="text-lg font-medium mb-2">Clear Customer View History</h3>
-                    <p className="text-muted-foreground mb-4">
-                      This will hide completed, cancelled, and declined appointments from customer dashboards.
-                      The history will still be visible in your provider dashboard.
-                    </p>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="outline">Clear Customer History</Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Clear Customer Appointment History</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            This will hide all completed, cancelled, and declined appointments from customer dashboards.
-                            This action cannot be undone, but the history will remain visible in your provider dashboard.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction
-                            onClick={() => clearCustomerHistoryMutation.mutate()}
-                            className="bg-orange-600 hover:bg-orange-700"
-                          >
-                            Clear History
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </div>
-
-                  <div>
-                    <h3 className="text-lg font-medium mb-2">Delete All Appointment History</h3>
-                    <p className="text-muted-foreground mb-4">
-                      This will permanently delete all completed, cancelled, and declined appointments.
-                      This action cannot be undone and will remove the history from both customer and provider views.
-                    </p>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="destructive">Delete All History</Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Delete All Appointment History</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            This will permanently delete all completed, cancelled, and declined appointments from the database.
-                            This action cannot be undone and will remove the history from both customer and provider views.
-                            Active appointments will not be affected.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction
-                            onClick={() => deleteAppointmentHistoryMutation.mutate()}
-                            className="bg-red-600 hover:bg-red-700"
-                          >
-                            Delete Permanently
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </div>
-                </CardContent>
-              </Card>
             </div>
           </TabsContent>
         </Tabs>
@@ -989,10 +845,10 @@ function BlockedDatesManager() {
     queryKey: ["/api/blocked-dates"],
   });
 
-  const form= useForm({
+  const form = useForm({
     resolver: zodResolver(
       insertBlockedDateSchema.extend({
-                date: z.date(),
+        date: z.date(),
       })
     ),
     defaultValues: {

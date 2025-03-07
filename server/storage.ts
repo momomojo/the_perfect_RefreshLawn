@@ -164,15 +164,13 @@ export class DatabaseStorage implements IStorage {
       const [newAppointment] = await tx
         .insert(appointments)
         .values({
-          service_id: appointment.serviceId,
-          customer_id: customerId,
-          start_time: startTimeValue,
+          serviceId: appointment.serviceId,
+          customerId,
           status: "pending",
-          total_amount: service.price,
+          totalAmount: service.price,
           address: appointment.address,
-          special_instructions: appointment.specialInstructions,
-          hidden_from_customer: false,
-          recurring: false
+          specialInstructions: appointment.specialInstructions,
+          startTime: startTimeValue
         })
         .returning();
 
@@ -194,15 +192,25 @@ export class DatabaseStorage implements IStorage {
     if (!customer) throw new Error("Customer not found");
 
     // Get all appointments for this customer with proper filtering
-    return await db
-      .select()
+    const appointments = await db
+      .select({
+        id: appointments.id,
+        serviceId: appointments.serviceId,
+        customerId: appointments.customerId,
+        status: appointments.status,
+        startTime: appointments.startTime,
+        totalAmount: appointments.totalAmount,
+        address: appointments.address,
+        specialInstructions: appointments.specialInstructions,
+        completionNotes: appointments.completionNotes,
+        recurring: appointments.recurring,
+        recurringInterval: appointments.recurringInterval,
+        nextRecurringDate: appointments.nextRecurringDate
+      })
       .from(appointments)
-      .where(
-        and(
-          eq(appointments.customerId, customerId),
-          eq(appointments.hiddenFromCustomer, false)
-        )
-      );
+      .where(eq(appointments.customerId, customerId));
+
+    return appointments;
   }
 
   async getProviderAppointments(providerId: number): Promise<Appointment[]> {
@@ -564,51 +572,6 @@ export class DatabaseStorage implements IStorage {
   private parseTimeToMs(time: string): number {
     const [hours, minutes] = time.split(':').map(Number);
     return (hours * 3600 + minutes * 60) * 1000;
-  }
-
-  async clearCustomerAppointmentHistory(providerId: number): Promise<void> {
-    try {
-      // Get all services for this provider
-      const providerServices = await this.getProviderServices(providerId);
-      const serviceIds = providerServices.map(s => s.id);
-
-      if (serviceIds.length === 0) {
-        return;
-      }
-
-      // Use raw SQL to ensure proper query formation
-      await db.execute(
-        sql`UPDATE "appointments" 
-            SET "hidden_from_customer" = true 
-            WHERE "service_id" IN (${sql.join(serviceIds, sql`, `)})
-            AND status IN ('completed', 'cancelled', 'declined')`
-      );
-    } catch (error) {
-      console.error('Error in clearCustomerAppointmentHistory:', error);
-      throw new Error('Failed to clear appointment history');
-    }
-  }
-
-  async deleteAppointmentHistory(providerId: number): Promise<void> {
-    try {
-      // Get all services for this provider
-      const providerServices = await this.getProviderServices(providerId);
-      const serviceIds = providerServices.map(s => s.id);
-
-      if (serviceIds.length === 0) {
-        return;
-      }
-
-      // Use raw SQL for the delete operation
-      await db.execute(
-        sql`DELETE FROM "appointments" 
-            WHERE "service_id" IN (${sql.join(serviceIds, sql`, `)})
-            AND status IN ('completed', 'cancelled', 'declined')`
-      );
-    } catch (error) {
-      console.error('Error in deleteAppointmentHistory:', error);
-      throw new Error('Failed to delete appointment history');
-    }
   }
 }
 
