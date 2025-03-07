@@ -187,15 +187,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getCustomerAppointments(customerId: number): Promise<Appointment[]> {
-    // First verify that the customer exists
+    // First verify that the customer exists and has proper access
     const customer = await this.getUser(customerId);
-    if (!customer) throw new Error("Customer not found");
+    if (!customer || customer.role !== "customer") {
+      throw new Error("Customer not found or invalid access");
+    }
 
-    // Get all appointments for this customer
-    return await db
+    // Get all appointments for this specific customer only
+    const customerAppointments = await db
       .select()
       .from(appointments)
-      .where(eq(appointments.customerId, customerId));
+      .where(eq(appointments.customerId, customerId))
+      .orderBy(appointments.startTime);
+
+    return customerAppointments;
   }
 
   async getProviderAppointments(providerId: number): Promise<Appointment[]> {

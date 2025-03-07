@@ -97,7 +97,13 @@ export function registerRoutes(app: Express): Server {
 
     try {
       // Only allow customers to see their own appointments
+      // The user.id from the authenticated session must match the customerId
       const appointments = await dbStorage.getCustomerAppointments(req.user.id);
+
+      if (!appointments) {
+        return res.status(404).send("No appointments found");
+      }
+
       res.json(appointments);
     } catch (err) {
       console.error("Error fetching customer appointments:", err);
