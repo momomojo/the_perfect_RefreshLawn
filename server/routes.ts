@@ -152,6 +152,39 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  // Add these routes after the existing appointment routes
+
+  // Clear customer history (soft delete)
+  app.post("/api/appointments/clear-customer-history", async (req, res) => {
+    if (!req.isAuthenticated() || req.user.role !== "provider") {
+      return res.status(403).send("Only providers can clear appointment history");
+    }
+
+    try {
+      await dbStorage.clearCustomerAppointmentHistory(req.user.id);
+      res.sendStatus(200);
+    } catch (err) {
+      console.error("Error clearing customer appointment history:", err);
+      res.status(500).send("Failed to clear appointment history");
+    }
+  });
+
+  // Delete appointment history (hard delete)
+  app.delete("/api/appointments/delete-history", async (req, res) => {
+    if (!req.isAuthenticated() || req.user.role !== "provider") {
+      return res.status(403).send("Only providers can delete appointment history");
+    }
+
+    try {
+      await dbStorage.deleteAppointmentHistory(req.user.id);
+      res.sendStatus(200);
+    } catch (err) {
+      console.error("Error deleting appointment history:", err);
+      res.status(500).send("Failed to delete appointment history");
+    }
+  });
+
+
   // Weekly Schedule routes
   app.post("/api/weekly-schedules", async (req, res) => {
     if (!req.isAuthenticated() || req.user.role !== "provider") {

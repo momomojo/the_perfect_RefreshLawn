@@ -205,10 +205,16 @@ export class DatabaseStorage implements IStorage {
         completionNotes: appointments.completionNotes,
         recurring: appointments.recurring,
         recurringInterval: appointments.recurringInterval,
-        nextRecurringDate: appointments.nextRecurringDate
+        nextRecurringDate: appointments.nextRecurringDate,
+        hiddenFromCustomer: appointments.hiddenFromCustomer
       })
       .from(appointments)
-      .where(eq(appointments.customerId, customerId));
+      .where(
+        and(
+          eq(appointments.customerId, customerId),
+          eq(appointments.hiddenFromCustomer, false)
+        )
+      );
 
     return appointments;
   }
@@ -572,6 +578,47 @@ export class DatabaseStorage implements IStorage {
   private parseTimeToMs(time: string): number {
     const [hours, minutes] = time.split(':').map(Number);
     return (hours * 3600 + minutes * 60) * 1000;
+  }
+
+  async clearCustomerAppointmentHistory(providerId: number): Promise<void> {
+    // Get all services for this provider
+    const providerServices = await this.getProviderServices(providerId);
+    const serviceIds = providerServices.map(s => s.id);
+
+    if (serviceIds.length === 0) {
+      return;
+    }
+
+    // Update all completed, cancelled, and declined appointments to be hidden
+    await db
+      .update(appointments)
+      .set({ hiddenFromCustomer: true })
+      .where(
+        and(
+          inArray(appointments.serviceId, serviceIds),
+          inArray(appointments.status, ["completed", "cancelled", "declined"])
+        )
+      );
+  }
+
+  async deleteAppointmentHistory(providerId: number): Promise<void> {
+    // Get all services for this provider
+    const providerServices = await this.getProviderServices(providerId);
+    const serviceIds = providerServices.map(s => s.id);
+
+    if (serviceIds.length === 0) {
+      return;
+    }
+
+    // Delete all completed, cancelled, and declined appointments
+    await db
+      .delete(appointments)
+      .where(
+        and(
+          inArray(appointments.serviceId, serviceIds),
+          inArray(appointments.status, ["completed", "cancelled", "declined"])
+        )
+      );
   }
 }
 
