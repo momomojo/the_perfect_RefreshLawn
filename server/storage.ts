@@ -590,19 +590,13 @@ export class DatabaseStorage implements IStorage {
         return;
       }
 
-      // Update using Drizzle ORM
-      await db
-        .update(appointments)
-        .set({ hiddenFromCustomer: true })
-        .where(
-          and(
-            inArray(appointments.serviceId, serviceIds),
-            inArray(
-              appointments.status, 
-              ["completed", "cancelled", "declined"]
-            )
-          )
-        );
+      // Use raw SQL to ensure proper query formation
+      await db.execute(
+        sql`UPDATE "appointments" 
+            SET hidden_from_customer = true 
+            WHERE service_id IN (${sql.join(serviceIds, sql`, `)})
+            AND status IN ('completed', 'cancelled', 'declined')`
+      );
     } catch (error) {
       console.error('Error in clearCustomerAppointmentHistory:', error);
       throw new Error('Failed to clear appointment history');
@@ -619,18 +613,12 @@ export class DatabaseStorage implements IStorage {
         return;
       }
 
-      // Delete using Drizzle ORM
-      await db
-        .delete(appointments)
-        .where(
-          and(
-            inArray(appointments.serviceId, serviceIds),
-            inArray(
-              appointments.status, 
-              ["completed", "cancelled", "declined"]
-            )
-          )
-        );
+      // Use raw SQL for the delete operation
+      await db.execute(
+        sql`DELETE FROM "appointments" 
+            WHERE service_id IN (${sql.join(serviceIds, sql`, `)})
+            AND status IN ('completed', 'cancelled', 'declined')`
+      );
     } catch (error) {
       console.error('Error in deleteAppointmentHistory:', error);
       throw new Error('Failed to delete appointment history');
