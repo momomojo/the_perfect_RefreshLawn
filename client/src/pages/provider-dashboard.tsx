@@ -124,8 +124,8 @@ export default function ProviderDashboard() {
                 {pendingAppointments.length > 0 ? (
                   <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {pendingAppointments.map((appointment) => (
-                      <AppointmentCard 
-                        key={appointment.id} 
+                      <AppointmentCard
+                        key={appointment.id}
                         appointment={appointment}
                         updateStatus={updateAppointmentMutation.mutate}
                       />
@@ -142,8 +142,8 @@ export default function ProviderDashboard() {
                 {activeAppointments.length > 0 ? (
                   <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {activeAppointments.map((appointment) => (
-                      <AppointmentCard 
-                        key={appointment.id} 
+                      <AppointmentCard
+                        key={appointment.id}
                         appointment={appointment}
                         updateStatus={updateAppointmentMutation.mutate}
                       />
@@ -160,8 +160,8 @@ export default function ProviderDashboard() {
                 {completedAppointments.length > 0 ? (
                   <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {completedAppointments.map((appointment) => (
-                      <AppointmentCard 
-                        key={appointment.id} 
+                      <AppointmentCard
+                        key={appointment.id}
                         appointment={appointment}
                         updateStatus={updateAppointmentMutation.mutate}
                       />
@@ -178,8 +178,8 @@ export default function ProviderDashboard() {
                 {cancelledAppointments.length > 0 ? (
                   <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {cancelledAppointments.map((appointment) => (
-                      <AppointmentCard 
-                        key={appointment.id} 
+                      <AppointmentCard
+                        key={appointment.id}
                         appointment={appointment}
                         updateStatus={updateAppointmentMutation.mutate}
                       />

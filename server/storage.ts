@@ -219,21 +219,17 @@ export class DatabaseStorage implements IStorage {
     if (!appointment) throw new Error("Appointment not found");
 
     // Use transaction to ensure data consistency
-    return await db.transaction(async (tx) => {
-      const updates: any = { status };
-      if (notes && status === "completed") {
-        updates.completionNotes = notes;
-      }
+    const [updatedAppointment] = await db
+      .update(appointments)
+      .set({
+        status,
+        ...(notes && status === "completed" ? { completionNotes: notes } : {})
+      })
+      .where(eq(appointments.id, id))
+      .returning();
 
-      const [updatedAppointment] = await tx
-        .update(appointments)
-        .set(updates)
-        .where(eq(appointments.id, id))
-        .returning();
-
-      if (!updatedAppointment) throw new Error("Failed to update appointment");
-      return updatedAppointment;
-    });
+    if (!updatedAppointment) throw new Error("Failed to update appointment");
+    return updatedAppointment;
   }
 
   async createWeeklySchedule(schedule: InsertWeeklySchedule, providerId: number): Promise<WeeklySchedule> {
@@ -498,7 +494,7 @@ export class DatabaseStorage implements IStorage {
       for (const existing of existingAppointments) {
         const existingStart = new Date(existing.startTime);
         const existingTimeMs = existingStart.getHours() * 3600000 + 
-                             existingStart.getMinutes() * 60000;
+                               existingStart.getMinutes() * 60000;
         const existingEnd = existingTimeMs + durationMs;
 
         // Add buffer time to both appointments
