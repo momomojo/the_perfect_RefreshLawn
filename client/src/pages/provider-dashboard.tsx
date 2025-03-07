@@ -86,23 +86,23 @@ export default function ProviderDashboard() {
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/appointments/clear-customer-history");
       if (!res.ok) {
-        const error = await res.text();
-        throw new Error(error);
+        const error = await res.json();
+        throw new Error(error.message || "Failed to clear history");
       }
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/appointments/provider"] });
       queryClient.invalidateQueries({ queryKey: ["/api/appointments/customer"] });
       toast({
         title: "Success",
-        description: "Appointment history cleared from customer view",
+        description: data.message || "Appointment history cleared from customer view",
       });
     },
     onError: (error: Error) => {
       toast({
         title: "Error",
-        description: "Failed to clear history: " + error.message,
+        description: error.message,
         variant: "destructive"
       });
     }
@@ -112,23 +112,23 @@ export default function ProviderDashboard() {
     mutationFn: async () => {
       const res = await apiRequest("DELETE", "/api/appointments/delete-history");
       if (!res.ok) {
-        const error = await res.text();
-        throw new Error(error);
+        const error = await res.json();
+        throw new Error(error.message || "Failed to delete history");
       }
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/appointments/provider"] });
       queryClient.invalidateQueries({ queryKey: ["/api/appointments/customer"] });
       toast({
         title: "Success",
-        description: "Appointment history permanently deleted",
+        description: data.message || "Appointment history permanently deleted",
       });
     },
     onError: (error: Error) => {
       toast({
         title: "Error",
-        description: "Failed to delete history: " + error.message,
+        description: error.message,
         variant: "destructive"
       });
     }
@@ -989,7 +989,7 @@ function BlockedDatesManager() {
     queryKey: ["/api/blocked-dates"],
   });
 
-  const form = useForm({
+  const form= useForm({
     resolver: zodResolver(
       insertBlockedDateSchema.extend({
         date: z.date(),
