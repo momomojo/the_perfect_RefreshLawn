@@ -180,14 +180,14 @@ export default function ProviderDashboard() {
                 <div className="flex justify-between items-center mb-4">
                   <h2 className="text-xl font-semibold">Cancelled & Declined Appointments</h2>
                   <Select
-                    value={selectedCustomerId?.toString() || ""}
-                    onValueChange={(value) => setSelectedCustomerId(value ? parseInt(value) : null)}
+                    value={selectedCustomerId?.toString() || "all"}
+                    onValueChange={(value) => setSelectedCustomerId(value === "all" ? null : parseInt(value))}
                   >
                     <SelectTrigger className="w-[200px]">
                       <SelectValue placeholder="Filter by customer" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">All Customers</SelectItem>
+                      <SelectItem value="all">All Customers</SelectItem>
                       {customersWithCancelledAppointments.map((customerId) => (
                         <SelectItem key={customerId} value={customerId.toString()}>
                           Customer #{customerId}
@@ -438,8 +438,8 @@ function CreateServiceForm() {
     defaultValues: {
       title: "",
       description: "",
-      duration: 60, 
-      price: "0", 
+      duration: 60,
+      price: "0",
       imageUrl: "",
       bufferTime: 0,
       maxDailyBookings: 0,
@@ -474,7 +474,7 @@ function CreateServiceForm() {
         title: data.title,
         description: data.description,
         duration: Number(data.duration),
-        price: data.price, 
+        price: data.price,
         imageUrl,
         bufferTime: Number(data.bufferTime),
         maxDailyBookings: Number(data.maxDailyBookings),
@@ -658,7 +658,7 @@ function WeeklyScheduleManager() {
   const form = useForm({
     resolver: zodResolver(insertWeeklyScheduleSchema),
     defaultValues: {
-      dayOfWeek: 1, 
+      dayOfWeek: 1,
       startTime: "09:00",
       endTime: "17:00",
       isAvailable: true
@@ -1009,7 +1009,7 @@ function BlockedDatesManager() {
               <FormField
                 control={form.control}
                 name="startTime"
-                render={({ field }) => (
+                render={({ field}) => (
                   <FormItem>
                     <FormLabel>Start Time</FormLabel>
                     <FormControl>
