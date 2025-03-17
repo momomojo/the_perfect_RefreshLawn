@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text, TouchableOpacity, ScrollView } from "react-native";
-import { Scissors, Leaf, Droplets, Calendar } from "lucide-react-native";
+import { Scissors, Leaf, Droplets, Calendar, Trash } from "lucide-react-native";
 
 interface QuickBookingProps {
   onServiceSelect?: (serviceType: string) => void;
@@ -24,7 +24,7 @@ const QuickBooking = ({
   const renderIcon = (
     iconType: string,
     size: number = 24,
-    color: string = "#ffffff",
+    color: string = "#ffffff"
   ) => {
     switch (iconType) {
       case "mowing":
@@ -32,7 +32,7 @@ const QuickBooking = ({
       case "fertilizing":
         return <Leaf size={size} color={color} />;
       case "cleanup":
-        return <Leaf size={size} color={color} />;
+        return <Trash size={size} color={color} />;
       case "irrigation":
         return <Droplets size={size} color={color} />;
       case "schedule":

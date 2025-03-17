@@ -1,15 +1,8 @@
 import React from "react";
 import { View, Text, SafeAreaView, ScrollView, Image } from "react-native";
-import { useLocalSearchParams } from "expo-router";
 import NewPasswordForm from "../components/auth/NewPasswordForm";
 
 const ResetPasswordScreen = () => {
-  // Get token and email from URL params
-  const { token, email } = useLocalSearchParams<{
-    token: string;
-    email: string;
-  }>();
-
   return (
     <SafeAreaView className="flex-1 bg-gray-50">
       <ScrollView contentContainerStyle={{ flexGrow: 1 }} className="flex-1">
@@ -30,7 +23,7 @@ const ResetPasswordScreen = () => {
               </Text>
             </View>
 
-            <NewPasswordForm token={token} email={email} />
+            <NewPasswordForm />
           </View>
         </View>
       </ScrollView>

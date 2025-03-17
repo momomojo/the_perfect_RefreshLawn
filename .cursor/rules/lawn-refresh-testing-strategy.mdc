@@ -1,0 +1,230 @@
+---
+description: This guide will cover how to test your React Native (Expo) + Supabase + Stripe application efficiently
+globs: 
+alwaysApply: false
+---
+
+# **📌 Lawn Refresh Testing Strategy**
+This guide will cover how to test your **React Native (Expo) + Supabase + Stripe** application efficiently. We will use:
+
+✅ **Unit Tests** → Business logic, Zustand store, and API calls  
+✅ **End-to-End (E2E) Tests** → UI interactions, user flows (login, booking, payments)  
+✅ **API Tests** → Supabase Edge Functions and backend services  
+✅ **CI/CD Testing** → Automate Jest & Detox tests before deployment  
+
+### 📖 **Documentation References**
+- 📌 **React Native Testing Overview:** [Expo Testing Guide](https://docs.expo.dev/guides/testing/)  
+- 📌 **Jest (Unit Testing for React Native):** [Jest Docs](https://jestjs.io/docs/tutorial-react-native)  
+- 📌 **Detox (E2E Testing for React Native):** [Detox Docs](https://wix.github.io/Detox/)  
+- 📌 **Supabase API & Testing:** [Supabase Docs](https://supabase.com/docs/guides/testing)  
+- 📌 **Stripe Payments Testing:** [Stripe Test Mode](https://stripe.com/docs/testing)  
+- 📌 **GitHub Actions CI/CD:** [GitHub Actions Docs](https://docs.github.com/en/actions)  
+
+---
+
+## **1️⃣ Unit Testing (Jest)**
+✅ **Best for:** Business logic, Zustand state, API interactions.  
+✅ **Tool:** [Jest](https://jestjs.io/docs/tutorial-react-native)  
+
+### **📌 Install Jest**
+```bash
+npm install --save-dev jest @testing-library/react-native jest-expo
+```
+- **jest-expo**: Ensures Jest runs correctly in Expo.
+- **@testing-library/react-native**: Simulates user interactions in components.
+
+### **📌 Configure Jest (in `package.json`)**
+```json
+"jest": {
+  "preset": "jest-expo",
+  "setupFilesAfterEnv": ["@testing-library/react-native/cleanup-after-each"]
+}
+```
+
+### **🚀 Example: Testing Zustand Store**
+```ts
+import { useAuthStore } from '../stores/useAuthStore';
+
+test('User login updates Zustand store', async () => {
+  const { signIn, user } = useAuthStore.getState();
+  await signIn('test@email.com', 'password123');
+
+  expect(user).not.toBe(null);
+  expect(user.email).toBe('test@email.com');
+});
+```
+
+### **🚀 Example: Mocking Supabase API**
+```ts
+import { supabase } from '../lib/supabase';
+
+jest.mock('../lib/supabase', () => ({
+  from: jest.fn(() => ({
+    insert: jest.fn().mockResolvedValue({ data: { id: 1 }, error: null })
+  }))
+}));
+
+test('Create a booking successfully', async () => {
+  const { data, error } = await supabase.from('bookings').insert({
+    user_id: 1,
+    service_type: 'Lawn Mowing'
+  });
+
+  expect(data.id).toBe(1);
+  expect(error).toBe(null);
+});
+```
+
+✅ **Run Jest Tests**
+```bash
+npm test
+```
+
+📌 **[Jest Docs](https://jestjs.io/docs/tutorial-react-native)** for more.
+
+---
+
+## **2️⃣ End-to-End (E2E) Testing (Detox)**
+✅ **Best for:** User flows (Login, Booking a Service, Payment).  
+✅ **Tool:** [Detox](https://wix.github.io/Detox/)  
+
+### **📌 Install Detox**
+```bash
+npm install -g detox-cli
+npm install --save-dev detox jest-circus
+```
+
+### **📌 Configure Detox (Run once)**
+```bash
+detox init -r jest
+```
+
+### **🚀 Example: Testing Booking Flow**
+```js
+describe('Booking a service', () => {
+  beforeAll(async () => {
+    await device.launchApp();
+  });
+
+  it('should allow a user to book a service', async () => {
+    await element(by.id('service-dropdown')).tap();
+    await element(by.text('Lawn Mowing')).tap();
+    await element(by.id('date-picker')).tap();
+    await element(by.text('Confirm')).tap();
+    await element(by.id('confirm-booking')).tap();
+    await expect(element(by.text('Booking Confirmed!'))).toBeVisible();
+  });
+});
+```
+
+✅ **Run Detox Tests**
+```bash
+detox test
+```
+
+📌 **[Detox Docs](https://wix.github.io/Detox/)** for more.
+
+---
+
+## **3️⃣ API Tests (Supabase Edge Functions & Stripe)**
+✅ **Best for:** Database API calls, Edge Functions, and Stripe payments.  
+✅ **Tool:** **Pytest (Python) OR Jest (JavaScript)**  
+
+### **🚀 Example: API Test with Pytest**
+```python
+import requests
+
+BASE_URL = "https://your-supabase-url.supabase.co/rest/v1"
+
+def test_create_booking():
+    payload = {"user_id": 1, "service_type": "Lawn Mowing", "status": "pending"}
+    headers = {"apikey": "YOUR_SUPABASE_ANON_KEY", "Content-Type": "application/json"}
+
+    response = requests.post(f"{BASE_URL}/bookings", json=payload, headers=headers)
+
+    assert response.status_code == 201
+    assert response.json()["status"] == "pending"
+```
+
+### **🚀 Example: API Test with Jest**
+```ts
+import request from 'supertest';
+
+test('Create a booking via Supabase API', async () => {
+  const response = await request('https://your-supabase-url.supabase.co/rest/v1')
+    .post('/bookings')
+    .set('apikey', 'YOUR_SUPABASE_ANON_KEY')
+    .send({ user_id: 1, service_type: 'Lawn Mowing', status: 'pending' });
+
+  expect(response.status).toBe(201);
+  expect(response.body.status).toBe('pending');
+});
+```
+
+📌 **[Supabase Testing Docs](https://supabase.com/docs/guides/testing)** for more.
+
+---
+
+## **4️⃣ CI/CD Testing with GitHub Actions**
+✅ **Best for:** Running Jest & Detox tests before deployment.  
+✅ **Tool:** [GitHub Actions](https://docs.github.com/en/actions)  
+
+### **📌 GitHub Actions Workflow**
+```yaml
+name: Run Tests
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 16
+      - run: npm install
+      - run: npm test  # Runs Jest unit tests
+      - run: detox build --configuration android.emu.debug
+      - run: detox test --configuration android.emu.debug
+```
+
+✅ **This will:**
+- **Run Jest tests**
+- **Build and test Detox on an Android emulator**
+- **Ensure no errors before deployment**
+
+📌 **[GitHub Actions Docs](https://docs.github.com/en/actions)** for more.
+
+---
+
+# **🔥 Final Testing Strategy Summary**
+| **Test Type** | **Best For** | **Tool** |
+|--------------|-------------|----------|
+| **Unit Tests** | Zustand store, Supabase calls | Jest |
+| **E2E Tests** | UI interactions, Booking flow | Detox |
+| **API Tests** | Supabase Edge Functions, Stripe API | Pytest OR Jest |
+| **CI/CD** | Automate testing on new code | GitHub Actions |
+
+### **🚀 Priority Testing Steps**
+1️⃣ **Unit test** Zustand store & API logic with Jest  
+2️⃣ **E2E test** user flows with Detox  
+3️⃣ **API test** Supabase & Stripe with Pytest/Jest  
+4️⃣ **Automate in CI/CD** with GitHub Actions  
+
+---
+
+### **📌 Final Commands to Get Started**
+```bash
+# Install Jest & Detox
+npm install --save-dev jest @testing-library/react-native detox jest-circus
+
+# Run Jest tests
+npm test
+
+# Run Detox UI tests
+detox test
+
+# Deploy CI/CD tests via GitHub Actions
+git push
+```

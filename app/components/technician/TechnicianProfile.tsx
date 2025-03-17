@@ -6,6 +6,8 @@ import {
   Switch,
   TouchableOpacity,
   TextInput,
+  Alert,
+  Image,
 } from "react-native";
 import {
   ChevronDown,
@@ -14,7 +16,10 @@ import {
   Clock,
   Bell,
   Save,
+  LogOut,
+  ChevronRight,
 } from "lucide-react-native";
+import { useAuth } from "../../../lib/auth";
 
 interface TechnicianProfileProps {
   name?: string;
@@ -63,9 +68,11 @@ const TechnicianProfile = ({
   const [editedSkills, setEditedSkills] = useState(skills);
   const [editedAvailability, setEditedAvailability] = useState(availability);
   const [editedNotifications, setEditedNotifications] = useState(
-    notificationPreferences,
+    notificationPreferences
   );
   const [showSkillsDropdown, setShowSkillsDropdown] = useState(false);
+  const [loadingState, setLoading] = useState(false);
+  const { signOut } = useAuth();
 
   const allSkillOptions = [
     "Lawn Mowing",
@@ -91,20 +98,20 @@ const TechnicianProfile = ({
   const toggleAvailability = (day: string) => {
     setEditedAvailability(
       editedAvailability.map((item) =>
-        item.day === day ? { ...item, available: !item.available } : item,
-      ),
+        item.day === day ? { ...item, available: !item.available } : item
+      )
     );
   };
 
   const updateAvailabilityTime = (
     day: string,
     field: "startTime" | "endTime",
-    value: string,
+    value: string
   ) => {
     setEditedAvailability(
       editedAvailability.map((item) =>
-        item.day === day ? { ...item, [field]: value } : item,
-      ),
+        item.day === day ? { ...item, [field]: value } : item
+      )
     );
   };
 
@@ -127,6 +134,25 @@ const TechnicianProfile = ({
     });
   };
 
+  const handleLogout = async () => {
+    console.log("Logout button pressed");
+    try {
+      setLoading(true);
+
+      // Try to sign out
+      await signOut();
+      console.log("Sign out API call completed");
+
+      // No need for additional setTimeout or checks
+      // The auth context will handle the navigation once signed out
+    } catch (error) {
+      console.error("Logout error:", error);
+      Alert.alert("Error", "Failed to log out. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <ScrollView className="flex-1 bg-white">
       <View className="p-4">
@@ -139,7 +165,7 @@ const TechnicianProfile = ({
             {profileImage ? (
               <Image
                 source={{ uri: profileImage }}
-                className="w-24 h-24 rounded-full"
+                style={{ width: 24, height: 24, borderRadius: 24 }}
               />
             ) : (
               <Camera size={40} color="#9ca3af" />
@@ -209,7 +235,11 @@ const TechnicianProfile = ({
                     onPress={() => toggleSkill(skill)}
                   >
                     <View
-                      className={`w-5 h-5 rounded mr-2 ${editedSkills.includes(skill) ? "bg-green-500" : "border border-gray-300"}`}
+                      className={`w-5 h-5 rounded mr-2 ${
+                        editedSkills.includes(skill)
+                          ? "bg-green-500"
+                          : "border border-gray-300"
+                      }`}
                     />
                     <Text>{skill}</Text>
                   </TouchableOpacity>
@@ -328,6 +358,31 @@ const TechnicianProfile = ({
                 trackColor={{ false: "#d1d5db", true: "#10b981" }}
               />
             </View>
+          </View>
+        </View>
+
+        {/* Account Settings Section - NEW */}
+        <View className="mb-6">
+          <Text className="text-lg font-semibold mb-3">Account Settings</Text>
+          <View className="bg-gray-50 rounded-lg p-4">
+            <TouchableOpacity className="flex-row justify-between items-center p-3 bg-white rounded-md mb-2">
+              <Text>Change Password</Text>
+              <ChevronRight size={16} color="#9ca3af" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              className="flex-row justify-between items-center p-3 bg-white rounded-md"
+              onPress={handleLogout}
+              disabled={loadingState}
+            >
+              <View className="flex-row items-center">
+                <LogOut size={16} color="#ef4444" />
+                <Text className="ml-2 text-red-500">
+                  {loadingState ? "Logging out..." : "Log Out"}
+                </Text>
+              </View>
+              <ChevronRight size={16} color="#9ca3af" />
+            </TouchableOpacity>
           </View>
         </View>
 

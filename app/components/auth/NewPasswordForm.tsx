@@ -8,20 +8,15 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Eye, EyeOff, Lock, CheckCircle } from "lucide-react-native";
+import { useAuth } from "../../../lib/auth";
 
-interface NewPasswordFormProps {
-  token?: string;
-  email?: string;
-}
-
-const NewPasswordForm = ({
-  token = "sample-token",
-  email = "user@example.com",
-}: NewPasswordFormProps) => {
+const NewPasswordForm = () => {
   const router = useRouter();
+  const { updatePassword, loading, error } = useAuth();
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -56,7 +51,7 @@ const NewPasswordForm = ({
     }));
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!password || !confirmPassword) {
       Alert.alert("Error", "Please fill in all fields");
       return;
@@ -68,23 +63,25 @@ const NewPasswordForm = ({
     }
 
     const isPasswordValid = Object.values(validations).every(
-      (value) => value === true,
+      (value) => value === true
     );
     if (!isPasswordValid) {
       Alert.alert("Error", "Password does not meet all requirements");
       return;
     }
 
-    setIsSubmitting(true);
-
-    // Simulate API call to reset password
-    setTimeout(() => {
+    try {
+      setIsSubmitting(true);
+      await updatePassword(password);
+      // Navigation is handled in the auth context
+    } catch (err) {
+      console.error("Error updating password:", err);
+    } finally {
       setIsSubmitting(false);
-      Alert.alert("Success", "Your password has been reset successfully", [
-        { text: "OK", onPress: () => router.replace("/") },
-      ]);
-    }, 1500);
+    }
   };
+
+  const isProcessing = isSubmitting || loading;
 
   return (
     <KeyboardAvoidingView
@@ -97,7 +94,7 @@ const NewPasswordForm = ({
             Set New Password
           </Text>
           <Text className="text-gray-600 text-center mb-6">
-            Create a new password for {email}
+            Create a new secure password for your account
           </Text>
 
           <View className="mb-6">
@@ -114,8 +111,12 @@ const NewPasswordForm = ({
                 }}
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
+                editable={!isProcessing}
               />
-              <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+              <TouchableOpacity
+                onPress={() => setShowPassword(!showPassword)}
+                disabled={isProcessing}
+              >
                 {showPassword ? (
                   <EyeOff size={20} color="#6b7280" />
                 ) : (
@@ -141,9 +142,11 @@ const NewPasswordForm = ({
                 }}
                 secureTextEntry={!showConfirmPassword}
                 autoCapitalize="none"
+                editable={!isProcessing}
               />
               <TouchableOpacity
                 onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                disabled={isProcessing}
               >
                 {showConfirmPassword ? (
                   <EyeOff size={20} color="#6b7280" />
@@ -186,21 +189,36 @@ const NewPasswordForm = ({
             </View>
           </View>
 
+          {error && (
+            <View className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <Text className="text-red-600">{error}</Text>
+            </View>
+          )}
+
           <TouchableOpacity
-            className={`w-full py-3 rounded-lg ${isSubmitting || !Object.values(validations).every(Boolean) ? "bg-blue-300" : "bg-blue-500"}`}
+            className={`w-full py-3 rounded-lg ${
+              isProcessing || !Object.values(validations).every(Boolean)
+                ? "bg-blue-300"
+                : "bg-blue-500"
+            }`}
             onPress={handleSubmit}
             disabled={
-              isSubmitting || !Object.values(validations).every(Boolean)
+              isProcessing || !Object.values(validations).every(Boolean)
             }
           >
-            <Text className="text-white font-bold text-center text-base">
-              {isSubmitting ? "Resetting Password..." : "Reset Password"}
-            </Text>
+            {isProcessing ? (
+              <ActivityIndicator color="white" />
+            ) : (
+              <Text className="text-white font-bold text-center text-base">
+                Reset Password
+              </Text>
+            )}
           </TouchableOpacity>
 
           <TouchableOpacity
             className="mt-4"
             onPress={() => router.replace("/")}
+            disabled={isProcessing}
           >
             <Text className="text-blue-500 text-center">Back to Login</Text>
           </TouchableOpacity>

@@ -9,26 +9,16 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Mail } from "lucide-react-native";
+import { useAuth } from "../../../lib/auth";
 
-interface PasswordResetFormProps {
-  onSubmit?: (email: string) => Promise<void>;
-  isLoading?: boolean;
-}
-
-const PasswordResetForm = ({
-  onSubmit = async (email) => {
-    // Mock implementation for the UI scaffolding
-    console.log(`Password reset requested for: ${email}`);
-    return new Promise((resolve) => setTimeout(resolve, 1500));
-  },
-  isLoading = false,
-}: PasswordResetFormProps) => {
+const PasswordResetForm = () => {
   const router = useRouter();
+  const { resetPassword, loading, error } = useAuth();
   const [email, setEmail] = useState("");
   const [localLoading, setLocalLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
-  const loading = isLoading || localLoading;
+  const isLoading = loading || localLoading;
 
   const handleSubmit = async () => {
     if (!email.trim()) {
@@ -38,10 +28,11 @@ const PasswordResetForm = ({
 
     try {
       setLocalLoading(true);
-      await onSubmit(email);
+      await resetPassword(email);
       setSubmitted(true);
-    } catch (error) {
-      Alert.alert("Error", "Failed to send reset link. Please try again.");
+    } catch (err) {
+      // Error is handled in the auth context
+      console.error("Password reset error:", err);
     } finally {
       setLocalLoading(false);
     }
@@ -95,16 +86,24 @@ const PasswordResetForm = ({
           autoCapitalize="none"
           value={email}
           onChangeText={setEmail}
-          editable={!loading}
+          editable={!isLoading}
         />
       </View>
 
+      {error && (
+        <View className="mb-4">
+          <Text className="text-red-500 text-sm">{error}</Text>
+        </View>
+      )}
+
       <TouchableOpacity
-        className={`w-full py-3 rounded-md ${loading ? "bg-blue-400" : "bg-blue-600"}`}
+        className={`w-full py-3 rounded-md ${
+          isLoading ? "bg-blue-400" : "bg-blue-600"
+        }`}
         onPress={handleSubmit}
-        disabled={loading}
+        disabled={isLoading}
       >
-        {loading ? (
+        {isLoading ? (
           <ActivityIndicator color="white" />
         ) : (
           <Text className="text-center text-white font-semibold">

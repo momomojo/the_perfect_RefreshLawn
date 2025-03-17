@@ -6,6 +6,7 @@ import {
   Switch,
   TouchableOpacity,
   TextInput,
+  Alert,
 } from "react-native";
 import {
   ChevronRight,
@@ -17,7 +18,9 @@ import {
   Phone,
   Save,
   Plus,
+  LogOut,
 } from "lucide-react-native";
+import { useAuth } from "../../../lib/auth";
 
 interface ProfileSettingsProps {
   userType?: "customer" | "technician" | "admin";
@@ -73,6 +76,8 @@ const ProfileSettings = ({
 }: ProfileSettingsProps) => {
   const [formData, setFormData] = useState(userData);
   const [isEditing, setIsEditing] = useState(false);
+  const { signOut, loading } = useAuth();
+  const [loadingState, setLoading] = useState(false);
 
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({
@@ -82,19 +87,47 @@ const ProfileSettings = ({
   };
 
   const handleNotificationToggle = (type: "email" | "push" | "sms") => {
-    setFormData((prev) => ({
-      ...prev,
-      notificationPreferences: {
-        ...prev.notificationPreferences,
-        [type]: !prev.notificationPreferences?.[type],
-      },
-    }));
+    setFormData((prev) => {
+      // Ensure notificationPreferences exists with default values
+      const currentPreferences = prev.notificationPreferences || {
+        email: false,
+        push: false,
+        sms: false,
+      };
+
+      return {
+        ...prev,
+        notificationPreferences: {
+          ...currentPreferences,
+          [type]: !currentPreferences[type],
+        },
+      };
+    });
   };
 
   const handleSaveProfile = () => {
     // Here you would typically save the profile data to your backend
     console.log("Saving profile data:", formData);
     setIsEditing(false);
+  };
+
+  const handleLogout = async () => {
+    console.log("Logout button pressed");
+    try {
+      setLoading(true);
+
+      // Try to sign out
+      await signOut();
+      console.log("Sign out API call completed");
+
+      // No need for additional setTimeout or checks
+      // The auth context will handle the navigation once signed out
+    } catch (error) {
+      console.error("Logout error:", error);
+      Alert.alert("Error", "Failed to log out. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -256,41 +289,45 @@ const ProfileSettings = ({
         </View>
 
         {/* Payment Methods (Customer only) */}
-        {userType === "customer" && (
-          <View className="mb-6 bg-gray-50 rounded-xl p-4">
-            <Text className="text-lg font-semibold mb-4">Payment Methods</Text>
+        {userType === "customer" &&
+          formData.paymentMethods &&
+          formData.paymentMethods.length > 0 && (
+            <View className="mb-6 bg-gray-50 rounded-xl p-4">
+              <Text className="text-lg font-semibold mb-4">
+                Payment Methods
+              </Text>
 
-            {formData.paymentMethods?.map((method) => (
-              <View
-                key={method.id}
-                className="flex-row justify-between items-center p-3 bg-white rounded-md mb-2 border border-gray-100"
-              >
-                <View className="flex-row items-center">
-                  <CreditCard size={20} color="#6b7280" />
-                  <View className="ml-3">
-                    <Text>
-                      {method.type} •••• {method.last4}
-                    </Text>
-                    <Text className="text-xs text-gray-500">
-                      Expires {method.expiryDate}
-                    </Text>
+              {formData.paymentMethods?.map((method) => (
+                <View
+                  key={method.id}
+                  className="flex-row justify-between items-center p-3 bg-white rounded-md mb-2 border border-gray-100"
+                >
+                  <View className="flex-row items-center">
+                    <CreditCard size={20} color="#6b7280" />
+                    <View className="ml-3">
+                      <Text>
+                        {method.type} •••• {method.last4}
+                      </Text>
+                      <Text className="text-xs text-gray-500">
+                        Expires {method.expiryDate}
+                      </Text>
+                    </View>
                   </View>
+                  {method.isDefault && (
+                    <View className="bg-blue-100 px-2 py-1 rounded">
+                      <Text className="text-xs text-blue-700">Default</Text>
+                    </View>
+                  )}
+                  <ChevronRight size={16} color="#9ca3af" />
                 </View>
-                {method.isDefault && (
-                  <View className="bg-blue-100 px-2 py-1 rounded">
-                    <Text className="text-xs text-blue-700">Default</Text>
-                  </View>
-                )}
-                <ChevronRight size={16} color="#9ca3af" />
-              </View>
-            ))}
+              ))}
 
-            <TouchableOpacity className="flex-row items-center justify-center p-3 bg-gray-100 rounded-md mt-2">
-              <Plus size={16} color="#6b7280" />
-              <Text className="ml-2 text-gray-700">Add Payment Method</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+              <TouchableOpacity className="flex-row items-center justify-center p-3 bg-gray-100 rounded-md mt-2">
+                <Plus size={16} color="#6b7280" />
+                <Text className="ml-2 text-gray-700">Add Payment Method</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
         {/* Account Settings */}
         <View className="mb-6 bg-gray-50 rounded-xl p-4">
@@ -306,11 +343,23 @@ const ProfileSettings = ({
             <ChevronRight size={16} color="#9ca3af" />
           </TouchableOpacity>
 
-          <TouchableOpacity className="flex-row justify-between items-center p-3 bg-white rounded-md">
-            <Text className="text-red-500">Log Out</Text>
+          <TouchableOpacity
+            className="flex-row justify-between items-center p-3 bg-white rounded-md"
+            onPress={handleLogout}
+            disabled={loadingState}
+          >
+            <View className="flex-row items-center">
+              <LogOut size={16} color="#ef4444" />
+              <Text className="ml-2 text-red-500">
+                {loadingState ? "Logging out..." : "Log Out"}
+              </Text>
+            </View>
             <ChevronRight size={16} color="#9ca3af" />
           </TouchableOpacity>
         </View>
+
+        {/* Add some bottom padding */}
+        <View style={{ height: 40 }} />
       </View>
     </ScrollView>
   );

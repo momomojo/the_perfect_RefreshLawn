@@ -156,7 +156,13 @@ const BookingForm = ({ onComplete = () => {} }: BookingFormProps) => {
         {[1, 2, 3, 4, 5, 6, 7].map((step) => (
           <View
             key={step}
-            className={`h-2 w-2 rounded-full ${step === currentStep ? "bg-green-500" : step < currentStep ? "bg-gray-400" : "bg-gray-200"}`}
+            className={`h-2 w-2 rounded-full ${
+              step === currentStep
+                ? "bg-green-500"
+                : step < currentStep
+                ? "bg-gray-400"
+                : "bg-gray-200"
+            }`}
           />
         ))}
       </View>
@@ -323,7 +329,9 @@ const BookingForm = ({ onComplete = () => {} }: BookingFormProps) => {
 
         <View className="flex-row justify-between mb-6">
           <TouchableOpacity
-            className={`bg-white rounded-lg p-4 shadow-sm w-[48%] items-center ${bookingData.isRecurring ? "border-2 border-green-500" : ""}`}
+            className={`bg-white rounded-lg p-4 shadow-sm w-[48%] items-center ${
+              bookingData.isRecurring ? "border-2 border-green-500" : ""
+            }`}
             onPress={() => handleRecurringToggle(true)}
           >
             <Text className="text-lg font-semibold mb-2">Yes</Text>
@@ -333,7 +341,9 @@ const BookingForm = ({ onComplete = () => {} }: BookingFormProps) => {
           </TouchableOpacity>
 
           <TouchableOpacity
-            className={`bg-white rounded-lg p-4 shadow-sm w-[48%] items-center ${!bookingData.isRecurring ? "border-2 border-green-500" : ""}`}
+            className={`bg-white rounded-lg p-4 shadow-sm w-[48%] items-center ${
+              !bookingData.isRecurring ? "border-2 border-green-500" : ""
+            }`}
             onPress={() => handleRecurringToggle(false)}
           >
             <Text className="text-lg font-semibold mb-2">No</Text>
