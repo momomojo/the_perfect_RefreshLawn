@@ -26,24 +26,46 @@ export const getUserRole = async (): Promise<string | null> => {
 
     if (session.access_token) {
       const jwt = jwtDecode(session.access_token);
-      userRoleFromJwt = (jwt as any).user_role;
+      console.log(
+        "User role from JWT claims:",
+        JSON.stringify({ type: typeof (jwt as any).user_role })
+      );
+      userRoleFromJwt = (jwt as any).user_role || null;
+
+      // If user_role is not found, also check app_metadata within JWT
+      if (!userRoleFromJwt && (jwt as any).app_metadata?.role) {
+        userRoleFromJwt = (jwt as any).app_metadata.role;
+      }
     }
 
-    const role =
-      userRoleFromJwt ||
-      session.user.app_metadata?.role ||
-      session.user.user_metadata?.role ||
-      "customer"; // Default to customer if no role found
+    if (userRoleFromJwt) {
+      return userRoleFromJwt;
+    } else {
+      console.log("Role not found in JWT claims, querying database...");
+      // If role isn't in the JWT, query the database directly as fallback
+      const { data: profileData, error } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", session.user.id)
+        .single();
 
-    return role;
+      if (error) {
+        console.error("Error fetching role from database:", error);
+        return "customer"; // Default role
+      }
+
+      console.log("Role from database:", profileData?.role);
+      return profileData?.role || "customer";
+    }
   } catch (error) {
     console.error("Error decoding JWT or getting user role:", error);
     // Fallback to checking only metadata
-    return (
+    const role =
       session.user.app_metadata?.role ||
       session.user.user_metadata?.role ||
-      "customer"
-    );
+      "customer";
+
+    return role;
   }
 };
 
@@ -79,5 +101,30 @@ export const isCustomer = async (): Promise<boolean> => {
  * Useful after a role change
  */
 export const refreshUserSession = async (): Promise<void> => {
-  await supabase.auth.refreshSession();
+  try {
+    // Force a session refresh to get updated claims
+    const { data, error } = await supabase.auth.refreshSession();
+
+    if (error) {
+      console.error("Error refreshing session:", error);
+      throw error;
+    }
+
+    if (!data.session) {
+      console.error("No session returned after refresh");
+      throw new Error("Session refresh failed");
+    }
+
+    // Log JWT claims for debugging
+    if (data.session.access_token) {
+      const jwt = jwtDecode(data.session.access_token);
+      console.log("Updated JWT claims:", {
+        user_role: (jwt as any).user_role,
+        app_metadata: (jwt as any).app_metadata,
+      });
+    }
+  } catch (error) {
+    console.error("Error in refreshUserSession:", error);
+    throw error;
+  }
 };

@@ -5,6 +5,7 @@ import {
   isAdmin,
   isTechnician,
   isCustomer,
+  refreshUserSession,
 } from "../utils/roleUtils";
 
 /**
@@ -45,9 +46,12 @@ export const useUserRole = () => {
     fetchRole();
 
     // Listen for auth state changes to update the role
-    const { data: authListener } = supabase.auth.onAuthStateChange(async () => {
-      fetchRole();
-    });
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log("Supabase auth event:", event);
+        fetchRole();
+      }
+    );
 
     return () => {
       // Clean up the listener when the component unmounts
@@ -61,7 +65,7 @@ export const useUserRole = () => {
       setLoading(true);
 
       // Force a session refresh to get updated claims
-      await supabase.auth.refreshSession();
+      await refreshUserSession();
 
       // Get updated role
       const currentRole = await getUserRole();
@@ -78,6 +82,37 @@ export const useUserRole = () => {
     }
   };
 
+  /**
+   * Force a full reauthentication to get new JWT tokens with updated claims
+   * This is useful for users created before the hook was implemented
+   */
+  const forceReauthentication = async () => {
+    try {
+      setLoading(true);
+
+      // Get current auth user
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error("No user logged in");
+      }
+
+      // Sign out first
+      await supabase.auth.signOut();
+
+      // Wait briefly to ensure signout completes
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // We need to redirect to login page after signing out
+      return true;
+    } catch (error) {
+      console.error("Error in force reauthentication:", error);
+      setLoading(false);
+      return false;
+    }
+  };
+
   return {
     role,
     isAdmin: isUserAdmin,
@@ -85,5 +120,6 @@ export const useUserRole = () => {
     isCustomer: isUserCustomer,
     loading,
     refreshRole,
+    forceReauthentication,
   };
 };

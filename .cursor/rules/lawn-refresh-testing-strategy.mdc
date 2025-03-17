@@ -13,18 +13,18 @@ This guide will cover how to test your **React Native (Expo) + Supabase + Stripe
 ✅ **CI/CD Testing** → Automate Jest & Detox tests before deployment  
 
 ### 📖 **Documentation References**
-- 📌 **React Native Testing Overview:** [Expo Testing Guide](https://docs.expo.dev/guides/testing/)  
-- 📌 **Jest (Unit Testing for React Native):** [Jest Docs](https://jestjs.io/docs/tutorial-react-native)  
-- 📌 **Detox (E2E Testing for React Native):** [Detox Docs](https://wix.github.io/Detox/)  
-- 📌 **Supabase API & Testing:** [Supabase Docs](https://supabase.com/docs/guides/testing)  
-- 📌 **Stripe Payments Testing:** [Stripe Test Mode](https://stripe.com/docs/testing)  
-- 📌 **GitHub Actions CI/CD:** [GitHub Actions Docs](https://docs.github.com/en/actions)  
+- 📌 **React Native Testing Overview:** [Expo Testing Guide](mdc:https:/docs.expo.dev/guides/testing)  
+- 📌 **Jest (Unit Testing for React Native):** [Jest Docs](mdc:https:/jestjs.io/docs/tutorial-react-native)  
+- 📌 **Detox (E2E Testing for React Native):** [Detox Docs](mdc:https:/wix.github.io/Detox)  
+- 📌 **Supabase API & Testing:** [Supabase Docs](mdc:https:/supabase.com/docs/guides/testing)  
+- 📌 **Stripe Payments Testing:** [Stripe Test Mode](mdc:https:/stripe.com/docs/testing)  
+- 📌 **GitHub Actions CI/CD:** [GitHub Actions Docs](mdc:https:/docs.github.com/en/actions)  
 
 ---
 
 ## **1️⃣ Unit Testing (Jest)**
 ✅ **Best for:** Business logic, Zustand state, API interactions.  
-✅ **Tool:** [Jest](https://jestjs.io/docs/tutorial-react-native)  
+✅ **Tool:** [Jest](mdc:https:/jestjs.io/docs/tutorial-react-native)  
 
 ### **📌 Install Jest**
 ```bash
@@ -80,13 +80,13 @@ test('Create a booking successfully', async () => {
 npm test
 ```
 
-📌 **[Jest Docs](https://jestjs.io/docs/tutorial-react-native)** for more.
+📌 **[Jest Docs](mdc:https:/jestjs.io/docs/tutorial-react-native)** for more.
 
 ---
 
 ## **2️⃣ End-to-End (E2E) Testing (Detox)**
 ✅ **Best for:** User flows (Login, Booking a Service, Payment).  
-✅ **Tool:** [Detox](https://wix.github.io/Detox/)  
+✅ **Tool:** [Detox](mdc:https:/wix.github.io/Detox)  
 
 ### **📌 Install Detox**
 ```bash
@@ -122,7 +122,7 @@ describe('Booking a service', () => {
 detox test
 ```
 
-📌 **[Detox Docs](https://wix.github.io/Detox/)** for more.
+📌 **[Detox Docs](mdc:https:/wix.github.io/Detox)** for more.
 
 ---
 
@@ -161,13 +161,13 @@ test('Create a booking via Supabase API', async () => {
 });
 ```
 
-📌 **[Supabase Testing Docs](https://supabase.com/docs/guides/testing)** for more.
+📌 **[Supabase Testing Docs](mdc:https:/supabase.com/docs/guides/testing)** for more.
 
 ---
 
 ## **4️⃣ CI/CD Testing with GitHub Actions**
 ✅ **Best for:** Running Jest & Detox tests before deployment.  
-✅ **Tool:** [GitHub Actions](https://docs.github.com/en/actions)  
+✅ **Tool:** [GitHub Actions](mdc:https:/docs.github.com/en/actions)  
 
 ### **📌 GitHub Actions Workflow**
 ```yaml
@@ -194,7 +194,7 @@ jobs:
 - **Build and test Detox on an Android emulator**
 - **Ensure no errors before deployment**
 
-📌 **[GitHub Actions Docs](https://docs.github.com/en/actions)** for more.
+📌 **[GitHub Actions Docs](mdc:https:/docs.github.com/en/actions)** for more.
 
 ---
 

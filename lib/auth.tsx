@@ -245,6 +245,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setLoading(true);
       setError(null);
 
+      // Before sending to Supabase
+      const normalizedRole = role.toLowerCase().trim();
+
       // Include user role in metadata during signup
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -252,7 +255,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         options: {
           data: {
             // Include role directly in the metadata for proper role assignment
-            role: role,
+            role: normalizedRole,
             first_name: userData.firstName,
             last_name: userData.lastName,
             address: userData.address,
@@ -273,7 +276,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // If the user is created, update the profile with the role and additional data
       if (data.user) {
         const updateData = {
-          role,
+          role: normalizedRole,
           ...(userData.firstName && { first_name: userData.firstName }),
           ...(userData.lastName && { last_name: userData.lastName }),
           ...(userData.address && { address: userData.address }),

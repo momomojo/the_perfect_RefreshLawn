@@ -113,6 +113,8 @@ export const signUpWithRole = async (
   role: UserRole = "customer"
 ): Promise<{ data: any; error: Error | null }> => {
   try {
+    console.log(`Starting signup process for ${email} with role ${role}`);
+
     // Sign up with role in user_metadata
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -124,19 +126,26 @@ export const signUpWithRole = async (
       },
     });
 
-    if (error) throw error;
+    if (error) {
+      console.error(`Signup error from Supabase: ${error.message}`);
+      throw error;
+    }
+
+    console.log(`User created successfully: ${data.user?.id}`);
 
     // Wait to ensure the user is created before we attempt to set their role
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    // This helps mitigate race conditions with database triggers
+    await new Promise((resolve) => setTimeout(resolve, 2000));
 
     // Get the user ID from the sign-up response
     const userId = data.user?.id;
 
     if (userId) {
-      // Explicitly set the role in the user_roles table as a backup
-      // in case the hook or trigger fails
+      console.log(`Setting up role for user ${userId}`);
+
       try {
-        // Try RPC function first
+        // Try RPC function first - this is the recommended approach
+        console.log(`Calling update_user_role_safe RPC for user ${userId}`);
         const { error: rpcError } = await supabase.rpc(
           "update_user_role_safe",
           {
@@ -147,6 +156,36 @@ export const signUpWithRole = async (
 
         // If RPC fails, try direct insert
         if (rpcError) {
+          console.warn(
+            `RPC error: ${rpcError.message}. Attempting direct upsert.`
+          );
+
+          // First check if the profile exists
+          const { data: profileData } = await supabase
+            .from("profiles")
+            .select("id")
+            .eq("id", userId)
+            .single();
+
+          if (!profileData) {
+            console.log(
+              `Profile not found for ${userId}, creating it directly`
+            );
+
+            // Create profile if it doesn't exist
+            const { error: profileError } = await supabase
+              .from("profiles")
+              .insert({
+                id: userId,
+                role: role,
+              });
+
+            if (profileError) {
+              console.warn(`Failed to create profile: ${profileError.message}`);
+            }
+          }
+
+          // Insert into user_roles regardless
           const { error: insertError } = await supabase
             .from("user_roles")
             .upsert(
@@ -159,20 +198,25 @@ export const signUpWithRole = async (
 
           if (insertError) {
             console.warn(
-              "Failed to set user role after signup:",
-              insertError.message
+              `Failed to set user role in user_roles table: ${insertError.message}`
             );
           }
+        } else {
+          console.log(`Role successfully set via RPC for user ${userId}`);
         }
+
+        // Force a session refresh to update JWT claims
+        await supabase.auth.refreshSession();
+        console.log("Session refreshed to update JWT claims");
       } catch (roleError) {
-        console.warn("Error setting role after signup:", roleError);
+        console.warn(`Error setting role after signup: ${roleError}`);
         // Continue anyway, as the initial role in user_metadata might have been set
       }
     }
 
     return { data, error: null };
   } catch (error) {
-    console.error("Error during signup with role:", error);
+    console.error(`Error during signup with role: ${error}`);
     return { data: null, error: error as Error };
   }
 };

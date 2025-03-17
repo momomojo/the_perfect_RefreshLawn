@@ -1,6 +1,6 @@
 -- Migration: Add Test Data Management Functions
 -- Description: Create functions for test data management
--- Version: 20250510000000
+-- Version: 20250510000004
 
 -- Function to safely delete all customers and providers (technicians) along with their related data
 CREATE OR REPLACE FUNCTION public.delete_all_customers_and_providers()
