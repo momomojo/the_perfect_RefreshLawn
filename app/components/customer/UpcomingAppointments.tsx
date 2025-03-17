@@ -9,38 +9,13 @@ interface AppointmentProps {
     time: string;
     serviceType: string;
     address: string;
-    status: "scheduled" | "in-progress" | "completed";
+    status: "scheduled" | "in-progress" | "completed" | "pending" | "cancelled";
   }>;
   onViewAppointment?: (id: string) => void;
 }
 
 const UpcomingAppointments = ({
-  appointments = [
-    {
-      id: "1",
-      date: "May 15, 2023",
-      time: "10:00 AM",
-      serviceType: "Lawn Mowing",
-      address: "123 Green St, Springfield",
-      status: "scheduled",
-    },
-    {
-      id: "2",
-      date: "May 18, 2023",
-      time: "2:30 PM",
-      serviceType: "Hedge Trimming",
-      address: "456 Park Ave, Springfield",
-      status: "scheduled",
-    },
-    {
-      id: "3",
-      date: "May 22, 2023",
-      time: "9:00 AM",
-      serviceType: "Fertilization",
-      address: "789 Meadow Ln, Springfield",
-      status: "scheduled",
-    },
-  ],
+  appointments = [],
   onViewAppointment = (id) => console.log(`View appointment ${id}`),
 }: AppointmentProps) => {
   return (

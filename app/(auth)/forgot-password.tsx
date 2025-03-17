@@ -13,14 +13,6 @@ import PasswordResetForm from "../components/auth/PasswordResetForm";
 import { Leaf } from "lucide-react-native";
 
 const ForgotPasswordScreen = () => {
-  const router = useRouter();
-
-  const handlePasswordResetRequest = async (email: string) => {
-    // This would be replaced with actual API call in a real implementation
-    console.log(`Password reset requested for: ${email}`);
-    return new Promise<void>((resolve) => setTimeout(resolve, 1500));
-  };
-
   return (
     <SafeAreaView className="flex-1 bg-gray-50">
       <StatusBar style="dark" />
@@ -39,7 +31,7 @@ const ForgotPasswordScreen = () => {
                 <Leaf size={48} color="#10b981" />
               </View>
               <Text className="text-2xl font-bold text-green-800">
-                LawnCare Pro
+                Lawn Refresh
               </Text>
               <Text className="text-sm text-gray-600">
                 Professional Lawn Care Services
@@ -47,7 +39,7 @@ const ForgotPasswordScreen = () => {
             </View>
 
             {/* Password Reset Form */}
-            <PasswordResetForm onSubmit={handlePasswordResetRequest} />
+            <PasswordResetForm />
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

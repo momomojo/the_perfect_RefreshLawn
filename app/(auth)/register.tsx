@@ -14,12 +14,6 @@ import RegistrationForm from "../components/auth/RegistrationForm";
 export default function RegisterScreen() {
   const router = useRouter();
 
-  const handleRegistrationComplete = () => {
-    // In a real app, this would handle the registration process
-    // and redirect to verification or login
-    router.push("/");
-  };
-
   return (
     <SafeAreaView className="flex-1 bg-white">
       <ScrollView className="flex-1" contentContainerStyle={{ flexGrow: 1 }}>
@@ -52,7 +46,7 @@ export default function RegisterScreen() {
             </Text>
           </View>
 
-          <RegistrationForm onComplete={handleRegistrationComplete} />
+          <RegistrationForm />
 
           <View className="mt-6 mb-8">
             <Text className="text-center text-gray-600">

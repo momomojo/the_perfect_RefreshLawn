@@ -1,0 +1,50 @@
+---
+description: This is the projoct's tech stack
+globs: 
+alwaysApply: false
+---
+
+# Technical stack
+
+Here is the **full tech stack** for the **Lawn Refresh** SaaS MVP:
+
+---
+
+### **Frontend (Mobile App)**
+- **Framework**: [React Native (Expo)](mdc:https:/expo.dev) – Managed workflow for building cross-platform (iOS & Android) applications.
+- **UI Components**: [NativeBase](mdc:https:/nativebase.io) – Prebuilt UI components designed for React Native apps.
+- **State Management**: [Zustand](mdc:https:/github.com/pmndrs/zustand) – Lightweight and simple state management for global store.
+- **Push Notifications**: [Expo Notifications](mdc:https:/docs.expo.dev/push-notifications/overview) – Unified push notification API for iOS and Android.
+
+
+---
+
+### **Backend (Database, Authentication, APIs)**
+- **Backend as a Service (BaaS)**: [Supabase](mdc:https:/supabase.com) – Provides PostgreSQL database, authentication, storage, and real-time updates.
+- **Database**: [PostgreSQL](mdc:https:/www.postgresql.org) (via Supabase) – Scalable relational database.
+    - SQL database, Never JSON file storage.
+    - Seperate databases for dev, test, and prod.
+- **Authentication**: [Supabase Auth](mdc:https:/supabase.com/docs/guides/auth) – Handles user authentication (email/password, social login if extended).
+- **Storage**: [Supabase Storage](mdc:https:/supabase.com/docs/guides/storage) – For storing user-uploaded images.
+- **Functions & API Endpoints**: [Supabase Edge Functions](mdc:https:/supabase.com/docs/guides/functions) – Serverless API functions to handle logic like Stripe payments and notifications.
+
+---
+
+### **Payments & Monetization**
+- **Payments Processor**: [Stripe](mdc:https:/stripe.com/docs/payments) – Handles transactions, subscriptions, and payout to service providers.
+- **React Native SDK**: [Stripe React Native](mdc:https:/github.com/stripe/stripe-react-native) – Integrates payments directly into the app.
+- **Test/Live Switching**: Stripe Test Mode enabled initially, with easy switch to Live Mode.
+
+---
+
+### **Infrastructure & Deployment**
+- **Cloud Functions**: [Supabase Edge Functions](mdc:https:/supabase.com/docs/guides/functions) – Custom backend logic for notifications, booking management, etc.
+
+  
+---
+
+### **Development Tools**
+- **Debugging**: [Expo DevTools](mdc:https:/docs.expo.dev/workflow/expo-cli) – Built-in debugging tools.
+
+---
+

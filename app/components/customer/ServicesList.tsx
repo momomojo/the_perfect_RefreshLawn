@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -6,8 +6,10 @@ import {
   Image,
   TouchableOpacity,
   Pressable,
+  ActivityIndicator,
 } from "react-native";
 import { Bookmark, Clock, DollarSign, Info, Star } from "lucide-react-native";
+import { supabase } from "../../../utils/supabase";
 
 interface ServiceProps {
   id: string;
@@ -90,82 +92,109 @@ interface ServicesListProps {
 }
 
 const ServicesList = ({
-  services = [
-    {
-      id: "1",
-      name: "Standard Lawn Mowing",
-      description:
-        "Professional lawn mowing service including edging and cleanup. Perfect for regular maintenance of your yard.",
-      price: 45,
-      duration: "1 hour",
-      rating: 4.8,
-      imageUrl:
-        "https://images.unsplash.com/photo-1589923188900-85dae523342b?w=800&q=80",
-      popular: true,
-    },
-    {
-      id: "2",
-      name: "Garden Bed Maintenance",
-      description:
-        "Complete garden bed service including weeding, mulching, and plant care to keep your garden looking its best.",
-      price: 75,
-      duration: "2 hours",
-      rating: 4.6,
-      imageUrl:
-        "https://images.unsplash.com/photo-1416879595882-3373a0480b5b?w=800&q=80",
-    },
-    {
-      id: "3",
-      name: "Hedge Trimming",
-      description:
-        "Professional hedge trimming and shaping to maintain the beauty and health of your landscape features.",
-      price: 60,
-      duration: "1.5 hours",
-      rating: 4.7,
-      imageUrl:
-        "https://images.unsplash.com/photo-1598902108854-0e05b1a4b325?w=800&q=80",
-    },
-    {
-      id: "4",
-      name: "Seasonal Cleanup",
-      description:
-        "Comprehensive yard cleanup including leaf removal, branch pickup, and debris disposal.",
-      price: 120,
-      duration: "3 hours",
-      rating: 4.9,
-      imageUrl:
-        "https://images.unsplash.com/photo-1558904541-efa843a96f01?w=800&q=80",
-      popular: true,
-    },
-    {
-      id: "5",
-      name: "Fertilization Treatment",
-      description:
-        "Professional lawn fertilization to promote healthy growth and vibrant color throughout the season.",
-      price: 85,
-      duration: "1 hour",
-      rating: 4.5,
-      imageUrl:
-        "https://images.unsplash.com/photo-1599488615731-7e5c2823ff28?w=800&q=80",
-    },
-  ],
+  services: propServices,
   onServicePress = (id) => console.log(`Service ${id} pressed`),
 }: ServicesListProps) => {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [services, setServices] = useState<ServiceProps[]>([]);
+
+  useEffect(() => {
+    async function fetchServices() {
+      try {
+        setLoading(true);
+
+        // If services are provided via props, use those
+        if (propServices && propServices.length > 0) {
+          setServices(propServices);
+          setLoading(false);
+          return;
+        }
+
+        // Otherwise fetch from Supabase
+        const { data, error } = await supabase.from("services").select("*");
+
+        if (error) {
+          console.error("Error fetching services:", error.message);
+          setError(error.message);
+          return;
+        }
+
+        // Transform the data to match the ServiceProps interface
+        const formattedServices = data.map((service: any) => ({
+          id: service.id,
+          name: service.name,
+          description: service.description || "No description available",
+          price: service.price || 0,
+          duration: service.duration || "1 hour",
+          rating: service.rating || 4.5,
+          imageUrl:
+            service.image_url ||
+            "https://images.unsplash.com/photo-1589923188900-85dae523342b?w=800&q=80",
+          popular: service.popular === true,
+        }));
+
+        setServices(formattedServices);
+      } catch (err) {
+        console.error("Error in fetchServices:", err);
+        setError("Failed to load services. Please try again later.");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchServices();
+  }, [propServices]);
+
   const [filter, setFilter] = useState("all");
 
   const filteredServices =
     filter === "all"
       ? services
       : filter === "popular"
-        ? services.filter((service) => service.popular)
-        : services;
+      ? services.filter((service) => service.popular)
+      : services;
+
+  if (loading) {
+    return (
+      <View className="flex-1 items-center justify-center p-4">
+        <ActivityIndicator size="large" color="#16a34a" />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View className="flex-1 items-center justify-center p-4">
+        <Text className="text-red-500">{error}</Text>
+        <TouchableOpacity
+          className="mt-4 bg-green-500 px-4 py-2 rounded-lg"
+          onPress={() => setLoading(true)} // This will trigger the useEffect to run again
+        >
+          <Text className="text-white font-semibold">Try Again</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (services.length === 0) {
+    return (
+      <View className="flex-1 items-center justify-center p-4">
+        <Text className="text-gray-500">
+          No services available at the moment.
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View className="flex-1 bg-gray-50">
       {/* Filter options */}
       <View className="flex-row px-4 py-3 bg-white border-b border-gray-200">
         <TouchableOpacity
-          className={`mr-3 px-4 py-2 rounded-full ${filter === "all" ? "bg-blue-500" : "bg-gray-200"}`}
+          className={`mr-3 px-4 py-2 rounded-full ${
+            filter === "all" ? "bg-blue-500" : "bg-gray-200"
+          }`}
           onPress={() => setFilter("all")}
         >
           <Text className={filter === "all" ? "text-white" : "text-gray-800"}>
@@ -174,7 +203,9 @@ const ServicesList = ({
         </TouchableOpacity>
 
         <TouchableOpacity
-          className={`px-4 py-2 rounded-full ${filter === "popular" ? "bg-blue-500" : "bg-gray-200"}`}
+          className={`px-4 py-2 rounded-full ${
+            filter === "popular" ? "bg-blue-500" : "bg-gray-200"
+          }`}
           onPress={() => setFilter("popular")}
         >
           <Text

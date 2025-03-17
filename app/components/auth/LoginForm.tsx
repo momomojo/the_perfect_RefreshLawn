@@ -9,16 +9,10 @@ import {
 } from "react-native";
 import { Link } from "expo-router";
 import { Eye, EyeOff, Mail, Lock } from "lucide-react-native";
+import { useAuth } from "../../../lib/auth";
 
-interface LoginFormProps {
-  onLogin?: (email: string, password: string) => Promise<void>;
-  isLoading?: boolean;
-}
-
-const LoginForm = ({
-  onLogin = async () => {},
-  isLoading = false,
-}: LoginFormProps) => {
+const LoginForm = () => {
+  const { signIn, loading, error } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -30,12 +24,10 @@ const LoginForm = ({
     }
 
     try {
-      await onLogin(email, password);
+      await signIn(email, password);
     } catch (error) {
-      Alert.alert(
-        "Login Failed",
-        error instanceof Error ? error.message : "An unknown error occurred",
-      );
+      // Error is handled in the auth context
+      console.error("Login error:", error);
     }
   };
 
@@ -81,12 +73,20 @@ const LoginForm = ({
         </View>
       </View>
 
+      {error && (
+        <View className="mb-4">
+          <Text className="text-red-500 text-sm">{error}</Text>
+        </View>
+      )}
+
       <TouchableOpacity
-        className={`w-full py-3 rounded-md ${isLoading ? "bg-green-400" : "bg-green-600"}`}
+        className={`w-full py-3 rounded-md ${
+          loading ? "bg-green-400" : "bg-green-600"
+        }`}
         onPress={handleLogin}
-        disabled={isLoading}
+        disabled={loading}
       >
-        {isLoading ? (
+        {loading ? (
           <ActivityIndicator color="#ffffff" />
         ) : (
           <Text className="text-center text-white font-semibold">Sign In</Text>
