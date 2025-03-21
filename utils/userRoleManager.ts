@@ -112,7 +112,7 @@ export const updateUserRole = async (
     // Note that we need to pass the role as a JSON string with quotes
     const { error } = await setClaimFn(userId, "role", `"${role}"`);
 
-    if (error) throw new Error(error);
+    if (error) throw new Error(error.message || "Failed to set role claim");
 
     // Refresh the session to update claims
     await refreshClaims();
@@ -137,10 +137,15 @@ export const signUpWithRole = async (
   role: UserRole = "customer"
 ): Promise<{ data: any; error: Error | null }> => {
   try {
-    // Sign up the user
+    // Sign up the user WITH the role in the metadata
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
+      options: {
+        data: {
+          role: role, // Add role to user_metadata
+        },
+      },
     });
 
     if (error) throw error;
