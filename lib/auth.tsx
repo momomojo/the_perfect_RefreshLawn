@@ -6,7 +6,7 @@ import React, {
   ReactNode,
 } from "react";
 import { Session, User } from "@supabase/supabase-js";
-import { supabase } from "./supabase";
+import { supabase, clearStoredSession } from "./supabase";
 import { Alert } from "react-native";
 import * as WebBrowser from "expo-web-browser";
 import * as Linking from "expo-linking";
@@ -65,6 +65,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const hasRefreshedTokenRef = React.useRef(false);
 
   useEffect(() => {
+    // Clear any existing stored sessions to prevent auto-login
+    // This is only needed initially since we've disabled persistence
+    clearStoredSession().catch((err) =>
+      console.log("Failed to clear stored session:", err)
+    );
+
     // Set up the deep linking handler
     const handleDeepLink = async (url: string) => {
       if (url.includes("access_token") && url.includes("refresh_token")) {
@@ -120,6 +126,36 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       // Special handling for token refresh events to prevent loops
       if (event === "TOKEN_REFRESHED") {
+        console.log("Token refreshed event received");
+
+        // Log JWT details for debugging
+        if (session?.access_token) {
+          try {
+            const parts = session.access_token.split(".");
+            if (parts.length === 3) {
+              const base64Url = parts[1];
+              const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+              const jsonPayload = decodeURIComponent(
+                atob(base64)
+                  .split("")
+                  .map(
+                    (c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2)
+                  )
+                  .join("")
+              );
+              const decodedToken = JSON.parse(jsonPayload);
+
+              console.log("Refreshed JWT user_role:", decodedToken.user_role);
+              console.log(
+                "Refreshed JWT app_metadata:",
+                decodedToken.app_metadata
+              );
+            }
+          } catch (error) {
+            console.error("Error decoding refreshed JWT:", error);
+          }
+        }
+
         setSession(session);
         return;
       }
@@ -140,13 +176,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       // Handle navigation based on auth state
       if (event === "SIGNED_IN") {
+        // Log role assignments for debugging
+        console.log("Auth navigation - Current roles:", {
+          isAdmin,
+          isTechnician,
+          isCustomer,
+        });
+
         // Navigate based on user role instead of always going to customer dashboard
         if (isAdmin) {
+          console.log("Navigating to admin dashboard");
           router.replace("/(admin)/dashboard");
         } else if (isTechnician) {
+          console.log("Navigating to technician dashboard");
           router.replace("/(technician)/dashboard");
         } else {
           // Default to customer dashboard
+          console.log("Navigating to customer dashboard (default)");
           router.replace("/(customer)/dashboard");
         }
       } else if (event === "SIGNED_OUT") {
@@ -173,20 +219,70 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // Check user role and update state
   const checkUserRole = async (user: User) => {
     try {
-      // First check if the role is in the JWT claims (app_metadata)
-      const userRole = user?.app_metadata?.user_role;
-      console.log("User role from JWT claims:", userRole);
+      // First try to get the role from custom claims
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-      if (userRole) {
-        // If role is in JWT claims, use it directly
-        setIsAdmin(userRole === "admin");
-        setIsTechnician(userRole === "technician");
-        setIsCustomer(userRole === "customer");
+      if (!session) {
+        console.log("No active session found");
+        setIsAdmin(false);
+        setIsTechnician(false);
+        setIsCustomer(true); // Default to customer role
         return;
       }
 
-      // Fallback to database query if not in JWT claims
-      console.log("Role not found in JWT claims, querying database...");
+      // Decode the JWT to check for the user_role claim at the root level
+      let userRoleClaim = null;
+      if (session.access_token) {
+        try {
+          const parts = session.access_token.split(".");
+          if (parts.length === 3) {
+            const base64Url = parts[1];
+            const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+            const jsonPayload = decodeURIComponent(
+              atob(base64)
+                .split("")
+                .map(
+                  (c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2)
+                )
+                .join("")
+            );
+            const decodedToken = JSON.parse(jsonPayload);
+
+            // Check for user_role claim at root level (set by custom hook)
+            if (decodedToken.user_role) {
+              console.log(
+                "Found user_role claim in JWT:",
+                decodedToken.user_role
+              );
+              userRoleClaim = decodedToken.user_role;
+            }
+          }
+        } catch (error) {
+          console.error("Error decoding JWT:", error);
+        }
+      }
+
+      // Check for role in priority order:
+      // 1. user_role claim (from JWT root level)
+      // 2. app_metadata.role
+      // 3. user_metadata.role
+      const roleClaim =
+        userRoleClaim ||
+        session.user.app_metadata?.role ||
+        session.user.user_metadata?.role;
+
+      if (roleClaim) {
+        console.log("Role from claims:", roleClaim);
+        setIsAdmin(roleClaim === "admin");
+        setIsTechnician(roleClaim === "technician");
+        setIsCustomer(roleClaim === "customer" || !roleClaim);
+        return;
+      }
+
+      // Fallback to database query if not in claims
+      console.log("Role not found in claims, querying database...");
       const { data, error } = await supabase
         .from("profiles")
         .select("role")
@@ -202,7 +298,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         console.log("Role from database:", data.role);
         setIsAdmin(data.role === "admin");
         setIsTechnician(data.role === "technician");
-        setIsCustomer(data.role === "customer");
+        setIsCustomer(data.role === "customer" || !data.role);
 
         // Only refresh the token on first login or when auth state changes to SIGNED_IN
         // This prevents the refresh loop
@@ -212,7 +308,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           !hasRefreshedTokenRef.current &&
           (!isWeb || !window.__hasRefreshedToken)
         ) {
-          console.log("Refreshing session to update JWT claims (one-time)...");
+          console.log("Refreshing session to update claims (one-time)...");
           // Set the flag to prevent future refreshes
           hasRefreshedTokenRef.current = true;
           if (isWeb) {
@@ -325,7 +421,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
 
-      if (data.user) {
+      // Always refresh the session once after signing in to get latest JWT claims
+      console.log("Refreshing session to get latest JWT claims...");
+      const { data: refreshData, error: refreshError } =
+        await supabase.auth.refreshSession();
+
+      if (refreshError) {
+        console.warn("Error refreshing session:", refreshError.message);
+      } else {
+        console.log("Session refreshed successfully");
+        // Update the session state with the refreshed session
+        setSession(refreshData.session);
+        setUser(refreshData.session?.user ?? null);
+      }
+
+      // Check user role with the refreshed user data if available
+      if (refreshData?.session?.user) {
+        checkUserRole(refreshData.session.user);
+      } else if (data.user) {
         checkUserRole(data.user);
       }
     } catch (error: any) {
