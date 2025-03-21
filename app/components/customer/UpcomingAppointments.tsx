@@ -1,15 +1,15 @@
 import React from "react";
 import { View, Text, ScrollView, TouchableOpacity } from "react-native";
-import { Calendar, Clock, MapPin, ChevronRight } from "lucide-react-native";
+import { Calendar, Clock, ChevronRight } from "lucide-react-native";
 
 interface AppointmentProps {
   appointments?: Array<{
     id: string;
     date: string;
     time: string;
-    serviceType: string;
-    address: string;
+    service: string;
     status: "scheduled" | "in-progress" | "completed" | "pending" | "cancelled";
+    price?: string;
   }>;
   onViewAppointment?: (id: string) => void;
 }
@@ -48,7 +48,7 @@ const UpcomingAppointments = ({
             >
               <View className="flex-1">
                 <Text className="font-semibold text-gray-800">
-                  {appointment.serviceType}
+                  {appointment.service}
                 </Text>
                 <View className="flex-row items-center mt-1">
                   <Calendar size={14} color="#4B5563" />
@@ -62,12 +62,25 @@ const UpcomingAppointments = ({
                     {appointment.time}
                   </Text>
                 </View>
-                <View className="flex-row items-center mt-1">
-                  <MapPin size={14} color="#4B5563" />
-                  <Text className="text-gray-600 text-xs ml-1 flex-shrink">
-                    {appointment.address}
+                {appointment.price && (
+                  <Text className="text-gray-600 text-xs mt-1">
+                    {appointment.price}
                   </Text>
-                </View>
+                )}
+                {appointment.status && (
+                  <Text
+                    className={`text-xs mt-1 ${
+                      appointment.status === "scheduled"
+                        ? "text-green-600"
+                        : appointment.status === "pending"
+                        ? "text-yellow-600"
+                        : "text-gray-600"
+                    }`}
+                  >
+                    {appointment.status.charAt(0).toUpperCase() +
+                      appointment.status.slice(1)}
+                  </Text>
+                )}
               </View>
               <ChevronRight size={18} color="#9CA3AF" />
             </TouchableOpacity>

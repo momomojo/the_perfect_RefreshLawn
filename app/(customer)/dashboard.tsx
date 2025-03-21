@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -6,10 +6,18 @@ import {
   TouchableOpacity,
   SafeAreaView,
   RefreshControl,
+  Alert,
   ActivityIndicator,
+  Image,
 } from "react-native";
-import { Bell, User } from "lucide-react-native";
-import { useRouter } from "expo-router";
+import {
+  Bell,
+  User,
+  ArrowUpDown,
+  CalendarDays,
+  Clock,
+} from "lucide-react-native";
+import { router } from "expo-router";
 import { useAuth } from "../../lib/auth";
 import {
   getCustomerBookings,
@@ -17,74 +25,106 @@ import {
   createReview,
   Service,
   Booking,
+  getUpcomingBookings,
+  getProfile,
+  Profile,
+  subscribeToBookings,
+  subscribeToProfiles,
+  unsubscribeFromChannel,
 } from "../../lib/data";
+import { format } from "date-fns";
+import { Card } from "react-native-paper";
+import { RealtimeChannel } from "@supabase/supabase-js";
 
 import UpcomingAppointments from "../components/customer/UpcomingAppointments";
 import RecentServices from "../components/customer/RecentServices";
 import QuickBooking from "../components/customer/QuickBooking";
 
+// Define interfaces for the components
+interface FormattedAppointment {
+  id: string;
+  date: string;
+  time: string;
+  service: string;
+  status: "scheduled" | "in-progress" | "completed" | "pending" | "cancelled";
+  price: string;
+}
+
+interface FormattedCompletedService {
+  id: string;
+  date: string;
+  service: string;
+  beforeImage: string;
+  afterImage: string;
+  rating?: number;
+}
+
+interface QuickBookingService {
+  id: string;
+  name: string;
+  icon: "mowing" | "fertilizing" | "cleanup" | "irrigation" | "schedule";
+}
+
 const CustomerDashboard = () => {
-  const router = useRouter();
   const { user } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [upcomingAppointments, setUpcomingAppointments] = useState<any[]>([]);
-  const [completedServices, setCompletedServices] = useState<any[]>([]);
+  const [upcomingAppointments, setUpcomingAppointments] = useState<
+    FormattedAppointment[]
+  >([]);
+  const [completedServices, setCompletedServices] = useState<
+    FormattedCompletedService[]
+  >([]);
   const [servicesList, setServicesList] = useState<Service[]>([]);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [upcomingBookings, setUpcomingBookings] = useState<Booking[]>([]);
 
-  const fetchData = async () => {
+  // References to active subscriptions
+  const bookingsChannelRef = React.useRef<RealtimeChannel | null>(null);
+  const profileChannelRef = React.useRef<RealtimeChannel | null>(null);
+
+  const fetchData = useCallback(async () => {
+    if (!user) return;
+
     try {
-      setLoading(true);
+      setError(null);
 
-      if (!user) {
-        console.log("Dashboard: No user found, cannot fetch data");
-        throw new Error("User not authenticated");
-      }
+      // Fetch user profile
+      const profileData = await getProfile(user.id);
+      setProfile(profileData);
 
-      console.log("Dashboard: Fetching bookings for user:", user.id);
-      // Fetch customer bookings
-      const bookings = await getCustomerBookings(user.id);
-      console.log("Dashboard: Retrieved bookings count:", bookings.length);
+      // Fetch upcoming bookings
+      const bookingsData = await getUpcomingBookings(user.id);
+      setUpcomingBookings(bookingsData);
+
+      // Fetch available services
+      const servicesData = await getServices();
+      setServicesList(servicesData);
 
       // Format date function
-      const formatDate = (dateString: string) => {
-        const options: Intl.DateTimeFormatOptions = {
-          year: "numeric",
-          month: "short",
-          day: "numeric",
-        };
-        return new Date(dateString).toLocaleDateString("en-US", options);
-      };
-
-      // Format time function
-      const formatTime = (timeString: string) => {
-        // If time comes as HH:MM:SS format
-        if (timeString && timeString.includes(":")) {
-          const [hours, minutes] = timeString.split(":");
-          const hour = parseInt(hours);
-          const minute = parseInt(minutes);
-          const ampm = hour >= 12 ? "PM" : "AM";
-          const hour12 = hour % 12 || 12;
-          return `${hour12}:${minute.toString().padStart(2, "0")} ${ampm}`;
+      const formatDate = (dateStr: string) => {
+        try {
+          return format(new Date(dateStr), "EEE, MMM d");
+        } catch (e) {
+          console.error("Date formatting error:", e);
+          return dateStr;
         }
-        return timeString;
       };
 
       // Process upcoming appointments (scheduled or pending)
-      const upcoming = bookings
+      const upcoming = bookingsData
         .filter(
-          (booking) =>
-            (booking.status === "scheduled" || booking.status === "pending") &&
-            new Date(booking.scheduled_date) >= new Date()
+          (booking: Booking) =>
+            booking.status === "scheduled" || booking.status === "pending"
         )
-        .map((booking) => ({
+        .map((booking: Booking) => ({
           id: booking.id,
           date: formatDate(booking.scheduled_date),
-          time: formatTime(booking.scheduled_time),
-          serviceType: booking.service?.name || "Unknown Service",
-          address: booking.address || "No address provided",
-          status: booking.status,
+          time: booking.scheduled_time,
+          service: booking.service?.name || "Unknown Service",
+          status: booking.status as "scheduled" | "pending",
+          price: `$${booking.price}`,
         }));
       console.log(
         "Dashboard: Processed upcoming appointments:",
@@ -92,66 +132,100 @@ const CustomerDashboard = () => {
       );
 
       // Process completed services with before/after placeholder images
-      const completed = bookings
-        .filter((booking) => booking.status === "completed")
-        .map((booking) => ({
+      const completed = bookingsData
+        .filter((booking: Booking) => booking.status === "completed")
+        .map((booking: Booking) => ({
           id: booking.id,
-          date: booking.scheduled_date,
-          serviceType: booking.service?.name || "Unknown Service",
-          technician: booking.technician
-            ? `${booking.technician.first_name} ${booking.technician.last_name}`
-            : "Unknown Technician",
-          beforeImage:
-            "https://images.unsplash.com/photo-1589848563524-2c3c17c9a9fa?w=300&q=80", // Placeholder
-          afterImage:
-            "https://images.unsplash.com/photo-1592150621744-aca64f48388a?w=300&q=80", // Placeholder
-          isRated: booking.review ? true : false,
-          rating: booking.review?.rating,
+          date: formatDate(booking.scheduled_date),
+          service: booking.service?.name || "Unknown Service",
+          beforeImage: "https://via.placeholder.com/150?text=Before",
+          afterImage: "https://via.placeholder.com/150?text=After",
+          rating: booking.review?.rating || 0,
         }));
       console.log("Dashboard: Processed completed services:", completed.length);
 
-      // Fetch available services for quick booking
-      console.log("Dashboard: Fetching available services");
-      const services = await getServices();
-      console.log("Dashboard: Retrieved services count:", services.length);
-
       setUpcomingAppointments(upcoming);
       setCompletedServices(completed);
-      setServicesList(services);
-      setError(null);
       console.log("Dashboard: Data loading completed successfully");
     } catch (err: any) {
-      console.error("Error fetching dashboard data:", err.message);
-      setError(err.message);
+      console.error("Error fetching dashboard data:", err);
+      setError(err.message || "Failed to load dashboard data");
+      Alert.alert("Error", err.message || "Failed to load dashboard data");
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [user]);
 
   useEffect(() => {
-    console.log(
-      "Dashboard: useEffect triggered, fetching data for user:",
-      user?.id
-    );
-    fetchData();
-  }, [user]);
+    if (!user) return;
 
-  const onRefresh = React.useCallback(() => {
+    console.log("Setting up real-time subscriptions for customer dashboard");
+
+    // Subscribe to bookings changes
+    bookingsChannelRef.current = subscribeToBookings(
+      (payload) => {
+        console.log("Booking update received:", payload);
+
+        // Check if this update is relevant to the current user's bookings
+        if (payload.new && payload.new.customer_id === user.id) {
+          // Handle different types of changes
+          if (payload.eventType === "INSERT") {
+            setUpcomingBookings((prev) => [...prev, payload.new]);
+          } else if (payload.eventType === "UPDATE") {
+            setUpcomingBookings((prev) =>
+              prev.map((booking) =>
+                booking.id === payload.new.id ? payload.new : booking
+              )
+            );
+          } else if (payload.eventType === "DELETE") {
+            setUpcomingBookings((prev) =>
+              prev.filter((booking) => booking.id !== payload.old.id)
+            );
+          }
+
+          // Refresh the formatted data
+          fetchData();
+        }
+      },
+      { customerId: user.id }
+    );
+
+    // Subscribe to profile changes
+    profileChannelRef.current = subscribeToProfiles((payload) => {
+      console.log("Profile update received:", payload);
+
+      if (payload.new && payload.new.id === user.id) {
+        setProfile(payload.new);
+      }
+    }, user.id);
+
+    // Initial data fetch
+    fetchData();
+
+    // Cleanup subscriptions on unmount
+    return () => {
+      console.log("Cleaning up subscriptions");
+      if (bookingsChannelRef.current) {
+        unsubscribeFromChannel(bookingsChannelRef.current);
+      }
+      if (profileChannelRef.current) {
+        unsubscribeFromChannel(profileChannelRef.current);
+      }
+    };
+  }, [user, fetchData]);
+
+  const onRefresh = useCallback(() => {
     setRefreshing(true);
     fetchData();
-  }, [user]);
+  }, [fetchData]);
 
   const handleViewAppointment = (id: string) => {
-    console.log(`Navigate to appointment details for ID: ${id}`);
-    // You would navigate to a detailed view here
+    router.push(`/customer/booking?id=${id}`);
   };
 
-  const handleServiceSelect = (serviceType: string) => {
-    router.push({
-      pathname: "/booking",
-      params: { serviceType },
-    });
+  const handleBookService = (serviceId: string) => {
+    router.push(`/customer/booking?service=${serviceId}`);
   };
 
   const handleRateService = async (id: string, rating: number) => {
@@ -181,32 +255,36 @@ const CustomerDashboard = () => {
       fetchData();
     } catch (err: any) {
       console.error("Error submitting review:", err.message);
+      Alert.alert("Error", "Failed to submit rating. Please try again.");
     }
   };
 
   const handleViewServiceDetails = (id: string) => {
     console.log(`View service details for ID: ${id}`);
-    // You would navigate to service details here
+    router.push(`/customer/booking?id=${id}`);
   };
 
   // Extract services data for quick booking
-  const quickBookingServices = servicesList.slice(0, 5).map((service) => ({
-    id: service.id,
-    name: service.name,
-    icon: service.name.toLowerCase().includes("mow")
-      ? ("mowing" as const)
-      : service.name.toLowerCase().includes("fertil")
-      ? ("fertilizing" as const)
-      : service.name.toLowerCase().includes("clean")
-      ? ("cleanup" as const)
-      : service.name.toLowerCase().includes("water") ||
-        service.name.toLowerCase().includes("irrig")
-      ? ("irrigation" as const)
-      : ("schedule" as const),
-  }));
+  const quickBookingServices: QuickBookingService[] = servicesList
+    .slice(0, 5)
+    .map((service) => ({
+      id: service.id,
+      name: service.name,
+      icon: service.name.toLowerCase().includes("mow")
+        ? ("mowing" as const)
+        : service.name.toLowerCase().includes("fertil")
+        ? ("fertilizing" as const)
+        : service.name.toLowerCase().includes("clean")
+        ? ("cleanup" as const)
+        : service.name.toLowerCase().includes("water") ||
+          service.name.toLowerCase().includes("irrig")
+        ? ("irrigation" as const)
+        : ("schedule" as const),
+    }));
 
   // Get user's first name for greeting
-  const firstName = user?.user_metadata?.first_name || "Customer";
+  const firstName =
+    user?.user_metadata?.first_name || profile?.first_name || "Customer";
 
   if (loading && !refreshing) {
     return (
@@ -294,6 +372,19 @@ const CustomerDashboard = () => {
               }}
             >
               <Text style={{ color: "#b91c1c" }}>Error: {error}</Text>
+              <TouchableOpacity
+                style={{
+                  marginTop: 12,
+                  padding: 12,
+                  backgroundColor: "#f3f4f6",
+                  borderRadius: 8,
+                }}
+                onPress={fetchData}
+              >
+                <Text style={{ color: "#16a34a", fontWeight: "600" }}>
+                  Try Again
+                </Text>
+              </TouchableOpacity>
             </View>
           )}
 
@@ -306,7 +397,7 @@ const CustomerDashboard = () => {
 
           <View style={{ marginBottom: 24 }}>
             <QuickBooking
-              onServiceSelect={handleServiceSelect}
+              onServiceSelect={handleBookService}
               services={
                 quickBookingServices.length > 0
                   ? quickBookingServices

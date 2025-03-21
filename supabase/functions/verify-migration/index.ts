@@ -13,7 +13,7 @@ import { createClient } from "https://deno.land/x/supabase@1.11.7/mod.ts";
 console.log("Verification function ready!");
 
 // Simple endpoint that returns instructions to verify the migrations
-serve(async (req) => {
+serve(async (req: Request) => {
   const projectUrl = "https://brvgbflmcolgvswuzjho.supabase.co";
 
   // Create a response with verification instructions

@@ -12,29 +12,41 @@ import {
 } from "lucide-react-native";
 
 interface BookingFormProps {
+  service?: any;
+  userProfile?: any;
   onComplete?: (bookingData: BookingData) => void;
+  isSubmitting?: boolean;
 }
 
 interface BookingData {
-  serviceType: string;
+  serviceId: string;
+  serviceName: string;
   date: string;
   time: string;
   address: string;
   isRecurring: boolean;
   recurringPlan?: string;
   paymentMethod: string;
+  price: number;
 }
 
-const BookingForm = ({ onComplete = () => {} }: BookingFormProps) => {
+const BookingForm = ({
+  service,
+  userProfile,
+  onComplete = () => {},
+  isSubmitting = false,
+}: BookingFormProps) => {
   const [currentStep, setCurrentStep] = useState(1);
   const [bookingData, setBookingData] = useState<BookingData>({
-    serviceType: "",
+    serviceId: service?.id || "",
+    serviceName: service?.name || "",
     date: "",
     time: "",
-    address: "",
+    address: userProfile?.address || "",
     isRecurring: false,
     recurringPlan: "",
     paymentMethod: "",
+    price: service?.price || 0,
   });
 
   // Sample service types
@@ -102,7 +114,7 @@ const BookingForm = ({ onComplete = () => {} }: BookingFormProps) => {
   ];
 
   const handleServiceSelect = (serviceName: string) => {
-    setBookingData({ ...bookingData, serviceType: serviceName });
+    setBookingData({ ...bookingData, serviceName: serviceName });
     nextStep();
   };
 
@@ -202,7 +214,7 @@ const BookingForm = ({ onComplete = () => {} }: BookingFormProps) => {
         <Text className="text-xl font-bold mb-4">Select Date</Text>
         <View className="bg-white rounded-lg p-4 shadow-sm mb-4">
           <Text className="text-lg font-semibold mb-2">
-            Service: {bookingData.serviceType}
+            Service: {bookingData.serviceName}
           </Text>
         </View>
         <ScrollView className="flex-1">
@@ -236,7 +248,7 @@ const BookingForm = ({ onComplete = () => {} }: BookingFormProps) => {
         <Text className="text-xl font-bold mb-4">Select Time</Text>
         <View className="bg-white rounded-lg p-4 shadow-sm mb-4">
           <Text className="text-lg font-semibold mb-2">
-            Service: {bookingData.serviceType}
+            Service: {bookingData.serviceName}
           </Text>
           <Text className="text-gray-600">
             Date:{" "}
@@ -274,7 +286,7 @@ const BookingForm = ({ onComplete = () => {} }: BookingFormProps) => {
         <Text className="text-xl font-bold mb-4">Confirm Property Address</Text>
         <View className="bg-white rounded-lg p-4 shadow-sm mb-4">
           <Text className="text-lg font-semibold mb-2">Service Details:</Text>
-          <Text className="text-gray-600 mb-1">{bookingData.serviceType}</Text>
+          <Text className="text-gray-600 mb-1">{bookingData.serviceName}</Text>
           <Text className="text-gray-600 mb-1">
             {new Date(bookingData.date).toLocaleDateString("en-US", {
               weekday: "long",
@@ -315,7 +327,7 @@ const BookingForm = ({ onComplete = () => {} }: BookingFormProps) => {
         <Text className="text-xl font-bold mb-4">Recurring Service?</Text>
         <View className="bg-white rounded-lg p-4 shadow-sm mb-4">
           <Text className="text-lg font-semibold mb-2">Service Details:</Text>
-          <Text className="text-gray-600 mb-1">{bookingData.serviceType}</Text>
+          <Text className="text-gray-600 mb-1">{bookingData.serviceName}</Text>
           <Text className="text-gray-600 mb-1">
             {new Date(bookingData.date).toLocaleDateString("en-US", {
               weekday: "long",
@@ -383,7 +395,7 @@ const BookingForm = ({ onComplete = () => {} }: BookingFormProps) => {
         <Text className="text-xl font-bold mb-4">Payment Method</Text>
         <View className="bg-white rounded-lg p-4 shadow-sm mb-4">
           <Text className="text-lg font-semibold mb-2">Service Summary:</Text>
-          <Text className="text-gray-600 mb-1">{bookingData.serviceType}</Text>
+          <Text className="text-gray-600 mb-1">{bookingData.serviceName}</Text>
           <Text className="text-gray-600 mb-1">
             {new Date(bookingData.date).toLocaleDateString("en-US", {
               weekday: "long",
@@ -457,7 +469,7 @@ const BookingForm = ({ onComplete = () => {} }: BookingFormProps) => {
             <View className="flex-row mb-2">
               <Text className="text-gray-600 w-1/3">Service:</Text>
               <Text className="font-medium flex-1">
-                {bookingData.serviceType}
+                {bookingData.serviceName}
               </Text>
             </View>
             <View className="flex-row mb-2">
