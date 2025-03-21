@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import { User } from "@supabase/supabase-js";
+import { RealtimeChannel } from "@supabase/supabase-js";
 
 /**
  * Types for the database models
@@ -86,6 +87,26 @@ export interface PaymentMethod {
   card_brand?: string;
   is_default: boolean;
   created_at?: string;
+}
+
+/**
+ * Notification related types and functions
+ */
+export interface Notification {
+  id: string;
+  user_id: string;
+  type:
+    | "booking_created"
+    | "booking_updated"
+    | "booking_cancelled"
+    | "review_received"
+    | "payment_processed"
+    | "message";
+  title: string;
+  message: string;
+  data?: any;
+  is_read: boolean;
+  created_at: string;
 }
 
 /**
@@ -262,15 +283,37 @@ export async function getCustomerBookings(customerId: string) {
   const { data, error } = await supabase
     .from("bookings")
     .select(
+      `*, 
+      service:service_id(*), 
+      recurring_plan:recurring_plan_id(*),
+      technician:technician_id(*),
+      review:reviews(*)
       `
-      *,
-      service:services(*),
-      technician:profiles!bookings_technician_id_fkey(*),
-      recurring_plan:recurring_plans(*)
-    `
+    )
+    .eq("customer_id", customerId);
+
+  if (error) throw error;
+  return data as Booking[];
+}
+
+/**
+ * Get upcoming bookings for a customer
+ */
+export async function getUpcomingBookings(customerId: string) {
+  const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+
+  const { data, error } = await supabase
+    .from("bookings")
+    .select(
+      `*, 
+      service:service_id(*), 
+      recurring_plan:recurring_plan_id(*),
+      technician:technician_id(*),
+      review:reviews(*)`
     )
     .eq("customer_id", customerId)
-    .order("scheduled_date", { ascending: false });
+    .gte("scheduled_date", today)
+    .order("scheduled_date", { ascending: true });
 
   if (error) throw error;
   return data as Booking[];
@@ -635,13 +678,35 @@ export async function getRevenueByService() {
 }
 
 /**
- * Listen to real-time changes
+ * Real-time Subscriptions
  */
+
+// Subscribe to bookings with optional filters
 export function subscribeToBookings(
   callback: (payload: any) => void,
-  filters?: { customerId?: string; technicianId?: string }
-) {
-  let subscription = supabase
+  filters?: { customerId?: string; technicianId?: string; status?: string }
+): RealtimeChannel {
+  // Building the filter condition
+  let filterCondition = "";
+
+  if (filters?.customerId) {
+    filterCondition = `customer_id=eq.${filters.customerId}`;
+  } else if (filters?.technicianId) {
+    filterCondition = `technician_id=eq.${filters.technicianId}`;
+  }
+
+  if (filters?.status) {
+    filterCondition = filterCondition
+      ? `${filterCondition}:and:status=eq.${filters.status}`
+      : `status=eq.${filters.status}`;
+  }
+
+  console.log(
+    "Setting up bookings subscription with filter:",
+    filterCondition || "none"
+  );
+
+  const channel = supabase
     .channel("bookings-changes")
     .on(
       "postgres_changes",
@@ -649,36 +714,207 @@ export function subscribeToBookings(
         event: "*",
         schema: "public",
         table: "bookings",
-        filter: filters?.customerId
-          ? `customer_id=eq.${filters.customerId}`
-          : filters?.technicianId
-          ? `technician_id=eq.${filters.technicianId}`
-          : undefined,
+        filter: filterCondition || undefined,
       },
-      callback
+      (payload) => {
+        console.log("Received booking update:", payload);
+        callback(payload);
+      }
     )
-    .subscribe();
+    .subscribe((status) => {
+      console.log("Bookings subscription status:", status);
+    });
 
-  return subscription;
+  return channel;
 }
 
-export function subscribeToProfile(
-  userId: string,
-  callback: (payload: any) => void
-) {
-  let subscription = supabase
-    .channel(`profile-${userId}`)
+// Subscribe to profile changes (useful for admin dashboards)
+export function subscribeToProfiles(
+  callback: (payload: any) => void,
+  userId?: string
+): RealtimeChannel {
+  const channel = supabase
+    .channel("profiles-changes")
     .on(
       "postgres_changes",
       {
-        event: "UPDATE",
+        event: "*",
         schema: "public",
         table: "profiles",
-        filter: `id=eq.${userId}`,
+        filter: userId ? `id=eq.${userId}` : undefined,
       },
-      callback
+      (payload) => {
+        console.log("Received profile update:", payload);
+        callback(payload);
+      }
     )
-    .subscribe();
+    .subscribe((status) => {
+      console.log("Profiles subscription status:", status);
+    });
 
-  return subscription;
+  return channel;
+}
+
+// Subscribe to reviews (useful for technicians and customers)
+export function subscribeToReviews(
+  callback: (payload: any) => void,
+  filters?: { customerId?: string; technicianId?: string; bookingId?: string }
+): RealtimeChannel {
+  // Building the filter condition
+  let filterCondition = "";
+
+  if (filters?.customerId) {
+    filterCondition = `customer_id=eq.${filters.customerId}`;
+  } else if (filters?.technicianId) {
+    filterCondition = `technician_id=eq.${filters.technicianId}`;
+  } else if (filters?.bookingId) {
+    filterCondition = `booking_id=eq.${filters.bookingId}`;
+  }
+
+  const channel = supabase
+    .channel("reviews-changes")
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "reviews",
+        filter: filterCondition || undefined,
+      },
+      (payload) => {
+        console.log("Received review update:", payload);
+        callback(payload);
+      }
+    )
+    .subscribe((status) => {
+      console.log("Reviews subscription status:", status);
+    });
+
+  return channel;
+}
+
+// Helper function to unsubscribe from all channels
+export function unsubscribeFromChannel(channel: RealtimeChannel): void {
+  supabase.removeChannel(channel);
+}
+
+/**
+ * Get user notifications
+ * @param includeRead Whether to include read notifications (defaults to false)
+ * @returns List of notifications
+ */
+export async function getNotifications(includeRead = false) {
+  let query = supabase
+    .from("notifications")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (!includeRead) {
+    query = query.eq("is_read", false);
+  }
+
+  const { data, error } = await query;
+
+  if (error) throw error;
+  return data as Notification[];
+}
+
+/**
+ * Get unread notifications count
+ * @returns Count of unread notifications
+ */
+export async function getUnreadNotificationsCount() {
+  const { data, error } = await supabase.rpc("get_unread_notifications_count");
+
+  if (error) throw error;
+  return data as number;
+}
+
+/**
+ * Mark a notification as read
+ * @param notificationId ID of the notification to mark
+ * @returns Success status
+ */
+export async function markNotificationRead(notificationId: string) {
+  const { data, error } = await supabase.rpc("mark_notification_read", {
+    p_notification_id: notificationId,
+  });
+
+  if (error) throw error;
+  return data as boolean;
+}
+
+/**
+ * Mark all notifications as read
+ * @returns Success status
+ */
+export async function markAllNotificationsRead() {
+  const { data, error } = await supabase.rpc("mark_all_notifications_read");
+
+  if (error) throw error;
+  return data as boolean;
+}
+
+/**
+ * Create a notification manually (for testing or admin purposes)
+ * @param userId User ID to notify
+ * @param type Notification type
+ * @param title Notification title
+ * @param message Notification message
+ * @param data Optional data payload
+ * @returns The created notification ID
+ */
+export async function createNotification(
+  userId: string,
+  type: Notification["type"],
+  title: string,
+  message: string,
+  data?: any
+) {
+  const { data: notificationId, error } = await supabase.rpc(
+    "create_notification",
+    {
+      p_user_id: userId,
+      p_type: type,
+      p_title: title,
+      p_message: message,
+      p_data: data ? JSON.stringify(data) : null,
+    }
+  );
+
+  if (error) throw error;
+  return notificationId as string;
+}
+
+/**
+ * Subscribe to notifications for the current user
+ * @param callback Function to call when notifications are received
+ * @returns The subscription channel
+ */
+export function subscribeToNotifications(callback: (payload: any) => void) {
+  // Get the current user id
+  const userId = supabase.auth
+    .getSession()
+    .then(({ data }) => data.session?.user.id);
+
+  const channel = supabase
+    .channel("notifications-changes")
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "notifications",
+        filter: `user_id=eq.${userId}`,
+      },
+      (payload) => {
+        console.log("Received notification:", payload);
+        callback(payload);
+      }
+    )
+    .subscribe((status) => {
+      console.log("Notifications subscription status:", status);
+    });
+
+  return channel;
 }

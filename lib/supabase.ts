@@ -23,7 +23,7 @@ const SecureStoreAdapter = {
 
 // Flag to enable/disable session persistence - set to false to disable
 // IMPORTANT: Set this to true when you want to re-enable session persistence
-const ENABLE_SESSION_PERSISTENCE = false;
+const ENABLE_SESSION_PERSISTENCE = true;
 
 // No-op storage adapter that doesn't actually store anything
 const NoopStorageAdapter = {

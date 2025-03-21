@@ -7,10 +7,12 @@ import React, {
 } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase, clearStoredSession } from "./supabase";
-import { Alert } from "react-native";
+import { Alert, Platform } from "react-native";
 import * as WebBrowser from "expo-web-browser";
 import * as Linking from "expo-linking";
 import { router } from "expo-router";
+import * as Network from "expo-network";
+import NetInfo from "@react-native-community/netinfo";
 
 // Add TypeScript declaration for window.__hasRefreshedToken
 declare global {
@@ -46,6 +48,7 @@ type AuthContextType = {
   isAdmin: boolean;
   isTechnician: boolean;
   isCustomer: boolean;
+  networkStatus: boolean | null;
 };
 
 // Create the context with a default value
@@ -60,9 +63,51 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isTechnician, setIsTechnician] = useState(false);
   const [isCustomer, setIsCustomer] = useState(false);
+  const [networkStatus, setNetworkStatus] = useState<boolean | null>(null);
 
   // Use a React ref to track token refresh in React Native (window might not exist)
   const hasRefreshedTokenRef = React.useRef(false);
+
+  // Network connectivity monitoring
+  useEffect(() => {
+    const checkNetworkStatus = async () => {
+      try {
+        const networkState = await Network.getNetworkStateAsync();
+        setNetworkStatus(
+          networkState.isConnected && networkState.isInternetReachable
+            ? true
+            : false
+        );
+      } catch (err) {
+        console.error("Failed to check network status:", err);
+        setNetworkStatus(null);
+      }
+    };
+
+    // Initial check
+    checkNetworkStatus();
+
+    // Setup listener for network status changes
+    const unsubscribe = NetInfo?.addEventListener((state: any) => {
+      setNetworkStatus(state.isConnected && state.isInternetReachable);
+
+      // If network reconnected and we have credentials, try to refresh session
+      if (state.isConnected && user && !session) {
+        console.log("Network reconnected, refreshing auth session");
+        supabase.auth.getSession().then(({ data, error }) => {
+          if (error) {
+            console.error("Error refreshing session after reconnect:", error);
+          } else if (data.session) {
+            setSession(data.session);
+          }
+        });
+      }
+    });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [user, session]);
 
   useEffect(() => {
     // Clear any existing stored sessions to prevent auto-login
@@ -404,46 +449,68 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  // Improved error handling for user authentication
+  const handleAuthError = (error: any, action: string) => {
+    console.error(`Auth error during ${action}:`, error);
+
+    // Network related errors
+    if (!networkStatus) {
+      setError(
+        "Network connection unavailable. Please check your internet connection and try again."
+      );
+      return "Network connection unavailable. Please check your internet connection and try again.";
+    }
+
+    // Handle specific error codes/messages
+    if (error.message?.includes("network")) {
+      setError(
+        "Network error. Please check your internet connection and try again."
+      );
+      return "Network error. Please check your internet connection and try again.";
+    }
+
+    if (error.message?.includes("timeout")) {
+      setError("Request timed out. Please try again.");
+      return "Request timed out. Please try again.";
+    }
+
+    if (error.status === 401 || error.message?.includes("expired")) {
+      // Token expired
+      setError("Your session has expired. Please sign in again.");
+      signOut().catch(console.error);
+      return "Your session has expired. Please sign in again.";
+    }
+
+    // Default error message
+    setError(error.message || `An error occurred during ${action}`);
+    return error.message || `An error occurred during ${action}`;
+  };
+
   // Sign in with email and password
   const signIn = async (email: string, password: string) => {
     try {
       setLoading(true);
       setError(null);
 
+      // Check network connectivity first
+      if (networkStatus === false) {
+        throw new Error(
+          "Network connection unavailable. Please check your internet connection and try again."
+        );
+      }
+
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
-      if (error) {
-        setError(error.message);
-        Alert.alert("Error", error.message);
-        return;
-      }
+      if (error) throw error;
 
-      // Always refresh the session once after signing in to get latest JWT claims
-      console.log("Refreshing session to get latest JWT claims...");
-      const { data: refreshData, error: refreshError } =
-        await supabase.auth.refreshSession();
-
-      if (refreshError) {
-        console.warn("Error refreshing session:", refreshError.message);
-      } else {
-        console.log("Session refreshed successfully");
-        // Update the session state with the refreshed session
-        setSession(refreshData.session);
-        setUser(refreshData.session?.user ?? null);
-      }
-
-      // Check user role with the refreshed user data if available
-      if (refreshData?.session?.user) {
-        checkUserRole(refreshData.session.user);
-      } else if (data.user) {
-        checkUserRole(data.user);
-      }
+      setSession(data.session);
+      setUser(data.user);
+      checkUserRole(data.user);
     } catch (error: any) {
-      setError(error.message);
-      Alert.alert("Error", error.message);
+      handleAuthError(error, "sign in");
     } finally {
       setLoading(false);
     }
@@ -558,6 +625,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     isAdmin,
     isTechnician,
     isCustomer,
+    networkStatus,
   };
 
   // Return the provider with the value

@@ -49,7 +49,9 @@ const JwtRoleTester = () => {
       }
     } catch (error) {
       console.error("Error checking role:", error);
-      setMessage(`Error: ${error.message}`);
+      setMessage(
+        `Error: ${error instanceof Error ? error.message : String(error)}`
+      );
     } finally {
       setLoading(false);
     }
@@ -71,7 +73,9 @@ const JwtRoleTester = () => {
       }
     } catch (error) {
       console.error("Error refreshing token:", error);
-      setMessage(`Error: ${error.message}`);
+      setMessage(
+        `Error: ${error instanceof Error ? error.message : String(error)}`
+      );
     } finally {
       setLoading(false);
     }
@@ -88,7 +92,9 @@ const JwtRoleTester = () => {
       setMessage("Signed out successfully");
     } catch (error) {
       console.error("Error signing out:", error);
-      setMessage(`Error: ${error.message}`);
+      setMessage(
+        `Error: ${error instanceof Error ? error.message : String(error)}`
+      );
     } finally {
       setLoading(false);
     }
