@@ -40,7 +40,7 @@ const ServicesScreen = () => {
   const handleServicePress = (id: string) => {
     // Navigate to booking screen with the selected service ID
     router.push({
-      pathname: "/booking",
+      pathname: "/(customer)/booking",
       params: { serviceId: id },
     });
   };
@@ -53,7 +53,10 @@ const ServicesScreen = () => {
     ? services.filter(
         (service: any) =>
           service.name.toLowerCase().includes(searchText.toLowerCase()) ||
-          service.description.toLowerCase().includes(searchText.toLowerCase())
+          (service.description &&
+            service.description
+              .toLowerCase()
+              .includes(searchText.toLowerCase()))
       )
     : services;
 
