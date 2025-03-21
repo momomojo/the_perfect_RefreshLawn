@@ -36,8 +36,17 @@ export default function BookingScreen() {
     if (serviceId) {
       fetchServiceAndUserData();
     } else {
-      setError("No service selected");
-      setLoading(false);
+      // Redirect to services page instead of showing an error
+      Alert.alert(
+        "Service Selection Required",
+        "Please select a service from the services page.",
+        [
+          {
+            text: "Go to Services",
+            onPress: () => router.replace("/(customer)/services"),
+          },
+        ]
+      );
     }
   }, [serviceId]);
 
@@ -87,42 +96,55 @@ export default function BookingScreen() {
 
       const userId = session.session.user.id;
 
+      // Extract date and time separately to match database schema
+      const dateString = bookingData.date;
+      const timeString = bookingData.time;
+
       // Format the booking data for submission
       const newBooking = {
         customer_id: userId,
-        service_id: service.id,
-        status: "pending",
-        scheduled_date: new Date(
-          `${bookingData.date} ${bookingData.time}`
-        ).toISOString(),
+        service_id: bookingData.serviceId || service.id, // Use the selected service ID
+        status: "pending" as
+          | "pending"
+          | "scheduled"
+          | "in_progress"
+          | "completed"
+          | "cancelled",
+        scheduled_date: dateString,
+        scheduled_time: timeString, // Add the scheduled_time field that was missing
         address: bookingData.address || userProfile?.address,
-        price: service.price,
-        is_recurring: bookingData.isRecurring,
-        recurring_frequency: bookingData.recurringPlan,
+        price: bookingData.price || service.base_price,
+        recurring_plan_id: bookingData.isRecurring
+          ? bookingData.recurringPlan
+          : undefined,
         payment_method_id: bookingData.paymentMethod,
       };
 
-      const { data, error } = await createBooking(newBooking);
+      // Log the booking data we're about to submit
+      console.log("Submitting booking:", newBooking);
 
-      if (error) {
+      try {
+        const bookingData = await createBooking(newBooking);
+
+        // Successful booking - show confirmation
+        Alert.alert(
+          "Booking Confirmed",
+          "Your booking has been successfully created!",
+          [
+            {
+              text: "View Bookings",
+              onPress: () => router.replace("/(customer)/history"),
+            },
+            {
+              text: "Return to Dashboard",
+              onPress: () => router.replace("/(customer)/dashboard"),
+            },
+          ]
+        );
+      } catch (error: any) {
+        // Handle the error thrown by createBooking
         Alert.alert("Error", error.message || "Failed to create booking");
-        return;
       }
-
-      Alert.alert(
-        "Booking Confirmed",
-        "Your booking has been successfully created!",
-        [
-          {
-            text: "View Bookings",
-            onPress: () => router.replace("/(customer)/history"),
-          },
-          {
-            text: "Return to Dashboard",
-            onPress: () => router.replace("/(customer)/dashboard"),
-          },
-        ]
-      );
     } catch (err: any) {
       Alert.alert("Error", err.message || "Failed to complete booking");
       console.error("Booking error:", err);
@@ -131,7 +153,7 @@ export default function BookingScreen() {
     }
   };
 
-  if (loading) {
+  if (loading && serviceId) {
     return (
       <SafeAreaView className="flex-1 bg-gray-50 justify-center items-center">
         <ActivityIndicator size="large" color="#16a34a" />
@@ -146,12 +168,16 @@ export default function BookingScreen() {
         <Text className="text-red-500 text-lg mb-4">{error}</Text>
         <Text
           className="text-blue-500 font-semibold"
-          onPress={() => router.back()}
+          onPress={() => router.replace("/(customer)/services")}
         >
-          Go Back
+          Go to Services
         </Text>
       </SafeAreaView>
     );
+  }
+
+  if (!serviceId) {
+    return null; // Return null since we're redirecting
   }
 
   return (

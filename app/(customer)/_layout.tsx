@@ -33,6 +33,7 @@ export default function CustomerLayout() {
             name="dashboard"
             options={{
               title: "Dashboard",
+              headerTitle: "Home",
               tabBarIcon: ({ color }) => <Home size={24} color={color} />,
               tabBarLabel: ({ color }) => (
                 <Text style={{ color, fontSize: 12 }}>Home</Text>
@@ -43,6 +44,7 @@ export default function CustomerLayout() {
             name="services"
             options={{
               title: "Services",
+              headerTitle: "Available Services",
               tabBarIcon: ({ color }) => (
                 <ClipboardList size={24} color={color} />
               ),
@@ -55,6 +57,7 @@ export default function CustomerLayout() {
             name="booking"
             options={{
               title: "Book Service",
+              headerTitle: "Book a Service",
               tabBarIcon: ({ color }) => <Calendar size={24} color={color} />,
               tabBarLabel: ({ color }) => (
                 <Text style={{ color, fontSize: 12 }}>Book</Text>
@@ -65,6 +68,7 @@ export default function CustomerLayout() {
             name="history"
             options={{
               title: "Service History",
+              headerTitle: "Service History",
               tabBarIcon: ({ color }) => (
                 <ClipboardList size={24} color={color} />
               ),
@@ -77,6 +81,7 @@ export default function CustomerLayout() {
             name="profile"
             options={{
               title: "My Profile",
+              headerTitle: "My Profile",
               tabBarIcon: ({ color }) => <User size={24} color={color} />,
               tabBarLabel: ({ color }) => (
                 <Text style={{ color, fontSize: 12 }}>Profile</Text>
