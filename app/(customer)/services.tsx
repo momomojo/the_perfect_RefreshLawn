@@ -10,7 +10,7 @@ import { useRouter } from "expo-router";
 import { Search } from "lucide-react-native";
 import ServicesList from "../components/customer/ServicesList";
 import { TextInput } from "react-native-gesture-handler";
-import { getAllServices } from "../lib/data";
+import { getServices } from "../../lib/data";
 
 const ServicesScreen = () => {
   const router = useRouter();
@@ -27,13 +27,7 @@ const ServicesScreen = () => {
   const fetchServices = async () => {
     try {
       setLoading(true);
-      const { data, error } = await getAllServices();
-
-      if (error) {
-        setError(error.message || "Failed to load services");
-        return;
-      }
-
+      const data = await getServices();
       setServices(data);
     } catch (err: any) {
       setError(err.message || "An unexpected error occurred");

@@ -19,7 +19,7 @@ import {
   ChevronRight,
 } from "lucide-react-native";
 import { format, parseISO, isValid } from "date-fns";
-import { rateBooking } from "../../lib/data";
+import { createReview } from "../../../lib/data";
 
 interface ServiceHistoryItem {
   id: string;
@@ -93,12 +93,12 @@ const ServiceHistory = ({ services = [], onRefresh }: ServiceHistoryProps) => {
     try {
       setSubmittingRating(bookingId);
 
-      const { error } = await rateBooking(bookingId, rating);
-
-      if (error) {
-        Alert.alert("Error", error.message || "Failed to submit rating");
-        return;
-      }
+      await createReview({
+        booking_id: bookingId,
+        customer_id: "", // This will be set by the backend
+        technician_id: "", // This will be set by the backend
+        rating: rating,
+      });
 
       // Refresh booking history to get updated data
       if (onRefresh) {

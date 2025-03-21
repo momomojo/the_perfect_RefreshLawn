@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { View, Text, SafeAreaView, ActivityIndicator } from "react-native";
 import { Stack } from "expo-router";
 import ServiceHistory from "../components/customer/ServiceHistory";
-import { getBookingHistory } from "../lib/data";
+import { getCustomerBookings } from "../../lib/data";
 import { supabase } from "../../utils/supabase";
 
 export default function HistoryScreen() {
@@ -28,12 +28,7 @@ export default function HistoryScreen() {
       const userId = session.session.user.id;
 
       // Fetch booking history
-      const { data, error: fetchError } = await getBookingHistory(userId);
-
-      if (fetchError) {
-        setError(fetchError.message || "Failed to load booking history");
-        return;
-      }
+      const data = await getCustomerBookings(userId);
 
       setBookings(data || []);
     } catch (err: any) {
