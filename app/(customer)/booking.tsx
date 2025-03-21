@@ -8,10 +8,10 @@ import {
 } from "react-native";
 import { Stack, useRouter, useLocalSearchParams } from "expo-router";
 import BookingForm from "../components/customer/BookingForm";
-import { getService, createBooking, getProfile } from "../../lib/data";
+import { getService, createBooking, getProfile, Booking, Service, Profile } from "../../lib/data";
 import { supabase } from "../../utils/supabase";
 
-interface BookingData {
+interface BookingFormData {
   serviceId: string;
   serviceName: string;
   date: string;
@@ -29,8 +29,8 @@ export default function BookingScreen() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [service, setService] = useState<any>(null);
-  const [userProfile, setUserProfile] = useState<any>(null);
+  const [service, setService] = useState<Service | null>(null);
+  const [userProfile, setUserProfile] = useState<Profile | null>(null);
 
   useEffect(() => {
     if (serviceId) {
@@ -48,7 +48,7 @@ export default function BookingScreen() {
         ]
       );
     }
-  }, [serviceId]);
+  }, [serviceId, router]);
 
   const fetchServiceAndUserData = async () => {
     try {
@@ -83,7 +83,7 @@ export default function BookingScreen() {
     }
   };
 
-  const handleBookingComplete = async (bookingData: BookingData) => {
+  const handleBookingComplete = async (bookingData: BookingFormData) => {
     try {
       setSubmitting(true);
 
@@ -91,6 +91,11 @@ export default function BookingScreen() {
       const { data: session } = await supabase.auth.getSession();
       if (!session?.session?.user) {
         Alert.alert("Error", "You must be logged in to book a service");
+        return;
+      }
+
+      if (!service) {
+        Alert.alert("Error", "Service details are missing");
         return;
       }
 
@@ -107,9 +112,9 @@ export default function BookingScreen() {
         status: "pending" as "pending" | "scheduled" | "in_progress" | "completed" | "cancelled",
         scheduled_date: dateString,
         scheduled_time: timeString, // Add the scheduled_time field that was missing
-        address: bookingData.address || userProfile?.address,
+        address: bookingData.address || userProfile?.address || "",
         price: bookingData.price || service.base_price,
-        recurring_plan_id: bookingData.isRecurring ? bookingData.recurringPlan : undefined,
+        recurring_plan_id: bookingData.isRecurring && bookingData.recurringPlan ? bookingData.recurringPlan : undefined,
         payment_method_id: bookingData.paymentMethod,
       };
 
@@ -117,7 +122,7 @@ export default function BookingScreen() {
       console.log("Submitting booking:", newBooking);
 
       try {
-        const bookingData = await createBooking(newBooking);
+        const bookingResponse = await createBooking(newBooking);
         
         // Successful booking - show confirmation
         Alert.alert(
