@@ -83,7 +83,7 @@ This function:
 
 The custom access token hook adds roles to your JWT in two places:
 
-1. `user_role` - Standard claim location per Supabase docs
+1. `role` claim - Standard claim location
 2. `app_metadata.role` - Common location for backward compatibility
 
 ### Client-Side Access
@@ -91,15 +91,15 @@ The custom access token hook adds roles to your JWT in two places:
 To access the user's role in your React components:
 
 ```typescript
-import { getUserRole, getRoleFromJWT } from "../utils/userRoleManager";
+import { getUserRole, getRoleFromClaims } from "../utils/userRoleManager";
 
-// Method 1: Get role from JWT (fastest, but might be outdated)
-const jwtRole = await getRoleFromJWT();
-console.log("Role from JWT:", jwtRole);
+// Method 1: Get role from claims (fastest, current approach)
+const roleFromClaims = await getRoleFromClaims();
+console.log("Role from claims:", roleFromClaims);
 
-// Method 2: Get role from database (most up-to-date)
+// Method 2: Get role with error handling (recommended for components)
 const role = await getUserRole();
-console.log("Role from database:", role);
+console.log("User role:", role);
 ```
 
 ### Row-Level Security (RLS)

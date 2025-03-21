@@ -13,6 +13,7 @@ import {
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../lib/auth";
 import JwtDebugger from "../../components/JwtDebugger";
+import JwtRoleTester from "../JwtRoleTester";
 
 type AuthOperation = {
   name: string;
@@ -352,6 +353,9 @@ export default function AuthTest() {
         <View style={styles.jwtDebuggerContainer}>
           <Text style={styles.operationsTitle}>JWT Debugger</Text>
           <JwtDebugger />
+
+          <Text style={styles.operationsTitle}>JWT Role Tester</Text>
+          <JwtRoleTester />
         </View>
       )}
     </SafeAreaView>

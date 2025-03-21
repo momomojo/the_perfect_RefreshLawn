@@ -20,9 +20,12 @@ import {
   Sliders,
   Trash2,
   AlertTriangle,
+  Database,
+  Code,
 } from "lucide-react-native";
 import { useAuth } from "../../lib/auth";
 import { supabase } from "../../lib/supabase";
+import { router } from "expo-router";
 
 const AdminSettings = () => {
   const { user, signOut } = useAuth();
@@ -379,6 +382,31 @@ const AdminSettings = () => {
               />
             </View>
           </View>
+        </View>
+
+        {/* Developer Tools */}
+        <View className="mb-6 bg-indigo-50 rounded-xl p-4">
+          <Text className="text-lg font-semibold mb-4 text-indigo-700">
+            Developer Tools
+          </Text>
+
+          <TouchableOpacity
+            className="flex-row justify-between items-center p-3 bg-white rounded-md mb-2"
+            onPress={() => router.push("/supabase-test-hub")}
+          >
+            <View className="flex-row items-center">
+              <Database size={18} color="#6366f1" className="mr-3" />
+              <View>
+                <Text className="text-indigo-600 font-medium">
+                  Supabase Test Hub
+                </Text>
+                <Text className="text-gray-500 text-xs mt-1">
+                  Test Supabase connections, auth, and JWT claims
+                </Text>
+              </View>
+            </View>
+            <ChevronRight size={16} color="#9ca3af" />
+          </TouchableOpacity>
         </View>
 
         {/* Account Settings */}

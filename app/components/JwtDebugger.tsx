@@ -88,7 +88,9 @@ const JwtDebugger = () => {
         ]}
       >
         <Text style={styles.statusText}>
-          {jwtStatus.isWorking ? "JWT Hook Working" : "JWT Hook Not Working"}
+          {jwtStatus.isWorking
+            ? "Claims Hook Working"
+            : "Claims Hook Not Working"}
         </Text>
       </View>
 
@@ -142,7 +144,7 @@ const JwtDebugger = () => {
           disabled={loading}
         >
           <Text style={styles.buttonText}>
-            {loading ? "Loading..." : "Refresh Token"}
+            {loading ? "Loading..." : "Refresh Claims"}
           </Text>
         </TouchableOpacity>
 
@@ -163,7 +165,7 @@ const JwtDebugger = () => {
         disabled={loading}
       >
         <Text style={styles.buttonText}>
-          {loading ? "Loading..." : "Check JWT Status Again"}
+          {loading ? "Loading..." : "Check Claims Status Again"}
         </Text>
       </TouchableOpacity>
     </View>

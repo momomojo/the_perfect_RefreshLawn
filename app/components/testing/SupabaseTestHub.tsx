@@ -10,6 +10,7 @@ import {
 import { router } from "expo-router";
 import SupabaseTestUI from "./SupabaseTestUI";
 import AuthTest from "./AuthTest";
+import JwtRoleTester from "../JwtRoleTester";
 
 // This component will serve as a hub for all Supabase-related tests
 export default function SupabaseTestHub() {
@@ -28,6 +29,12 @@ export default function SupabaseTestHub() {
       name: "Authentication Tests",
       description: "Test Supabase authentication methods and JWT role claims",
       component: AuthTest,
+    },
+    {
+      id: "jwt-role",
+      name: "JWT Role Tester",
+      description: "Detailed testing of JWT token role claims and debugging",
+      component: JwtRoleTester,
     },
   ];
 
