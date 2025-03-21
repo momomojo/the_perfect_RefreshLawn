@@ -25,6 +25,37 @@ In the output, you'll find options to open the app in a
 
 You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
 
+## Database Management
+
+This project includes tools for easy database backup and restoration. For more information, see:
+
+- [Database Backup Documentation](./database-backup/README.md) - Detailed instructions for backing up and restoring your Supabase database
+- [Quick Start Guide](./database-backup/QUICK_START.md) - Simple step-by-step guide for beginners
+
+To create a database backup:
+```bash
+# For Mac/Linux
+cd database-backup
+chmod +x backup.sh
+./backup.sh
+
+# For Windows
+cd database-backup
+backup.bat
+```
+
+To restore a database from backup:
+```bash
+# For Mac/Linux
+cd database-backup
+chmod +x restore.sh
+./restore.sh
+
+# For Windows
+cd database-backup
+restore.bat
+```
+
 ## Get a fresh project
 
 When you're ready, run:
