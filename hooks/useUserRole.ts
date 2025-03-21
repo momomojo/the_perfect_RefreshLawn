@@ -5,6 +5,7 @@ import {
   isAdmin,
   isTechnician,
   isCustomer,
+  refreshJWTClaims,
 } from "../utils/roleUtils";
 
 /**
@@ -61,7 +62,7 @@ export const useUserRole = () => {
       setLoading(true);
 
       // Force a session refresh to get updated claims
-      await supabase.auth.refreshSession();
+      await refreshJWTClaims();
 
       // Get updated role
       const currentRole = await getUserRole();

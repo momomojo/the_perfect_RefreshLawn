@@ -133,19 +133,26 @@ export const getUserRole = async (): Promise<string | null> => {
   } = await supabase.auth.getSession();
   if (!session) return null;
 
-  // Check for role in JWT claims
-  if (session.access_token) {
-    const jwt = jwtDecode(session.access_token);
-    const userRole = (jwt as any).user_role || (jwt as any).app_metadata?.role;
-    if (userRole) return userRole;
+  // Check for role in app_metadata (set by custom access token hook)
+  const role = session.user.app_metadata?.role;
+
+  if (role) {
+    return role;
   }
 
-  // Fallback to metadata in session
-  return (
-    session.user.app_metadata?.role ||
-    session.user.user_metadata?.role ||
-    "customer"
-  );
+  // Fallback to database query if not in claims
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", session.user.id)
+    .single();
+
+  if (error) {
+    console.error("Error fetching user role from database:", error);
+    return "customer"; // Default to customer on error
+  }
+
+  return data?.role || "customer"; // Default to customer if no role found
 };
 
 // React hook for using roles in components
@@ -164,39 +171,3 @@ export const useUserRole = () => {
 | Inconsistent roles        | Use `fix_user_role_consistency()` function to synchronize roles                                            |
 | Permission errors         | 1. Check RLS policies are correct<br>2. Verify user has correct role assigned                              |
 | Role not updating         | Call `supabase.auth.refreshSession()` after role changes                                                   |
-
-## Testing and Verification
-
-Use these SQL scripts to test the system:
-
-1. **Test JWT role claims**: `supabase/tests/jwt_role_policies_test.sql`
-2. **Test role consistency**: `SELECT * FROM public.check_role_consistency();`
-
-For client-side testing, use the verification function:
-
-```typescript
-const { isWorking, missingClaims, message } = await verifyJwtHookWorking();
-console.log(message);
-```
-
-## Maintenance and Upgrades
-
-When maintaining the system:
-
-1. **Adding a new role**: Update the `app_role` enum type and check constraints
-2. **Adding tables**: Always add appropriate RLS policies
-3. **Refreshing JWTs**: After schema changes, run `fix_user_role_consistency()` then have users refresh their sessions
-
-## Implementation Journey & Lessons Learned
-
-During the development of this authentication system, we faced several challenges:
-
-1. **JWT Hook Configuration**: Initially, the hook was failing because we were trying to modify required claims. We fixed this by properly preserving all required claims and only adding our custom claims.
-
-2. **Parameter Ambiguity**: Variable names in PL/pgSQL can clash with column names, causing the wrong column to be referenced. We fixed this by using prefixed variable names (e.g., `v_user_id` instead of `user_id`).
-
-3. **Role Storage Consistency**: Storing roles in multiple locations led to synchronization issues. We implemented triggers and fix functions to maintain consistency.
-
-4. **JWT Refresh Logic**: Users needed to get a new JWT after role changes. We added client-side logic to refresh sessions as needed.
-
-These lessons highlight the importance of careful planning when implementing custom authentication systems.

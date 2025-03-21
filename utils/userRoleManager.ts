@@ -1,16 +1,10 @@
-import { supabase } from "./supabase";
-import { jwtDecode } from "jwt-decode";
+import { supabase } from "../lib/supabase";
+import { getMyClaimFn, setClaimFn, refreshClaims } from "./claimsManager";
 
 /**
  * User Role Management Utilities
  *
- * This module provides functions for managing user roles in both:
- * 1. Supabase auth.users metadata (via Auth API)
- * 2. User_roles table (via Database API) - following official Supabase approach
- * 3. Profiles table (for backward compatibility)
- *
- * The custom access token hook will read roles from the user_roles table
- * and add them to JWT tokens automatically.
+ * This module provides functions for managing user roles using the Supabase custom claims system.
  */
 
 /**
@@ -19,31 +13,92 @@ import { jwtDecode } from "jwt-decode";
 export type UserRole = "admin" | "technician" | "customer";
 
 /**
- * Get the role from JWT claim
- * @returns The role from JWT or null if not found
+ * Get the role from custom claims
+ * @returns The role from claims or null if not found
  */
-export const getRoleFromJWT = async (): Promise<UserRole | null> => {
+export const getRoleFromClaims = async (): Promise<UserRole | null> => {
   try {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (!session?.access_token) return null;
+    // Get the current session
+    const { data: sessionData } = await supabase.auth.getSession();
+    const session = sessionData?.session;
 
-    const jwt = jwtDecode<any>(session.access_token);
+    if (!session) {
+      console.log("No active session found");
+      return null;
+    }
 
-    // Try different possible locations for the role
-    const userRole =
-      jwt.user_role || (jwt.app_metadata && jwt.app_metadata.role) || null;
+    // Method 1: Check directly in the JWT (most reliable)
+    if (session.access_token) {
+      try {
+        // Decode the JWT payload
+        const parts = session.access_token.split(".");
+        if (parts.length === 3) {
+          const base64Url = parts[1];
+          const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+          const jsonPayload = decodeURIComponent(
+            atob(base64)
+              .split("")
+              .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+              .join("")
+          );
+          const decodedToken = JSON.parse(jsonPayload);
 
-    return userRole as UserRole;
+          // Check two possible locations for the role in JWT
+          // 1. Top-level user_role claim (added by hook)
+          if (decodedToken.user_role) {
+            console.log(
+              "Found role in user_role claim:",
+              decodedToken.user_role
+            );
+            return decodedToken.user_role as UserRole;
+          }
+
+          // 2. Inside app_metadata (also added by hook)
+          if (decodedToken.app_metadata?.role) {
+            console.log(
+              "Found role in app_metadata.role:",
+              decodedToken.app_metadata.role
+            );
+            return decodedToken.app_metadata.role as UserRole;
+          }
+
+          console.log("Role not found in JWT claims:", decodedToken);
+        }
+      } catch (error) {
+        console.error("Error decoding JWT:", error);
+      }
+    }
+
+    // Method 2: Fall back to session user object (might not always have latest claims)
+    const userRole = session.user?.app_metadata?.role;
+    if (userRole) {
+      console.log("Found role in session user app_metadata:", userRole);
+      return userRole as UserRole;
+    }
+
+    // Method 3: Last resort - use RPC (original method)
+    const { data, error } = await getMyClaimFn("role");
+    if (error) {
+      console.log("Error from RPC call:", error);
+      return null;
+    }
+
+    if (data) {
+      console.log("Found role via RPC call:", data);
+      // Remove the quotes from the JSON string
+      return data.toString().replace(/^"(.*)"$/, "$1") as UserRole;
+    }
+
+    console.log("Role not found in any location");
+    return null;
   } catch (error) {
-    console.error("Error decoding JWT:", error);
+    console.error("Error getting role from claims:", error);
     return null;
   }
 };
 
 /**
- * Set or update a user's role using the official approach
+ * Set or update a user's role using custom claims
  * @param userId The user's ID
  * @param role The role to assign
  * @returns Success status and any error
@@ -53,45 +108,14 @@ export const updateUserRole = async (
   role: UserRole
 ): Promise<{ success: boolean; error: Error | null }> => {
   try {
-    // Update the role in the user_roles table (primary approach)
-    // This will automatically sync to profiles via triggers
-    const { error: roleError } = await supabase.rpc("update_user_role_safe", {
-      p_user_id: userId,
-      p_role: role,
-    });
+    // Set the role using the custom claims system
+    // Note that we need to pass the role as a JSON string with quotes
+    const { error } = await setClaimFn(userId, "role", `"${role}"`);
 
-    if (roleError) {
-      // Fallback: direct insert/update to user_roles
-      const { error: directError } = await supabase.from("user_roles").upsert(
-        {
-          user_id: userId,
-          role: role,
-        },
-        {
-          onConflict: "user_id",
-          ignoreDuplicates: false,
-        }
-      );
+    if (error) throw new Error(error);
 
-      if (directError) {
-        throw new Error(`Failed to update user_roles: ${directError.message}`);
-      }
-    }
-
-    // Update the user's metadata (for client-side access)
-    const { error: metadataError } = await supabase.auth.updateUser({
-      data: { role },
-    });
-
-    if (metadataError) {
-      console.warn(
-        `Warning: Failed to update user metadata: ${metadataError.message}`
-      );
-      // Continue anyway, as the role is set in user_roles table
-    }
-
-    // 3. Refresh the session to update JWT claims
-    await supabase.auth.refreshSession();
+    // Refresh the session to update claims
+    await refreshClaims();
 
     return { success: true, error: null };
   } catch (error) {
@@ -113,15 +137,10 @@ export const signUpWithRole = async (
   role: UserRole = "customer"
 ): Promise<{ data: any; error: Error | null }> => {
   try {
-    // Sign up with role in user_metadata
+    // Sign up the user
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: {
-        data: {
-          role, // This will be captured by triggers
-        },
-      },
     });
 
     if (error) throw error;
@@ -133,40 +152,19 @@ export const signUpWithRole = async (
     const userId = data.user?.id;
 
     if (userId) {
-      // Explicitly set the role in the user_roles table as a backup
-      // in case the hook or trigger fails
+      // Set the role as a custom claim
       try {
-        // Try RPC function first
-        const { error: rpcError } = await supabase.rpc(
-          "update_user_role_safe",
-          {
-            p_user_id: userId,
-            p_role: role,
-          }
+        const { error: claimError } = await setClaimFn(
+          userId,
+          "role",
+          `"${role}"`
         );
 
-        // If RPC fails, try direct insert
-        if (rpcError) {
-          const { error: insertError } = await supabase
-            .from("user_roles")
-            .upsert(
-              {
-                user_id: userId,
-                role: role,
-              },
-              { onConflict: "user_id", ignoreDuplicates: false }
-            );
-
-          if (insertError) {
-            console.warn(
-              "Failed to set user role after signup:",
-              insertError.message
-            );
-          }
+        if (claimError) {
+          console.warn("Failed to set role after signup:", claimError);
         }
       } catch (roleError) {
         console.warn("Error setting role after signup:", roleError);
-        // Continue anyway, as the initial role in user_metadata might have been set
       }
     }
 
@@ -178,48 +176,12 @@ export const signUpWithRole = async (
 };
 
 /**
- * Get a user's current role from the database
- * @param userId The user's ID (defaults to current user)
+ * Get a user's current role from claims
  * @returns The user's role or null if not found
  */
-export const getUserRole = async (
-  userId?: string
-): Promise<UserRole | null> => {
+export const getUserRole = async (): Promise<UserRole | null> => {
   try {
-    // Get current user if userId not provided
-    if (!userId) {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return null;
-      userId = user.id;
-    }
-
-    // First try JWT for fastest access
-    const jwtRole = await getRoleFromJWT();
-    if (jwtRole) return jwtRole;
-
-    // Then try user_roles table (official approach)
-    const { data: userRoleData, error: userRoleError } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", userId)
-      .single();
-
-    if (!userRoleError && userRoleData?.role) {
-      return userRoleData.role as UserRole;
-    }
-
-    // Finally, fallback to profiles table
-    const { data: profileData, error: profileError } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", userId)
-      .single();
-
-    if (profileError) throw profileError;
-
-    return (profileData?.role as UserRole) || null;
+    return await getRoleFromClaims();
   } catch (error) {
     console.error("Error getting user role:", error);
     return null;
@@ -227,82 +189,211 @@ export const getUserRole = async (
 };
 
 /**
- * Force a refresh of JWT token to get updated role claims
- * @returns Success status
+ * Check if the current user has a specific role
+ * @param role The role to check
+ * @returns True if the user has the role, false otherwise
  */
-export const refreshJWTClaims = async (): Promise<boolean> => {
-  try {
-    const { error } = await supabase.auth.refreshSession();
-    return !error;
-  } catch (error) {
-    console.error("Error refreshing JWT claims:", error);
-    return false;
-  }
+export const hasRole = async (role: UserRole): Promise<boolean> => {
+  const userRole = await getUserRole();
+  return userRole === role;
 };
 
 /**
- * Verify if JWT claims contain role information to diagnose hook issues
- * @returns Object with JWT verification details
+ * Check if the current user is an admin
+ * @returns True if the user is an admin, false otherwise
  */
-export const verifyJwtHookWorking = async (): Promise<{
-  isWorking: boolean;
-  missingClaims: string[];
-  message: string;
-  jwt?: Record<string, any>;
-}> => {
+export const isAdmin = async (): Promise<boolean> => {
+  return await hasRole("admin");
+};
+
+/**
+ * Check if the current user is a technician
+ * @returns True if the user is a technician, false otherwise
+ */
+export const isTechnician = async (): Promise<boolean> => {
+  return await hasRole("technician");
+};
+
+/**
+ * Check if the current user is a customer
+ * @returns True if the user is a customer, false otherwise
+ */
+export const isCustomer = async (): Promise<boolean> => {
+  return await hasRole("customer");
+};
+
+/**
+ * Verify if the JWT hook is working properly
+ * @returns Status object with hook working status, missing claims, and message
+ */
+export const verifyJwtHookWorking = async () => {
   try {
-    // Refresh the session to get the latest token
-    await supabase.auth.refreshSession();
+    // Get the current session
+    const { data: sessionData } = await supabase.auth.getSession();
+    const session = sessionData?.session;
 
-    // Get the session and access token
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    if (!session?.access_token) {
+    if (!session) {
       return {
         isWorking: false,
-        missingClaims: ["No session"],
-        message: "No active session found. Please sign in first.",
+        missingClaims: ["No active session"],
+        message: "No active user session found. Please sign in first.",
       };
     }
 
-    // Decode the JWT
-    const jwt = jwtDecode<any>(session.access_token);
-
-    // Check for role in various places
-    const hasUserRole = !!jwt.user_role;
-    const hasAppMetadataRole = !!(jwt.app_metadata && jwt.app_metadata.role);
-
-    // Missing claims check
+    // Check if we have the role claim
+    const roleClaim = await getRoleFromClaims();
     const missingClaims = [];
-    if (!hasUserRole) missingClaims.push("user_role");
-    if (!hasAppMetadataRole) missingClaims.push("app_metadata.role");
 
-    // Determine if working
-    const isWorking = hasUserRole || hasAppMetadataRole;
+    if (!roleClaim) {
+      missingClaims.push("role");
+    }
 
-    // Generate appropriate message
-    let message = "";
-    if (isWorking) {
-      message = "JWT hook is working correctly. Role claims found.";
-    } else {
-      message =
-        "JWT hook is not adding role claims. Check Supabase Dashboard Authentication > Hooks.";
+    // Decode JWT to check its structure
+    let jwt = null;
+    if (session.access_token) {
+      const parts = session.access_token.split(".");
+      if (parts.length === 3) {
+        try {
+          const base64Url = parts[1];
+          const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+          const jsonPayload = decodeURIComponent(
+            atob(base64)
+              .split("")
+              .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+              .join("")
+          );
+          jwt = JSON.parse(jsonPayload);
+        } catch (e) {
+          console.error("Error decoding JWT:", e);
+        }
+      }
+    }
+
+    // Final check if the hook is working
+    const isWorking = roleClaim !== null;
+
+    let message = isWorking
+      ? `JWT hook is working correctly. Your role is: ${roleClaim}`
+      : "JWT hook is not working. The 'role' claim is missing from your token.";
+
+    if (missingClaims.length > 0) {
+      message += ` Missing claims: ${missingClaims.join(
+        ", "
+      )}. Verify that the custom access token hook is enabled in your Supabase dashboard.`;
     }
 
     return {
       isWorking,
       missingClaims,
       message,
-      jwt,
+      jwt, // Include the decoded JWT for debugging
     };
   } catch (error) {
     console.error("Error verifying JWT hook:", error);
     return {
       isWorking: false,
-      missingClaims: ["Error decoding JWT"],
-      message: `Error verifying JWT: ${(error as Error).message}`,
+      missingClaims: ["Error checking claims"],
+      message: `Error verifying JWT hook: ${error}`,
     };
+  }
+};
+
+/**
+ * Refresh JWT claims by refreshing the session
+ * @returns Success status and any error
+ */
+export const refreshJWTClaims = async (): Promise<{
+  success: boolean;
+  error: Error | null;
+}> => {
+  try {
+    console.log("Refreshing JWT claims...");
+
+    // Directly use Supabase's refreshSession for more reliable refresh
+    const { data, error } = await supabase.auth.refreshSession();
+
+    if (error) {
+      console.error("Error refreshing session:", error);
+      throw error;
+    }
+
+    console.log("Session refreshed successfully");
+
+    // Decode and log the new token for debugging
+    const session = data?.session;
+    if (session?.access_token) {
+      try {
+        const parts = session.access_token.split(".");
+        if (parts.length === 3) {
+          const base64Url = parts[1];
+          const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+          const jsonPayload = decodeURIComponent(
+            atob(base64)
+              .split("")
+              .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+              .join("")
+          );
+          const decodedToken = JSON.parse(jsonPayload);
+
+          console.log("New JWT payload:", decodedToken);
+          console.log("JWT user_role:", decodedToken.user_role);
+          console.log("JWT app_metadata:", decodedToken.app_metadata);
+        }
+      } catch (e) {
+        console.error("Error decoding refreshed JWT:", e);
+      }
+    }
+
+    return { success: true, error: null };
+  } catch (error) {
+    console.error("Error refreshing JWT claims:", error);
+    return { success: false, error: error as Error };
+  }
+};
+
+/**
+ * Utility function to decode the current JWT for debugging purposes
+ * @returns The decoded JWT payload or null if not available
+ */
+export const decodeCurrentJWT = async () => {
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const session = sessionData?.session;
+
+    if (!session || !session.access_token) {
+      console.log("No active session or access token found");
+      return null;
+    }
+
+    // Decode the JWT
+    const parts = session.access_token.split(".");
+    if (parts.length !== 3) {
+      console.log("Invalid JWT format");
+      return null;
+    }
+
+    const base64Url = parts[1];
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split("")
+        .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+        .join("")
+    );
+
+    const decodedToken = JSON.parse(jsonPayload);
+
+    // Log the relevant parts for debugging
+    console.log("==== JWT DEBUGGING ====");
+    console.log("Full JWT payload:", decodedToken);
+    console.log("user_role claim:", decodedToken.user_role);
+    console.log("app_metadata:", decodedToken.app_metadata);
+    console.log("app_metadata.role:", decodedToken.app_metadata?.role);
+    console.log("=======================");
+
+    return decodedToken;
+  } catch (error) {
+    console.error("Error decoding JWT:", error);
+    return null;
   }
 };

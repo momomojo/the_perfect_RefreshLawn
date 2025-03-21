@@ -21,16 +21,40 @@ const SecureStoreAdapter = {
   },
 };
 
+// Flag to enable/disable session persistence - set to false to disable
+// IMPORTANT: Set this to true when you want to re-enable session persistence
+const ENABLE_SESSION_PERSISTENCE = false;
+
+// No-op storage adapter that doesn't actually store anything
+const NoopStorageAdapter = {
+  getItem: () => Promise.resolve(null),
+  setItem: () => Promise.resolve(),
+  removeItem: () => Promise.resolve(),
+};
+
 // Create Supabase client
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    // Use SecureStore in production, AsyncStorage otherwise
-    storage: __DEV__ ? AsyncStorage : SecureStoreAdapter,
+    // Use appropriate storage adapter based on persistence flag
+    storage: ENABLE_SESSION_PERSISTENCE
+      ? __DEV__
+        ? AsyncStorage
+        : SecureStoreAdapter
+      : NoopStorageAdapter,
     autoRefreshToken: true,
-    persistSession: true,
+    persistSession: ENABLE_SESSION_PERSISTENCE,
     detectSessionInUrl: false,
   },
 });
 
 // Export a function to get Supabase client
 export const getSupabase = () => supabase;
+
+// Helper function to manually clear any existing session data
+export const clearStoredSession = async () => {
+  if (__DEV__) {
+    await AsyncStorage.removeItem("supabase.auth.token");
+  } else {
+    await SecureStore.deleteItemAsync("supabase.auth.token");
+  }
+};

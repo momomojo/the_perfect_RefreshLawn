@@ -1,0 +1,973 @@
+<repomix>This file is a merged representation of the entire codebase, combined into a single document by Repomix. The content has been processed where content has been formatted for parsing, security check has been disabled.<file_summary>This section contains a summary of this file.<purpose>This file contains a packed representation of the entire repository&apos;s contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.</purpose><file_format>The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files, each consisting of:
+  - File path as an attribute
+  - Full contents of the file</file_format><usage_guidelines>- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.</usage_guidelines><notes>- Some files may have been excluded based on .gitignore rules and Repomix&apos;s configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Content has been formatted for parsing in xml style
+- Security check has been disabled - content may contain sensitive information</notes><additional_info></additional_info></file_summary><directory_structure>claims-demo/
+  public/
+    index.html
+    manifest.json
+    robots.txt
+  src/
+    App.css
+    App.js
+    Auth.js
+    index.css
+    index.js
+    Logout.js
+    supabaseClient.js
+    TestFunctions.js
+    Userinfo.js
+  .env.sample
+  .gitignore
+  package.json
+  README.md
+CHANGELOG.md
+install.sql
+Makefile
+README.md
+supabase_custom_claims--1.0.sql
+supabase_custom_claims.control
+uninstall.sql</directory_structure><files>This section contains the contents of the repository&apos;s files.<file path="claims-demo/public/index.html">&lt;!DOCTYPE html&gt;
+&lt;html lang=&quot;en&quot;&gt;
+  &lt;head&gt;
+    &lt;meta charset=&quot;utf-8&quot; /&gt;
+    &lt;link rel=&quot;icon&quot; href=&quot;%PUBLIC_URL%/favicon.ico&quot; /&gt;
+    &lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot; /&gt;
+    &lt;meta name=&quot;theme-color&quot; content=&quot;#000000&quot; /&gt;
+    &lt;meta
+      name=&quot;description&quot;
+      content=&quot;Web site created using create-react-app&quot;
+    /&gt;
+    &lt;!-- &lt;link rel=&quot;apple-touch-icon&quot; href=&quot;%PUBLIC_URL%/logo192.png&quot; /&gt; --&gt;
+    &lt;!--
+      manifest.json provides metadata used when your web app is installed on a
+      user&apos;s mobile device or desktop. See https://developers.google.com/web/fundamentals/web-app-manifest/
+    --&gt;
+    &lt;link rel=&quot;manifest&quot; href=&quot;%PUBLIC_URL%/manifest.json&quot; /&gt;
+    &lt;!--
+      Notice the use of %PUBLIC_URL% in the tags above.
+      It will be replaced with the URL of the `public` folder during the build.
+      Only files inside the `public` folder can be referenced from the HTML.
+
+      Unlike &quot;/favicon.ico&quot; or &quot;favicon.ico&quot;, &quot;%PUBLIC_URL%/favicon.ico&quot; will
+      work correctly both with client-side routing and a non-root public URL.
+      Learn how to configure a non-root public URL by running `npm run build`.
+    --&gt;
+    &lt;title&gt;React App&lt;/title&gt;
+  &lt;/head&gt;
+  &lt;body&gt;
+    &lt;noscript&gt;You need to enable JavaScript to run this app.&lt;/noscript&gt;
+    &lt;div id=&quot;root&quot;&gt;&lt;/div&gt;
+    &lt;!--
+      This HTML file is a template.
+      If you open it directly in the browser, you will see an empty page.
+
+      You can add webfonts, meta tags, or analytics to this file.
+      The build step will place the bundled scripts into the &lt;body&gt; tag.
+
+      To begin the development, run `npm start` or `yarn start`.
+      To create a production bundle, use `npm run build` or `yarn build`.
+    --&gt;
+  &lt;/body&gt;
+&lt;/html&gt;</file><file path="claims-demo/public/manifest.json">{
+  &quot;short_name&quot;: &quot;React App&quot;,
+  &quot;name&quot;: &quot;Create React App Sample&quot;,
+  &quot;icons&quot;: [
+  ],
+  &quot;start_url&quot;: &quot;.&quot;,
+  &quot;display&quot;: &quot;standalone&quot;,
+  &quot;theme_color&quot;: &quot;#000000&quot;,
+  &quot;background_color&quot;: &quot;#ffffff&quot;
+}</file><file path="claims-demo/public/robots.txt"># https://www.robotstxt.org/robotstxt.html
+User-agent: *
+Disallow:</file><file path="claims-demo/src/App.css">.App {
+  
+}
+
+.center {
+  text-align: center;
+}
+
+.App-header {
+  font-size: calc(10px + 2vmin);
+  font-weight: bold;
+  text-align: center;
+}
+
+button {
+  margin-left: 5px;
+  margin-right: 5px;
+  margin-top: 5px;
+  margin-bottom: 5px;
+}
+pre {
+  margin: 20px;
+  border: 1px solid;
+  padding: 5px;
+}
+.notes {
+  margin: 20px;
+  border: none;
+  padding: 5px;
+  
+}
+.title {
+  margin-left: 20px;
+  font-weight: bold;
+}</file><file path="claims-demo/src/App.js">import &apos;./App.css&apos;
+import { useState, useEffect } from &apos;react&apos;
+import { supabase } from &apos;./supabaseClient&apos;
+import Auth from &apos;./Auth&apos;
+import Logout from &apos;./Logout&apos;
+import Userinfo from &apos;./Userinfo&apos;
+import TestFunctions from &apos;./TestFunctions&apos;
+
+function App() {
+	const [session, setSession] = useState(null)
+
+	useEffect(() =&gt; {
+		const run = async () =&gt; {
+			const { data } = await supabase.auth.getSession()
+			setSession(data.session)
+		}
+		run();
+		supabase.auth.onAuthStateChange((_event, session) =&gt; {
+			setSession(session)
+		})
+	}, [])
+	return (
+		&lt;div className=&apos;App&apos;&gt;
+			&lt;header className=&apos;App-header&apos;&gt;
+				&lt;p&gt;Supabase Custom Claims Demo Application&lt;/p&gt;
+			&lt;/header&gt;
+			&lt;div&gt;
+				{!session ? 
+					&lt;div className=&apos;center&apos;&gt;
+			          &lt;Auth /&gt; 
+					&lt;/div&gt;
+          : 
+          &lt;&gt;
+			&lt;div className=&apos;center&apos;&gt;
+            	&lt;Userinfo session={session} /&gt;
+				&lt;Logout /&gt;
+			&lt;/div&gt;
+            &lt;TestFunctions session={session} /&gt;
+          &lt;/&gt;
+        }
+			&lt;/div&gt;
+		&lt;/div&gt;
+	)
+}
+
+export default App</file><file path="claims-demo/src/Auth.js">import { useState } from &apos;react&apos;
+import { supabase } from &apos;./supabaseClient&apos;
+
+export default function Auth() {
+  const [loading, setLoading] = useState(false)
+  const [email, setEmail] = useState(&apos;&apos;)
+
+  const handleLogin = async (e) =&gt; {
+    e.preventDefault()
+
+    try {
+      setLoading(true)
+      const { error } = await supabase.auth.signInWithOtp({ email })
+      if (error) throw error
+      alert(&apos;Check your email for the login link!&apos;)
+    } catch (error) {
+      alert(error.error_description || error.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    &lt;div className=&quot;row flex flex-center&quot;&gt;
+      &lt;div className=&quot;col-6 form-widget&quot; aria-live=&quot;polite&quot;&gt;
+        &lt;h1 className=&quot;header&quot;&gt;Supabase + React&lt;/h1&gt;
+        &lt;p className=&quot;description&quot;&gt;Sign in via magic link with your email below&lt;/p&gt;
+        {loading ? (
+          &apos;Sending magic link...&apos;
+        ) : (
+          &lt;form onSubmit={handleLogin}&gt;
+            &lt;label htmlFor=&quot;email&quot;&gt;Email&lt;/label&gt;
+            &lt;input
+              id=&quot;email&quot;
+              className=&quot;inputField&quot;
+              type=&quot;email&quot;
+              placeholder=&quot;Your email&quot;
+              value={email}
+              onChange={(e) =&gt; setEmail(e.target.value)}
+            /&gt;
+            &lt;button className=&quot;button block&quot; aria-live=&quot;polite&quot;&gt;
+              Send magic link
+            &lt;/button&gt;
+          &lt;/form&gt;
+        )}
+      &lt;/div&gt;
+    &lt;/div&gt;
+  )
+}</file><file path="claims-demo/src/index.css">body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, &apos;Segoe UI&apos;, &apos;Roboto&apos;, &apos;Oxygen&apos;,
+    &apos;Ubuntu&apos;, &apos;Cantarell&apos;, &apos;Fira Sans&apos;, &apos;Droid Sans&apos;, &apos;Helvetica Neue&apos;,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, &apos;Courier New&apos;,
+    monospace;
+}</file><file path="claims-demo/src/index.js">import React from &apos;react&apos;;
+import ReactDOM from &apos;react-dom/client&apos;;
+import &apos;./index.css&apos;;
+import App from &apos;./App&apos;;
+
+const root = ReactDOM.createRoot(document.getElementById(&apos;root&apos;));
+root.render(
+  &lt;React.StrictMode&gt;
+    &lt;App /&gt;
+  &lt;/React.StrictMode&gt;
+);</file><file path="claims-demo/src/Logout.js">import { supabase } from &apos;./supabaseClient&apos;
+
+const Logout = () =&gt; {
+	return (
+		&lt;span&gt;
+			&lt;button type=&apos;button&apos; className=&apos;button block center&apos; onClick={() =&gt; supabase.auth.signOut()}&gt;
+				Sign Out
+			&lt;/button&gt;
+		&lt;/span&gt;
+	)
+}
+
+export default Logout</file><file path="claims-demo/src/supabaseClient.js">import { createClient } from &apos;@supabase/supabase-js&apos;
+
+const supabaseUrl = process.env.REACT_APP_SUPABASE_URL
+const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)</file><file path="claims-demo/src/TestFunctions.js">import { supabase } from &apos;./supabaseClient&apos;
+import { useState, useEffect } from &apos;react&apos;;
+
+const TestFunctions = ({session}) =&gt; {
+    const [output, setOutput] = useState(&apos;&apos;)
+    const [notes, setNotes] = useState(&apos;&apos;)
+    const [title, setTitle] = useState(&apos;&apos;)
+    const [uid, setUid] = useState(&apos;&apos;)
+    const [claim, setClaim] = useState(&apos;&apos;)
+    const [value, setValue] = useState(&apos;&apos;)
+	useEffect(() =&gt; {
+		setUid(session?.user?.id || &apos;&apos;)
+	}, [])
+
+    const get_my_claims = async () =&gt; {
+        setOutput(&apos;Loading...&apos;)
+        setTitle(&apos;get_my_claims&apos;)
+        const { data, error } = await supabase.rpc(&apos;get_my_claims&apos;);
+        if (error) console.error(&apos;get_my_claims error&apos;, error);
+        else setOutput(JSON.stringify(data, null, 2));
+        setNotes(&apos;This calls the server function &quot;get_my_claims()&quot; and gets the claims from the current token at the server.&apos;)
+    }
+    const get_my_claim = async () =&gt; {
+        setOutput(&apos;Loading...&apos;)
+        setTitle(`get_my_claim(&apos;${claim}&apos;)`)
+        const { data, error } = await supabase.rpc(&apos;get_my_claim&apos;,{claim});
+        if (error) console.error(&apos;get_my_claim error&apos;, error);
+        else setOutput(JSON.stringify(data, null, 2));
+        setNotes(&apos;This calls the server function &quot;get_my_claim(claim text)&quot; and gets the claim from the current token at the server.&apos;)
+    }
+    const show_session = async () =&gt; {
+        setOutput(&apos;Loading...&apos;)
+        setTitle(&apos;session object&apos;)
+        setOutput(JSON.stringify(session, null, 2));
+        setNotes(&apos;This displays the entire session object that was returned from &quot;supabase.auth.onAuthStateChange&quot;.&apos;)
+    }   
+    const is_claims_admin = async () =&gt; {
+        setOutput(&apos;Loading...&apos;)
+        setTitle(&apos;is_claims_admin&apos;)
+        const { data, error } = await supabase.rpc(&apos;is_claims_admin&apos;);
+        if (error) console.error(&apos;is_claims_admin error&apos;, error);
+        else setOutput(JSON.stringify(data, null, 2));
+        setNotes(&apos;This calls the server function &quot;is_claims_admin()&quot; and returns true if the current token on teh server has the &quot;claims_admin&quot; claim.&apos;)
+    } 
+    const session_claims = async () =&gt; {
+        setTitle(&apos;session_claims&apos;)
+        if (!session.user) {
+            setOutput(&apos;no session.user&apos;)
+        } else {
+            setOutput(JSON.stringify(session.user?.app_metadata, null, 2))
+        }
+        setNotes(&apos;This returns the value of &quot;app_metadata&quot; (the claims) from the current session object (returned from &quot;supabase.auth.onAuthStateChange&quot;).&apos;)
+    }
+    const set_claim = async () =&gt; {
+        if (!uid || !claim || !value) return;
+        setOutput(&apos;Loading...&apos;)
+        setTitle(&apos;set_claim&apos;)
+        const { data, error } = await supabase.rpc(&apos;set_claim&apos;, {uid, claim, value});
+        if (error) console.error(&apos;set_claim error&apos;, error);
+        else { // setOutput(JSON.stringify(data, null, 2)); 
+            const { user, error: updateError } = await refresh_claims();
+            if (updateError) console.error(&apos;update error&apos;, updateError);
+            else setOutput(JSON.stringify(user?.app_metadata, null, 2));
+        }
+        setNotes(&apos;This calls the server function &quot;set_claim(uid, claim, value)&quot; to set a custom claim for a given user by id (uuid).&apos;)
+    }
+    const delete_claim = async () =&gt; {
+        if (!uid || !claim) return;
+        setOutput(&apos;Loading...&apos;)
+        setTitle(&apos;delete_claim&apos;)
+        const { data, error } = await supabase.rpc(&apos;delete_claim&apos;, {uid, claim});
+        if (error) console.error(&apos;delete_claim error&apos;, error);
+        else { // setOutput(JSON.stringify(data, null, 2)); 
+            const { user, error: updateError } = await refresh_claims();
+            if (updateError) console.error(&apos;update error&apos;, updateError);
+            else setOutput(JSON.stringify(user?.app_metadata, null, 2));
+        }
+        setNotes(&apos;This calls the server function &quot;delete_claim(uid, claim)&quot; to delete a custom claim for a given user by id (uuid).&apos;)
+    }
+    const refresh_claims = async () =&gt; {
+        const { data: { user }, error } = await supabase.auth.refreshSession()
+        return { user, error };
+    }
+	return (
+        &lt;&gt;
+		&lt;div className=&apos;center&apos;&gt;
+            Local: 
+            &lt;button onClick={show_session}&gt;
+				session
+			&lt;/button&gt;
+            &lt;button onClick={session_claims}&gt;
+				session_claims
+			&lt;/button&gt;
+            &lt;button onClick={refresh_claims}&gt;
+                refresh_claims
+            &lt;/button&gt;
+		&lt;/div&gt;
+		&lt;div className=&apos;center&apos;&gt;
+            Server:
+			&lt;button onClick={get_my_claims}&gt;
+				get_my_claims()
+			&lt;/button&gt;
+			&lt;button onClick={is_claims_admin}&gt;
+				is_claims_admin()
+			&lt;/button&gt;
+            claim: &lt;input type=&quot;text&quot; value={claim} onChange={e =&gt; setClaim(e.target.value)} placeholder=&quot;claim name&quot; /&gt;
+			&lt;button onClick={get_my_claim}&gt;
+				get_my_claim(&apos;{claim}&apos;)
+			&lt;/button&gt;
+ 		&lt;/div&gt;
+        &lt;div className=&quot;center&quot;&gt;
+            uid: &lt;input type=&quot;text&quot; value={uid} onChange={e =&gt; setUid(e.target.value)} placeholder=&quot;user id (auth.users.id)&quot; /&gt;
+            &amp;nbsp;claim: &lt;input type=&quot;text&quot; value={claim} onChange={e =&gt; setClaim(e.target.value)} placeholder=&quot;claim name&quot; /&gt;
+            &amp;nbsp;value: &lt;input type=&quot;text&quot; value={value} onChange={e =&gt; setValue(e.target.value)} placeholder=&quot;claim value&quot; /&gt;
+            &lt;button onClick={set_claim} disabled={!uid || !claim || !value || !(session?.user?.app_metadata?.claims_admin)}&gt;
+                set_claim
+            &lt;/button&gt;
+            &lt;button onClick={delete_claim} disabled={!uid || !claim || !(session?.user?.app_metadata?.claims_admin)}&gt;
+                delete_claim
+            &lt;/button&gt;
+        &lt;/div&gt;
+        &lt;div className=&apos;center&apos;&gt;
+            { (session?.user?.app_metadata?.claims_admin) &amp;&amp; 
+                &lt;span&gt;ADMIN&lt;/span&gt;
+            }
+            { (!session?.user?.app_metadata?.claims_admin) &amp;&amp; 
+                &lt;span&gt;NOT ADMIN&lt;/span&gt;
+            }
+        &lt;/div&gt;
+        &lt;div&gt;
+            &lt;div className=&quot;title&quot;&gt;{title}&lt;/div&gt;
+            &lt;pre&gt;{output}&lt;/pre&gt;
+            &lt;div className=&apos;notes&apos;&gt;&lt;b&gt;{title}:&lt;/b&gt; {notes}&lt;/div&gt;
+        &lt;/div&gt;
+
+        &lt;div className=&quot;title&quot;&gt;
+            {(session?.user?.app_metadata?.claims_admin) ? &apos;you are a CLAIMS_ADMIN&apos; : &apos;you are NOT a CLAIMS_ADMIN&apos;}
+        &lt;/div&gt;
+        &lt;/&gt;
+	)
+}
+
+export default TestFunctions</file><file path="claims-demo/src/Userinfo.js">import { supabase } from &apos;./supabaseClient&apos;
+
+const Userinfo = ({session}) =&gt; {
+	return (
+        &lt;span&gt;
+            { session.user &amp;&amp; session.user.email }
+            { !session.user &amp;&amp; &apos;not logged in&apos; }
+        &lt;/span&gt;
+	)
+}
+
+export default Userinfo</file><file path="claims-demo/.env.sample">REACT_APP_SUPABASE_URL=https://xxxxxxxxxxxxxxxxxxxx.supabase.co
+REACT_APP_SUPABASE_ANON_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</file><file path="claims-demo/.gitignore"># See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+.env
+
+# testing
+/coverage
+
+# production
+/build
+
+# misc
+.DS_Store
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*</file><file path="claims-demo/package.json">{
+  &quot;name&quot;: &quot;claims-demo&quot;,
+  &quot;version&quot;: &quot;0.1.0&quot;,
+  &quot;private&quot;: true,
+  &quot;dependencies&quot;: {
+    &quot;@supabase/supabase-js&quot;: &quot;^2.4.1&quot;,
+    &quot;@testing-library/jest-dom&quot;: &quot;^5.16.4&quot;,
+    &quot;@testing-library/react&quot;: &quot;^13.2.0&quot;,
+    &quot;@testing-library/user-event&quot;: &quot;^13.5.0&quot;,
+    &quot;react&quot;: &quot;^18.1.0&quot;,
+    &quot;react-dom&quot;: &quot;^18.1.0&quot;,
+    &quot;react-scripts&quot;: &quot;5.0.1&quot;,
+    &quot;web-vitals&quot;: &quot;^2.1.4&quot;
+  },
+  &quot;scripts&quot;: {
+    &quot;start&quot;: &quot;react-scripts start&quot;,
+    &quot;build&quot;: &quot;react-scripts build&quot;,
+    &quot;test&quot;: &quot;react-scripts test&quot;,
+    &quot;eject&quot;: &quot;react-scripts eject&quot;
+  },
+  &quot;eslintConfig&quot;: {
+    &quot;extends&quot;: [
+      &quot;react-app&quot;,
+      &quot;react-app/jest&quot;
+    ]
+  },
+  &quot;browserslist&quot;: {
+    &quot;production&quot;: [
+      &quot;&gt;0.2%&quot;,
+      &quot;not dead&quot;,
+      &quot;not op_mini all&quot;
+    ],
+    &quot;development&quot;: [
+      &quot;last 1 chrome version&quot;,
+      &quot;last 1 firefox version&quot;,
+      &quot;last 1 safari version&quot;
+    ]
+  }
+}</file><file path="claims-demo/README.md"># claims-demo react app
+
+This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+
+## setup
+
+- Make sure you have a Supabase project set up and the site URL is set to `https://localhost:3000`
+- Copy the file `.env.sample` to `.env` and insert your own values for `REACT_APP_SUPABASE_URL` and `REACT_APP_SUPABASE_ANON_KEY` - found in the Supabase dashboard here: [Supabase API Settings](https://app.supabase.io/project/_/settings/api)
+- Run the contents of [../install.sql](../install.sql) inside your [Supabase Dashboard SQL Editor](https://app.supabase.io/project/_/sql)
+- [Bootstrap](https://github.com/supabase-community/supabase-custom-claims#bootstrapping) a user to make them a `claims_admin` user if you want to be able to set or delete claims
+- Start the app: `npm start`
+
+### run: `npm start`
+
+Runs the app in the development mode.\
+Open [http://localhost:3000](http://localhost:3000) to view it in your browser.</file><file path="CHANGELOG.md"># CHANGELOG
+## 1.0
+- first release</file><file path="install.sql">CREATE OR REPLACE FUNCTION is_claims_admin() RETURNS &quot;bool&quot;
+  LANGUAGE &quot;plpgsql&quot; 
+  AS $$
+  BEGIN
+    IF session_user = &apos;authenticator&apos; THEN
+      --------------------------------------------
+      -- To disallow any authenticated app users
+      -- from editing claims, delete the following
+      -- block of code and replace it with:
+      -- RETURN FALSE;
+      --------------------------------------------
+      IF extract(epoch from now()) &gt; coalesce((current_setting(&apos;request.jwt.claims&apos;, true)::jsonb)-&gt;&gt;&apos;exp&apos;, &apos;0&apos;)::numeric THEN
+        return false; -- jwt expired
+      END IF;
+      If current_setting(&apos;request.jwt.claims&apos;, true)::jsonb-&gt;&gt;&apos;role&apos; = &apos;service_role&apos; THEN
+        RETURN true; -- service role users have admin rights
+      END IF;
+      IF coalesce((current_setting(&apos;request.jwt.claims&apos;, true)::jsonb)-&gt;&apos;app_metadata&apos;-&gt;&apos;claims_admin&apos;, &apos;false&apos;)::bool THEN
+        return true; -- user has claims_admin set to true
+      ELSE
+        return false; -- user does NOT have claims_admin set to true
+      END IF;
+      --------------------------------------------
+      -- End of block 
+      --------------------------------------------
+    ELSE -- not a user session, probably being called from a trigger or something
+      return true;
+    END IF;
+  END;
+$$;
+
+CREATE OR REPLACE FUNCTION get_my_claims() RETURNS &quot;jsonb&quot;
+    LANGUAGE &quot;sql&quot; STABLE
+    AS $$
+  select 
+  	coalesce(nullif(current_setting(&apos;request.jwt.claims&apos;, true), &apos;&apos;)::jsonb -&gt; &apos;app_metadata&apos;, &apos;{}&apos;::jsonb)::jsonb
+$$;
+CREATE OR REPLACE FUNCTION get_my_claim(claim TEXT) RETURNS &quot;jsonb&quot;
+    LANGUAGE &quot;sql&quot; STABLE
+    AS $$
+  select 
+  	coalesce(nullif(current_setting(&apos;request.jwt.claims&apos;, true), &apos;&apos;)::jsonb -&gt; &apos;app_metadata&apos; -&gt; claim, null)
+$$;
+
+CREATE OR REPLACE FUNCTION get_claims(uid uuid) RETURNS &quot;jsonb&quot;
+    LANGUAGE &quot;plpgsql&quot; SECURITY DEFINER SET search_path = public
+    AS $$
+    DECLARE retval jsonb;
+    BEGIN
+      IF NOT is_claims_admin() THEN
+          RETURN &apos;{&quot;error&quot;:&quot;access denied&quot;}&apos;::jsonb;
+      ELSE
+        select raw_app_meta_data from auth.users into retval where id = uid::uuid;
+        return retval;
+      END IF;
+    END;
+$$;
+
+CREATE OR REPLACE FUNCTION get_claim(uid uuid, claim text) RETURNS &quot;jsonb&quot;
+    LANGUAGE &quot;plpgsql&quot; SECURITY DEFINER SET search_path = public
+    AS $$
+    DECLARE retval jsonb;
+    BEGIN
+      IF NOT is_claims_admin() THEN
+          RETURN &apos;{&quot;error&quot;:&quot;access denied&quot;}&apos;::jsonb;
+      ELSE
+        select coalesce(raw_app_meta_data-&gt;claim, null) from auth.users into retval where id = uid::uuid;
+        return retval;
+      END IF;
+    END;
+$$;
+
+CREATE OR REPLACE FUNCTION set_claim(uid uuid, claim text, value jsonb) RETURNS &quot;text&quot;
+    LANGUAGE &quot;plpgsql&quot; SECURITY DEFINER SET search_path = public
+    AS $$
+    BEGIN
+      IF NOT is_claims_admin() THEN
+          RETURN &apos;error: access denied&apos;;
+      ELSE        
+        update auth.users set raw_app_meta_data = 
+          raw_app_meta_data || 
+            json_build_object(claim, value)::jsonb where id = uid;
+        return &apos;OK&apos;;
+      END IF;
+    END;
+$$;
+
+CREATE OR REPLACE FUNCTION delete_claim(uid uuid, claim text) RETURNS &quot;text&quot;
+    LANGUAGE &quot;plpgsql&quot; SECURITY DEFINER SET search_path = public
+    AS $$
+    BEGIN
+      IF NOT is_claims_admin() THEN
+          RETURN &apos;error: access denied&apos;;
+      ELSE        
+        update auth.users set raw_app_meta_data = 
+          raw_app_meta_data - claim where id = uid;
+        return &apos;OK&apos;;
+      END IF;
+    END;
+$$;
+NOTIFY pgrst, &apos;reload schema&apos;;</file><file path="Makefile">EXTENSION = supabase_custom_claims
+DATA = supabase_custom_claims--1.0.sql
+ 
+PG_CONFIG = pg_config
+PGXS := $(shell $(PG_CONFIG) --pgxs)
+include $(PGXS)</file><file path="README.md"># Supabase Custom Claims
+Want to know more about Custom Claims?  See the [FAQ](#faq) below.
+
+This is just one way to implement `custom claims` for a Supabase project.  The goal here is simply to add JSON data to the access token that an authenticated user receives when logging into your application.  That token (and thus the `custom claims` contained in that token) can be read and used by both your application and by your PostgreSQL database server.  These `custom claims` are stored in the `raw_app_meta_data` field of the `users` table in the `auth` schema.  (`auth.users.raw_app_meta_data`)
+
+## Installing the Functions
+The file [install.sql](./install.sql) contains all the PostgreSQL functions you need to implement and manage custom claims in your Supabase project.  
+
+1. Paste the SQL code from [install.sql](./install.sql) into the [SQL Query Editor](https://app.supabase.io/project/_/sql) of your Supabase project.
+2. Click `RUN` to execute the code.
+## Uninstalling the Functions
+
+1. Paste the SQL code from [uninstall.sql](./uninstall.sql) into the [SQL Query Editor](https://app.supabase.io/project/_/sql) of your Supabase project.
+2. Click `RUN` to execute the code.
+
+### Security Considerations
+If you want to tighten security so that custom claims can only be set or deleted from inside the query editor or inside your PostgreSQL functions or triggers, edit the function `is_claims_admin()` to disallow usage by app users (no usage through the API / Postgrest).  Instructions are included in the function.
+
+By default, usage is allowed through your API, but the ability to set or delete claims is restricted to only users who have the `claims_admin` custom claim set to `true`.  This allows you to create an **&quot;admin&quot;** section of your app that allows designated users to modify custom claims for other users of your app.
+
+### Bootstrapping
+If the only way to set or delete claims requires the `claims_admin` claim to be set to `true` and no users have that claim, how can I edit custom claims from within my app?
+
+The answer is to **&quot;bootstrap&quot;** a user by running the following command inside your [Supabase Query Editor](https://app.supabase.io/project/_/sql) window:
+
+`select set_claim(&apos;03acaa13-7989-45c1-8dfb-6eeb7cf0b92e&apos;, &apos;claims_admin&apos;, &apos;true&apos;);`
+
+where `03acaa13-7989-45c1-8dfb-6eeb7cf0b92e` is the `id` of your admin user found in `auth.users`.
+
+## Usage
+### Inside the Query Editor
+You can get, set, and delete claims for any user based on the user&apos;s `id` (uuid) with the following functions:
+
+#### `get_claims(uid uuid)` returns jsonb
+##### example
+`select get_claims(&apos;03acaa13-7989-45c1-8dfb-6eeb7cf0b92e&apos;);`
+##### result
+```
+| get_claims                                                                                                                                                                 |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| {&quot;provider&quot;: &quot;email&quot;, &quot;userrole&quot;: &quot;MANAGER&quot;, &quot;providers&quot;: [&quot;email&quot;], &quot;userlevel&quot;: 100, &quot;useractive&quot;: true, &quot;userjoined&quot;: &quot;2022-05-20T14:07:27.742Z&quot;, &quot;claims_admin&quot;: true} |
+```
+
+#### `get_claim(uid uuid, claim text)` returns jsonb
+##### example
+`select get_claim(&apos;03acaa13-7989-45c1-8dfb-6eeb7cf0b92e&apos;, &apos;userlevel&apos;);`
+##### result
+```
+| get_claim |
+| --------- |
+| 100       |
+```
+
+#### `set_claim(uid uuid, claim text, value jsonb) `returns text
+##### example
+Set a **number** value.  (Note `value` is passed as a `jsonb` value, so to set a number we need to pass it as a simple string.)
+`select set_claim(&apos;03acaa13-7989-45c1-8dfb-6eeb7cf0b92e&apos;, &apos;userlevel&apos;, &apos;200&apos;);`
+
+Set a **text** value.  (Note `value` is passed as a `jsonb` value, so to set a number we need to pass it with double-quotes.)
+`select set_claim(&apos;03acaa13-7989-45c1-8dfb-6eeb7cf0b92e&apos;, &apos;userrole&apos;, &apos;&quot;MANAGER&quot;&apos;);`
+
+**Common Mistake**: If you forget the double-quotes for a string, and try to do this: `select set_claim(&apos;03acaa13-7989-45c1-8dfb-6eeb7cf0b92e&apos;, &apos;userrole&apos;, &apos;MANAGER&apos;);`, the result will be an error: `invalid input syntax for type json`
+
+Set a **boolean** value.
+`select set_claim(&apos;03acaa13-7989-45c1-8dfb-6eeb7cf0b92e&apos;, &apos;useractive&apos;, &apos;true&apos;);`
+
+Set an **array** value.
+`select set_claim(&apos;03acaa13-7989-45c1-8dfb-6eeb7cf0b92e&apos;, &apos;items&apos;, &apos;[&quot;bread&quot;, &quot;cheese&quot;, &quot;butter&quot;]&apos;);`
+
+Set a complex, nested **json** / **object** value.
+`select set_claim(&apos;03acaa13-7989-45c1-8dfb-6eeb7cf0b92e&apos;, &apos;gamestate&apos;, &apos;{&quot;level&quot;: 5, &quot;items&quot;: [&quot;knife&quot;, &quot;gun&quot;], &quot;position&quot;:{&quot;x&quot;: 15, &quot;y&quot;: 22}}&apos;);`
+
+##### result (for any of the above)
+```
+| set_claim |
+| --------- |
+| OK        |
+```
+
+#### `delete_claim(uid uuid, claim text)` returns text
+##### example
+`select delete_claim(&apos;03acaa13-7989-45c1-8dfb-6eeb7cf0b92e&apos;, &apos;gamestate&apos;);`
+##### result
+```
+| delete_claim |
+| ------------ |
+| OK           |
+```
+
+### Inside PostgreSQL Functions and Triggers
+When using custom claims from inside a PostgreSQL function or trigger, you can use any of the functions shown in the section above: `Inside the Query Editor`.
+
+In addition, you can use the following functions that are specific to the currently logged-in user:
+
+#### `is_claims_admin()` returns bool
+##### example
+`select is_claims_admin();`
+##### result
+```
+| is_claims_admin |
+| --------------- |
+| true            |
+```
+
+#### `get_my_claims()` returns jsonb
+##### example
+`select get_my_claims();`
+##### result
+```
+| get_my_claims                                                                                                                                                              |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| {&quot;provider&quot;: &quot;email&quot;, &quot;userrole&quot;: &quot;MANAGER&quot;, &quot;providers&quot;: [&quot;email&quot;], &quot;userlevel&quot;: 100, &quot;useractive&quot;: true, &quot;userjoined&quot;: &quot;2022-05-20T14:07:27.742Z&quot;, &quot;claims_admin&quot;: true} |
+```
+
+#### `get_my_claim(claim TEXT)` returns jsonb
+##### example
+`select get_my_claim(&apos;userlevel&apos;);`
+##### result
+```
+| get_my_claim |
+| ------------ |
+| 100          |
+```
+
+### Inside an RLS (Row Level Security) Policy
+To use custom claims in an RLS Policy, you&apos;ll normally use the `get_my_claim` to check a specific claim for the currently logged in user.
+#### examples
+##### only allow users with userrole &quot;MANAGER&quot;
+`get_my_claim(&apos;userrole&apos;) = &apos;&quot;MANAGER&quot;&apos;`
+(which the UI will change into the more formal):
+`((get_my_claim(&apos;userrole&apos;::text)) = &apos;&quot;MANAGER&quot;&apos;::jsonb)`
+
+##### only allow users with userlevel over 100
+`coalesce(get_my_claim(&apos;userlevel&apos;)::numeric,0) &gt; 100`
+
+##### only allow users with claim_admin = true
+`coalesce(get_my_claim(&apos;claims_admin&apos;)::bool,false)`
+
+### Inside your app (using `.rpc()`)
+
+#### Getting Claims Data from Local Session Data
+You can extract claims information from the `session` object you get when the user is logged in.  For example:
+
+```js
+		supabase.auth.onAuthStateChange((_event, session) =&gt; {
+            if (session?.user) {
+    			console.log(session?.user?.app_metadata) // show custom claims
+            }
+		})
+```
+
+If any claims have changed since your last log in, you may need to log out and back in to see these changes.
+
+#### Getting Claims Data from the Server
+You can also query the server to see what claims are set for the current user.
+
+Here are some sample functions that can be used by any authenticated (logged-in) user of your application:
+
+```js
+  public get_my_claims = async () =&gt; {
+    const { data, error } = await supabase
+    .rpc(&apos;get_my_claims&apos;, {});
+    return { data, error };
+  }
+  public get_my_claim = async (claim: string) =&gt; {
+    const { data, error } = await supabase
+    .rpc(&apos;get_my_claim&apos;, {claim});
+    return { data, error };
+  }
+  public is_claims_admin = async () =&gt; {
+    const { data, error } = await supabase
+    .rpc(&apos;is_claims_admin&apos;, {});
+    return { data, error };
+  }
+```
+
+The following functions can only be used by a **&quot;claims admin&quot;**, that is, a user who has the `claims_admin` custom claim set to `true`:
+
+(Note: these functions allow you to view, set, and delete claims for any user of your application, so these would be appropriate for an **administrative** branch of your application to be used only by high-level users with the proper security rights (i.e. `claims_admin` level users.))
+
+```js
+  public get_claims = async (uid: string) =&gt; {
+    const { data, error } = await supabase
+    .rpc(&apos;get_claims&apos;, {uid});
+    return { data, error };
+  }
+  public get_claim = async (uid: string, claim: string) =&gt; {
+    const { data, error } = await supabase
+    .rpc(&apos;get_claim&apos;, {uid, claim});
+    return { data, error };
+  }
+  public set_claim = async (uid: string, claim: string, value: object) =&gt; {
+    const { data, error } = await supabase
+    .rpc(&apos;set_claim&apos;, {uid, claim, value});
+    return { data, error };
+  }
+  public delete_claim = async (uid: string, claim: string) =&gt; {
+    const { data, error } = await supabase
+    .rpc(&apos;delete_claim&apos;, {uid, claim});
+    return { data, error };
+  }
+```
+
+## Running an older project (Postgres 13 or earlier?)
+See [this issue](https://github.com/supabase-community/supabase-custom-claims/issues/3)
+
+## FAQ
+### What are custom claims?
+Custom Claims are special attributes attached to a user that you can use to control access to portions of your application.  
+
+For example:
+```
+plan: &quot;TRIAL&quot;
+user_level: 100
+group_name: &quot;Super Guild!&quot;
+joined_on: &quot;2022-05-20T14:28:18.217Z&quot;
+group_manager: false
+items: [&quot;toothpick&quot;, &quot;string&quot;, &quot;ring&quot;]
+```
+
+### What type of data can I store in a custom claim?
+Any valid JSON data can be stored in a claim.  You can store a string, number, boolean, date (as a string), array, or even a complex, nested, complete JSON object.
+
+### Where are these custom claims stored?
+Custom claims are stored in the `auth.users` table, in the `raw_app_meta_data` column for a user.
+
+### Are there any naming restrictions?
+The Supabase Auth System (GoTrue) currently uses the following custom claims: `provider` and `providers`, so DO NOT use these.  Any other valid string should be ok as the name for your custom claim(s), though.
+
+### Why use custom claims instead of just creating a table?
+Performance, mostly.  Custom claims are stored in the security token a user receives when logging in, and these claims are made available to the PostgreSQL database as a configuration parameter, i.e. `current_setting(&apos;request.jwt.claims&apos;, true)`.  So the database has access to these values immediately without needing to do any disk i/o.
+
+This may sound trivial, but this could have a significant effect on scalability if you use claims in an RLS (Row Level Security) Policy, as it could potentially eliminate thousands (or even millions) of database calls.
+
+### What are the drawbacks to using custom claims?
+One drawback is that claims don&apos;t get updated automatically, so if you assign a user a new custom claim, they may need to log out and log back in to have the new claim available to them.  The same goes for deleting or changing a claim.  So this is not a good tool for storing data that changes frequently.
+
+You can force a refresh of the current session token by calling `supabase.auth.refreshSession()` on the client, but if a claim is changed by a server process or by a claims adminstrator manually, there&apos;s no easy way to notify the user that their claims have changed.  You can provide a &quot;refresh&quot; button or a refresh function inside your app to update the claims at any time, though.
+
+### How can I write a query to find all the users who have a specific custom claim set?
+#### examples
+##### find all users who have `claims_admin` set to `true`
+`select * from auth.users where (auth.users.raw_app_meta_data-&gt;&apos;claims_admin&apos;)::bool = true;`
+##### find all users who have a `userlevel` over 100
+`select * from auth.users where (auth.users.raw_app_meta_data-&gt;&apos;userlevel&apos;)::numeric &gt; 100;`
+##### find all users whose `userrole` is set to `&quot;MANAGER&quot;`
+(note for strings you need to add double-quotes becuase data is data is stored as JSONB)
+`select * from auth.users where (auth.users.raw_app_meta_data-&gt;&apos;userrole&apos;)::text = &apos;&quot;MANAGER&quot;&apos;;`
+
+### What&apos;s the difference between `auth.users.raw_app_meta_data` and `auth.users.raw_user_meta_data`?
+The `auth.users` table used by Supabase Auth (GoTrue) has both `raw_app_meta_data` and a `raw_user_meta_data` fields.
+
+`raw_user_meta_data` is designed for profile data and can be created and modified by a user.  For example, this data can be set when a user signs up: [sign-up-with-additional-user-meta-data](https://supabase.com/docs/reference/javascript/auth-signup#sign-up-with-additional-user-meta-data) or this data can be modified by a user with [auth-update](https://supabase.com/docs/reference/javascript/auth-updateuser)
+
+`raw_app_meta_data` is designed for use by the application layer and is used by GoTrue to handle authentication (For exampple, the `provider` and `providers` claims are used by GoTrue to track authentication providers.)  `raw_app_meta_data` is not accessible to the user by default.
+
+### NOTES:
+##### updating claims from a server process or edge function
+https://supabase.com/docs/reference/javascript/auth-api-updateuserbyid#updates-a-users-app_metadata
+
+## Warning
+Be sure to watch for **reserved** claims in your particular development environment.  For example, the claims `exp` and `role` are reserved by the Supabase Realtime system and can cause problems if you try use these names.  To avoid these potential problems, it&apos;s good practice to use a custom identifier in your custom claims, such as `MY_COMPANY_item1`, `MY_COMPANY_item2`, etc.</file><file path="supabase_custom_claims--1.0.sql">--complain if script is sourced in psql, rather than via CREATE EXTENSION
+\echo Use &quot;CREATE EXTENSION supabase_custom_claims&quot; to load this file. \quit
+
+CREATE OR REPLACE FUNCTION is_claims_admin() RETURNS &quot;bool&quot;
+  LANGUAGE &quot;plpgsql&quot; 
+  AS $$
+  BEGIN
+    IF session_user = &apos;authenticator&apos; THEN
+      --------------------------------------------
+      -- To disallow any authenticated app users
+      -- from editing claims, delete the following
+      -- block of code and replace it with:
+      -- RETURN FALSE;
+      --------------------------------------------
+      IF extract(epoch from now()) &gt; coalesce((current_setting(&apos;request.jwt.claims&apos;, true)::jsonb)-&gt;&gt;&apos;exp&apos;, &apos;0&apos;)::numeric THEN
+        return false; -- jwt expired
+      END IF; 
+      IF coalesce((current_setting(&apos;request.jwt.claims&apos;, true)::jsonb)-&gt;&apos;app_metadata&apos;-&gt;&apos;claims_admin&apos;, &apos;false&apos;)::bool THEN
+        return true; -- user has claims_admin set to true
+      ELSE
+        return false; -- user does NOT have claims_admin set to true
+      END IF;
+      --------------------------------------------
+      -- End of block 
+      --------------------------------------------
+    ELSE -- not a user session, probably being called from a trigger or something
+      return true;
+    END IF;
+  END;
+$$;
+
+CREATE OR REPLACE FUNCTION get_my_claims() RETURNS &quot;jsonb&quot;
+    LANGUAGE &quot;sql&quot; STABLE
+    AS $$
+  select 
+  	coalesce(nullif(current_setting(&apos;request.jwt.claims&apos;, true), &apos;&apos;)::jsonb -&gt; &apos;app_metadata&apos;, &apos;{}&apos;::jsonb)::jsonb
+$$;
+CREATE OR REPLACE FUNCTION get_my_claim(claim TEXT) RETURNS &quot;jsonb&quot;
+    LANGUAGE &quot;sql&quot; STABLE
+    AS $$
+  select 
+  	coalesce(nullif(current_setting(&apos;request.jwt.claims&apos;, true), &apos;&apos;)::jsonb -&gt; &apos;app_metadata&apos; -&gt; claim, null)
+$$;
+
+CREATE OR REPLACE FUNCTION get_claims(uid uuid) RETURNS &quot;jsonb&quot;
+    LANGUAGE &quot;plpgsql&quot; SECURITY DEFINER SET search_path = public
+    AS $$
+    DECLARE retval jsonb;
+    BEGIN
+      IF NOT is_claims_admin() THEN
+          RETURN &apos;{&quot;error&quot;:&quot;access denied&quot;}&apos;::jsonb;
+      ELSE
+        select raw_app_meta_data from auth.users into retval where id = uid::uuid;
+        return retval;
+      END IF;
+    END;
+$$;
+
+CREATE OR REPLACE FUNCTION get_claim(uid uuid, claim text) RETURNS &quot;jsonb&quot;
+    LANGUAGE &quot;plpgsql&quot; SECURITY DEFINER SET search_path = public
+    AS $$
+    DECLARE retval jsonb;
+    BEGIN
+      IF NOT is_claims_admin() THEN
+          RETURN &apos;{&quot;error&quot;:&quot;access denied&quot;}&apos;::jsonb;
+      ELSE
+        select coalesce(raw_app_meta_data-&gt;claim, null) from auth.users into retval where id = uid::uuid;
+        return retval;
+      END IF;
+    END;
+$$;
+
+CREATE OR REPLACE FUNCTION set_claim(uid uuid, claim text, value jsonb) RETURNS &quot;text&quot;
+    LANGUAGE &quot;plpgsql&quot; SECURITY DEFINER SET search_path = public
+    AS $$
+    BEGIN
+      IF NOT is_claims_admin() THEN
+          RETURN &apos;error: access denied&apos;;
+      ELSE        
+        update auth.users set raw_app_meta_data = 
+          raw_app_meta_data || 
+            json_build_object(claim, value)::jsonb where id = uid;
+        return &apos;OK&apos;;
+      END IF;
+    END;
+$$;
+
+CREATE OR REPLACE FUNCTION delete_claim(uid uuid, claim text) RETURNS &quot;text&quot;
+    LANGUAGE &quot;plpgsql&quot; SECURITY DEFINER SET search_path = public
+    AS $$
+    BEGIN
+      IF NOT is_claims_admin() THEN
+          RETURN &apos;error: access denied&apos;;
+      ELSE        
+        update auth.users set raw_app_meta_data = 
+          raw_app_meta_data - claim where id = uid;
+        return &apos;OK&apos;;
+      END IF;
+    END;
+$$;
+NOTIFY pgrst, &apos;reload schema&apos;;</file><file path="supabase_custom_claims.control"># supabase_custom_claims extension
+comment = &apos;PostgreSQL functions that support custom claims in Supabase by writing to the raw_app_meta_data column in the auth.users table&apos; 
+requires = &apos;&apos;
+default_version = &apos;1.0&apos;
+module_pathname = &apos;$libdir/supabase_custom_claims&apos;
+relocatable = false
+schema = public</file><file path="uninstall.sql">DROP FUNCTION get_my_claims;
+DROP FUNCTION get_my_claim;
+DROP FUNCTION get_claims;
+DROP FUNCTION set_claim;
+DROP FUNCTION delete_claim;
+DROP FUNCTION is_claims_admin;
+NOTIFY pgrst, &apos;reload schema&apos;;</file></files></repomix>
