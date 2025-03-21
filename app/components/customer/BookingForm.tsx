@@ -1,5 +1,12 @@
-import React, { useState } from "react";
-import { View, Text, ScrollView, TouchableOpacity, Image } from "react-native";
+import React, { useState, useEffect } from "react";
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  Image,
+  ActivityIndicator,
+} from "react-native";
 import {
   ChevronRight,
   Calendar,
@@ -10,15 +17,23 @@ import {
   ArrowLeft,
   ArrowRight,
 } from "lucide-react-native";
+import {
+  getRecurringPlans,
+  getServices,
+  RecurringPlan,
+  Service,
+  Profile,
+} from "../../../lib/data";
+import { format, addDays } from "date-fns";
 
 interface BookingFormProps {
-  service?: any;
-  userProfile?: any;
-  onComplete?: (bookingData: BookingData) => void;
+  service?: Service | null;
+  userProfile?: Profile | null;
+  onComplete?: (bookingData: BookingFormData) => void;
   isSubmitting?: boolean;
 }
 
-interface BookingData {
+export interface BookingFormData {
   serviceId: string;
   serviceName: string;
   date: string;
@@ -37,7 +52,7 @@ const BookingForm = ({
   isSubmitting = false,
 }: BookingFormProps) => {
   const [currentStep, setCurrentStep] = useState(1);
-  const [bookingData, setBookingData] = useState<BookingData>({
+  const [bookingData, setBookingData] = useState<BookingFormData>({
     serviceId: service?.id || "",
     serviceName: service?.name || "",
     date: "",
@@ -46,75 +61,101 @@ const BookingForm = ({
     isRecurring: false,
     recurringPlan: "",
     paymentMethod: "",
-    price: service?.price || 0,
+    price: service?.base_price || 0,
   });
 
-  // Sample service types
-  const serviceTypes = [
-    {
-      id: 1,
-      name: "Lawn Mowing",
-      price: 45,
-      image:
-        "https://images.unsplash.com/photo-1589428473816-b2b7632082df?w=400&q=80",
-    },
-    {
-      id: 2,
-      name: "Hedge Trimming",
-      price: 60,
-      image:
-        "https://images.unsplash.com/photo-1598902108854-10e335adac99?w=400&q=80",
-    },
-    {
-      id: 3,
-      name: "Leaf Removal",
-      price: 50,
-      image:
-        "https://images.unsplash.com/photo-1508470169927-48aff8d2968d?w=400&q=80",
-    },
-    {
-      id: 4,
-      name: "Garden Maintenance",
-      price: 75,
-      image:
-        "https://images.unsplash.com/photo-1599685315640-4a9ba2613f46?w=400&q=80",
-    },
-  ];
+  const [services, setServices] = useState<Service[]>([]);
+  const [recurringPlans, setRecurringPlans] = useState<RecurringPlan[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  // Sample dates
-  const availableDates = [
-    "2023-10-15",
-    "2023-10-16",
-    "2023-10-17",
-    "2023-10-18",
-    "2023-10-19",
-  ];
+  // Generate dates for next 14 days
+  const generateAvailableDates = () => {
+    const dates = [];
+    const today = new Date();
+    for (let i = 1; i <= 14; i++) {
+      const date = addDays(today, i);
+      dates.push(format(date, "yyyy-MM-dd"));
+    }
+    return dates;
+  };
 
-  // Sample time slots
+  const availableDates = generateAvailableDates();
+
+  // Generate time slots from 8 AM to 5 PM
   const timeSlots = [
+    "8:00 AM",
     "9:00 AM",
     "10:00 AM",
     "11:00 AM",
+    "12:00 PM",
     "1:00 PM",
     "2:00 PM",
     "3:00 PM",
+    "4:00 PM",
+    "5:00 PM",
   ];
 
-  // Sample recurring plans
-  const recurringPlans = [
-    { id: 1, name: "Weekly", discount: "10%" },
-    { id: 2, name: "Bi-weekly", discount: "5%" },
-    { id: 3, name: "Monthly", discount: "3%" },
-  ];
+  // Get real data on component mount
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        if (!service) {
+          // Only fetch services if not provided by parent
+          const servicesData = await getServices();
+          setServices(servicesData);
+        }
 
-  // Sample payment methods
-  const paymentMethods = [
-    { id: 1, name: "Credit Card", last4: "4242" },
-    { id: 2, name: "PayPal", email: "user@example.com" },
-  ];
+        // Always fetch recurring plans
+        const plansData = await getRecurringPlans();
+        setRecurringPlans(plansData);
+      } catch (error) {
+        console.error("Error fetching data:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const handleServiceSelect = (serviceName: string) => {
-    setBookingData({ ...bookingData, serviceName: serviceName });
+    fetchData();
+  }, [service]);
+
+  // Set service information if provided by parent
+  useEffect(() => {
+    if (service) {
+      setBookingData((prev) => ({
+        ...prev,
+        serviceId: service.id,
+        serviceName: service.name,
+        price: service.base_price,
+      }));
+
+      // Skip the service selection step if a service is already provided
+      if (currentStep === 1) {
+        setCurrentStep(2); // Move to date selection
+      }
+    }
+  }, [service, currentStep]);
+
+  // Generate payment methods based on user profile or default
+  const getPaymentMethods = () => {
+    if (userProfile?.paymentMethods?.length > 0) {
+      return userProfile.paymentMethods;
+    }
+
+    // Fallback payment methods
+    return [
+      { id: "cash", name: "Cash on Delivery" },
+      { id: "card", name: "Credit Card", last4: "Add a new card" },
+    ];
+  };
+
+  const handleServiceSelect = (id: string, name: string, price: number) => {
+    setBookingData({
+      ...bookingData,
+      serviceId: id,
+      serviceName: name,
+      price: price,
+    });
     nextStep();
   };
 
@@ -138,13 +179,13 @@ const BookingForm = ({
     if (!isRecurring) nextStep();
   };
 
-  const handleRecurringPlanSelect = (plan: string) => {
-    setBookingData({ ...bookingData, recurringPlan: plan });
+  const handleRecurringPlanSelect = (planId: string) => {
+    setBookingData({ ...bookingData, recurringPlan: planId });
     nextStep();
   };
 
-  const handlePaymentMethodSelect = (method: string) => {
-    setBookingData({ ...bookingData, paymentMethod: method });
+  const handlePaymentMethodSelect = (methodId: string) => {
+    setBookingData({ ...bookingData, paymentMethod: methodId });
     nextStep();
   };
 
@@ -182,23 +223,50 @@ const BookingForm = ({
   };
 
   const renderServiceTypeStep = () => {
+    if (loading) {
+      return (
+        <View className="flex-1 justify-center items-center">
+          <ActivityIndicator size="large" color="#16a34a" />
+          <Text className="mt-4 text-gray-600">Loading services...</Text>
+        </View>
+      );
+    }
+
     return (
       <View className="flex-1">
         <Text className="text-xl font-bold mb-4 px-4">Select Service Type</Text>
         <ScrollView className="flex-1">
-          {serviceTypes.map((service) => (
+          {services.map((service) => (
             <TouchableOpacity
               key={service.id}
               className="flex-row items-center bg-white rounded-lg p-4 mb-3 mx-4 shadow-sm"
-              onPress={() => handleServiceSelect(service.name)}
+              onPress={() =>
+                handleServiceSelect(
+                  service.id,
+                  service.name,
+                  service.base_price
+                )
+              }
             >
               <Image
-                source={{ uri: service.image }}
+                source={{
+                  uri:
+                    service.image_url ||
+                    "https://images.unsplash.com/photo-1589428473816-b2b7632082df?w=400&q=80",
+                }}
                 className="w-16 h-16 rounded-md mr-4"
               />
               <View className="flex-1">
                 <Text className="text-lg font-semibold">{service.name}</Text>
-                <Text className="text-gray-600">${service.price}</Text>
+                <Text className="text-gray-600">${service.base_price}</Text>
+                {service.description && (
+                  <Text
+                    className="text-gray-500 text-sm mt-1"
+                    numberOfLines={2}
+                  >
+                    {service.description}
+                  </Text>
+                )}
               </View>
               <ChevronRight size={20} color="#9CA3AF" />
             </TouchableOpacity>
@@ -279,7 +347,7 @@ const BookingForm = ({
 
   const renderAddressStep = () => {
     // For demo purposes, we'll use a pre-filled address
-    const demoAddress = "123 Main Street, Anytown, USA";
+    const demoAddress = userProfile?.address || "123 Main Street, Anytown, USA";
 
     return (
       <View className="flex-1 px-4">
@@ -324,128 +392,134 @@ const BookingForm = ({
   const renderRecurringStep = () => {
     return (
       <View className="flex-1 px-4">
-        <Text className="text-xl font-bold mb-4">Recurring Service?</Text>
+        <Text className="text-xl font-bold mb-4">Recurring Service</Text>
         <View className="bg-white rounded-lg p-4 shadow-sm mb-4">
-          <Text className="text-lg font-semibold mb-2">Service Details:</Text>
-          <Text className="text-gray-600 mb-1">{bookingData.serviceName}</Text>
-          <Text className="text-gray-600 mb-1">
-            {new Date(bookingData.date).toLocaleDateString("en-US", {
-              weekday: "long",
-              month: "long",
-              day: "numeric",
-            })}
+          <Text className="text-lg font-semibold">
+            Would you like to schedule this as a recurring service?
           </Text>
-          <Text className="text-gray-600 mb-1">{bookingData.time}</Text>
-          <Text className="text-gray-600">{bookingData.address}</Text>
-        </View>
+          <Text className="text-gray-600 mt-2">
+            Save by setting up regular maintenance
+          </Text>
 
-        <View className="flex-row justify-between mb-6">
-          <TouchableOpacity
-            className={`bg-white rounded-lg p-4 shadow-sm w-[48%] items-center ${
-              bookingData.isRecurring ? "border-2 border-green-500" : ""
-            }`}
-            onPress={() => handleRecurringToggle(true)}
-          >
-            <Text className="text-lg font-semibold mb-2">Yes</Text>
-            <Text className="text-gray-600 text-center">
-              Save with recurring service plans
-            </Text>
-          </TouchableOpacity>
+          <View className="flex-row mt-6 gap-3">
+            <TouchableOpacity
+              className={`flex-1 p-4 rounded-lg ${
+                bookingData.isRecurring
+                  ? "bg-green-100 border-2 border-green-500"
+                  : "bg-gray-100 border-2 border-gray-200"
+              }`}
+              onPress={() => handleRecurringToggle(true)}
+            >
+              <Text
+                className={`text-center font-semibold ${
+                  bookingData.isRecurring ? "text-green-600" : "text-gray-600"
+                }`}
+              >
+                Yes, make it recurring
+              </Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            className={`bg-white rounded-lg p-4 shadow-sm w-[48%] items-center ${
-              !bookingData.isRecurring ? "border-2 border-green-500" : ""
-            }`}
-            onPress={() => handleRecurringToggle(false)}
-          >
-            <Text className="text-lg font-semibold mb-2">No</Text>
-            <Text className="text-gray-600 text-center">
-              One-time service only
-            </Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              className={`flex-1 p-4 rounded-lg ${
+                !bookingData.isRecurring
+                  ? "bg-green-100 border-2 border-green-500"
+                  : "bg-gray-100 border-2 border-gray-200"
+              }`}
+              onPress={() => handleRecurringToggle(false)}
+            >
+              <Text
+                className={`text-center font-semibold ${
+                  !bookingData.isRecurring ? "text-green-600" : "text-gray-600"
+                }`}
+              >
+                No, one-time only
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {bookingData.isRecurring && (
-          <View className="bg-white rounded-lg p-4 shadow-sm">
-            <Text className="text-lg font-semibold mb-3">Select Plan:</Text>
-            {recurringPlans.map((plan) => (
-              <TouchableOpacity
-                key={plan.id}
-                className="flex-row items-center justify-between mb-3 pb-3 border-b border-gray-100"
-                onPress={() => handleRecurringPlanSelect(plan.name)}
-              >
-                <View>
-                  <Text className="text-lg">{plan.name}</Text>
-                  <Text className="text-green-500">
-                    {plan.discount} discount
-                  </Text>
-                </View>
-                <ChevronRight size={20} color="#9CA3AF" />
-              </TouchableOpacity>
-            ))}
+          <View className="mb-4">
+            <Text className="text-lg font-semibold mb-3">Select Plan</Text>
+            <ScrollView>
+              {recurringPlans.map((plan) => (
+                <TouchableOpacity
+                  key={plan.id}
+                  className="flex-row justify-between items-center bg-white p-4 rounded-lg shadow-sm mb-3"
+                  onPress={() => handleRecurringPlanSelect(plan.id)}
+                >
+                  <View>
+                    <Text className="text-lg font-medium">{plan.name}</Text>
+                    <Text className="text-gray-600">{plan.description}</Text>
+                    {Number(plan.discount_percentage) > 0 && (
+                      <Text className="text-green-600 mt-1">
+                        Save {plan.discount_percentage}%
+                      </Text>
+                    )}
+                  </View>
+                  <ChevronRight size={20} color="#9CA3AF" />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
         )}
+
+        <View className="mt-auto">
+          <TouchableOpacity
+            className="bg-gray-100 rounded-lg py-3 px-4 mb-3"
+            onPress={prevStep}
+          >
+            <Text className="text-center text-gray-600 font-semibold">
+              Back
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   };
 
   const renderPaymentStep = () => {
+    const paymentMethods = getPaymentMethods();
+
     return (
       <View className="flex-1 px-4">
         <Text className="text-xl font-bold mb-4">Payment Method</Text>
-        <View className="bg-white rounded-lg p-4 shadow-sm mb-4">
-          <Text className="text-lg font-semibold mb-2">Service Summary:</Text>
-          <Text className="text-gray-600 mb-1">{bookingData.serviceName}</Text>
-          <Text className="text-gray-600 mb-1">
-            {new Date(bookingData.date).toLocaleDateString("en-US", {
-              weekday: "long",
-              month: "long",
-              day: "numeric",
-            })}
-          </Text>
-          <Text className="text-gray-600 mb-1">{bookingData.time}</Text>
-          <Text className="text-gray-600 mb-1">{bookingData.address}</Text>
-          {bookingData.isRecurring && (
-            <Text className="text-gray-600">
-              {bookingData.recurringPlan} Plan
-            </Text>
-          )}
-        </View>
-
         <ScrollView className="flex-1">
           {paymentMethods.map((method) => (
             <TouchableOpacity
               key={method.id}
-              className="flex-row items-center bg-white rounded-lg p-4 mb-3 shadow-sm"
-              onPress={() => handlePaymentMethodSelect(method.name)}
+              className="flex-row justify-between items-center bg-white p-4 rounded-lg shadow-sm mb-3"
+              onPress={() => handlePaymentMethodSelect(method.id)}
             >
-              <CreditCard size={24} color="#10B981" className="mr-3" />
-              <View className="flex-1">
-                <Text className="text-lg font-semibold">{method.name}</Text>
-                {method.last4 && (
-                  <Text className="text-gray-600">
-                    **** **** **** {method.last4}
-                  </Text>
-                )}
-                {method.email && (
-                  <Text className="text-gray-600">{method.email}</Text>
-                )}
+              <View className="flex-row items-center">
+                <View className="bg-gray-100 p-2 rounded-full mr-3">
+                  <CreditCard size={24} color="#4B5563" />
+                </View>
+                <View>
+                  <Text className="text-lg font-medium">{method.name}</Text>
+                  {method.last4 && (
+                    <Text className="text-gray-600">
+                      {method.card_brand ? `${method.card_brand} •••• ` : ""}
+                      {method.last4}
+                    </Text>
+                  )}
+                </View>
               </View>
               <ChevronRight size={20} color="#9CA3AF" />
             </TouchableOpacity>
           ))}
-
-          <TouchableOpacity
-            className="flex-row items-center bg-white rounded-lg p-4 mb-3 shadow-sm"
-            onPress={() => {}}
-          >
-            <CreditCard size={24} color="#9CA3AF" className="mr-3" />
-            <Text className="text-lg text-gray-600">
-              Add New Payment Method
-            </Text>
-            <ChevronRight size={20} color="#9CA3AF" className="ml-auto" />
-          </TouchableOpacity>
         </ScrollView>
+
+        <View className="mt-auto">
+          <TouchableOpacity
+            className="bg-gray-100 rounded-lg py-3 px-4 mb-3"
+            onPress={prevStep}
+          >
+            <Text className="text-center text-gray-600 font-semibold">
+              Back
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   };
@@ -494,14 +568,14 @@ const BookingForm = ({
               <View className="flex-row mb-2">
                 <Text className="text-gray-600 w-1/3">Plan:</Text>
                 <Text className="font-medium flex-1">
-                  {bookingData.recurringPlan}
+                  {recurringPlans.find(plan => plan.id === bookingData.recurringPlan)?.name || 'Custom plan'}
                 </Text>
               </View>
             )}
             <View className="flex-row mb-2">
               <Text className="text-gray-600 w-1/3">Payment:</Text>
               <Text className="font-medium flex-1">
-                {bookingData.paymentMethod}
+                {paymentMethods.find(method => method.id === bookingData.paymentMethod)?.name || bookingData.paymentMethod}
               </Text>
             </View>
           </View>
