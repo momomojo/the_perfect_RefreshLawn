@@ -8,7 +8,7 @@ import {
 } from "react-native";
 import { Stack, useRouter, useLocalSearchParams } from "expo-router";
 import BookingForm from "../components/customer/BookingForm";
-import { getServiceById, createBooking, getUserProfile } from "../lib/data";
+import { getService, createBooking, getProfile } from "../../lib/data";
 import { supabase } from "../../utils/supabase";
 
 interface BookingData {
@@ -46,14 +46,7 @@ export default function BookingScreen() {
       setLoading(true);
 
       // Fetch service data
-      const { data: serviceData, error: serviceError } = await getServiceById(
-        serviceId as string
-      );
-
-      if (serviceError) {
-        setError(serviceError.message || "Failed to load service");
-        return;
-      }
+      const serviceData = await getService(serviceId as string);
 
       if (!serviceData) {
         setError("Service not found");
@@ -65,12 +58,12 @@ export default function BookingScreen() {
       // Fetch user profile
       const { data: session } = await supabase.auth.getSession();
       if (session?.session?.user) {
-        const { data: profileData, error: profileError } = await getUserProfile(
-          session.session.user.id
-        );
-
-        if (!profileError && profileData) {
+        try {
+          const profileData = await getProfile(session.session.user.id);
           setUserProfile(profileData);
+        } catch (profileError: any) {
+          console.error("Error fetching profile:", profileError);
+          // Continue without profile data
         }
       }
     } catch (err: any) {
