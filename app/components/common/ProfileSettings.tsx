@@ -42,6 +42,7 @@ interface ProfileSettingsProps {
       isDefault: boolean;
     }>;
   };
+  onUpdateProfile?: (updatedData: any) => Promise<void>;
 }
 
 const ProfileSettings = ({
@@ -73,6 +74,7 @@ const ProfileSettings = ({
       },
     ],
   },
+  onUpdateProfile,
 }: ProfileSettingsProps) => {
   const [formData, setFormData] = useState(userData);
   const [isEditing, setIsEditing] = useState(false);
@@ -105,10 +107,25 @@ const ProfileSettings = ({
     });
   };
 
-  const handleSaveProfile = () => {
-    // Here you would typically save the profile data to your backend
-    console.log("Saving profile data:", formData);
-    setIsEditing(false);
+  const handleSaveProfile = async () => {
+    try {
+      setLoading(true);
+
+      // If a callback was provided, use it to update the profile
+      if (onUpdateProfile) {
+        await onUpdateProfile(formData);
+      } else {
+        // Fallback to just logging the data
+        console.log("Saving profile data:", formData);
+      }
+
+      setIsEditing(false);
+    } catch (error) {
+      console.error("Error saving profile:", error);
+      Alert.alert("Error", "Failed to save profile. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleLogout = async () => {
@@ -180,6 +197,7 @@ const ProfileSettings = ({
                   value={formData.email}
                   onChangeText={(value) => handleInputChange("email", value)}
                   keyboardType="email-address"
+                  editable={false}
                 />
               ) : (
                 <View className="flex-row items-center">
@@ -231,11 +249,12 @@ const ProfileSettings = ({
               <TouchableOpacity
                 className="bg-green-500 p-3 rounded-md items-center mt-2"
                 onPress={handleSaveProfile}
+                disabled={loadingState}
               >
                 <View className="flex-row items-center">
                   <Save size={16} color="#ffffff" />
                   <Text className="text-white font-semibold ml-2">
-                    Save Changes
+                    {loadingState ? "Saving..." : "Save Changes"}
                   </Text>
                 </View>
               </TouchableOpacity>

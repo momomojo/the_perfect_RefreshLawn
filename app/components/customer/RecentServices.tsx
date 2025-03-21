@@ -5,11 +5,9 @@ import { Star } from "lucide-react-native";
 interface ServiceItem {
   id: string;
   date: string;
-  serviceType: string;
-  technician: string;
+  service: string;
   beforeImage: string;
   afterImage: string;
-  isRated: boolean;
   rating?: number;
 }
 
@@ -24,15 +22,6 @@ const RecentServices = ({
   onRateService = () => {},
   onViewDetails = () => {},
 }: RecentServicesProps) => {
-  const formatDate = (dateString: string) => {
-    const options: Intl.DateTimeFormatOptions = {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    };
-    return new Date(dateString).toLocaleDateString("en-US", options);
-  };
-
   const renderRatingStars = (serviceId: string, currentRating?: number) => {
     return (
       <View className="flex-row mt-2">
@@ -75,12 +64,8 @@ const RecentServices = ({
               className="mb-4 border-b border-gray-200 pb-4"
               onPress={() => onViewDetails(service.id)}
             >
-              <Text className="font-medium text-base">
-                {service.serviceType}
-              </Text>
-              <Text className="text-gray-600 text-sm mb-2">
-                {formatDate(service.date)} • {service.technician}
-              </Text>
+              <Text className="font-medium text-base">{service.service}</Text>
+              <Text className="text-gray-600 text-sm mb-2">{service.date}</Text>
 
               <View className="flex-row justify-between">
                 <View className="w-[48%]">
@@ -99,7 +84,7 @@ const RecentServices = ({
                 </View>
               </View>
 
-              {!service.isRated ? (
+              {!service.rating ? (
                 <View className="mt-2">
                   <Text className="text-sm text-gray-600 mb-1">
                     Rate this service:

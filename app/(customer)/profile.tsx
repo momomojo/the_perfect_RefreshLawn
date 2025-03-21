@@ -1,19 +1,27 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, SafeAreaView, ActivityIndicator } from "react-native";
+import {
+  View,
+  Text,
+  SafeAreaView,
+  ActivityIndicator,
+  Alert,
+} from "react-native";
 import { Stack } from "expo-router";
 import ProfileSettings from "../components/common/ProfileSettings";
 import { useAuth } from "../../lib/auth";
-import { supabase } from "../../utils/supabase";
+import { getProfile, Profile, updateProfile } from "../../lib/data";
 
-interface Profile {
-  first_name: string;
-  last_name: string;
+interface UserData {
+  name: string;
   email: string;
   phone: string;
   address: string;
-  city: string;
-  state: string;
-  zip_code: string;
+  notificationPreferences: {
+    email: boolean;
+    push: boolean;
+    sms: boolean;
+  };
+  paymentMethods: any[];
 }
 
 export default function CustomerProfileScreen() {
@@ -23,40 +31,81 @@ export default function CustomerProfileScreen() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function loadProfile() {
-      try {
-        setLoading(true);
-
-        if (!user) {
-          setError("User not authenticated");
-          setLoading(false);
-          return;
-        }
-
-        // Fetch profile data from Supabase
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", user.id)
-          .single();
-
-        if (error) {
-          console.error("Error fetching profile:", error.message);
-          setError(error.message);
-          return;
-        }
-
-        setProfile(data);
-      } catch (err) {
-        console.error("Profile loading error:", err);
-        setError("Failed to load profile");
-      } finally {
-        setLoading(false);
-      }
-    }
-
     loadProfile();
   }, [user]);
+
+  const loadProfile = async () => {
+    try {
+      setLoading(true);
+
+      if (!user) {
+        setError("User not authenticated");
+        setLoading(false);
+        return;
+      }
+
+      // Fetch profile data from Supabase using the data helper
+      const profileData = await getProfile(user.id);
+      setProfile(profileData);
+      setError(null);
+    } catch (err: any) {
+      console.error("Profile loading error:", err);
+      setError(err.message || "Failed to load profile");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpdateProfile = async (updatedData: Partial<UserData>) => {
+    if (!user || !profile) return;
+
+    try {
+      setLoading(true);
+
+      // Extract name parts
+      const nameParts = updatedData.name?.split(" ") || [];
+      const firstName = nameParts[0] || "";
+      const lastName = nameParts.slice(1).join(" ") || "";
+
+      // Extract address parts (address might be in format "123 Main St, City, State, Zip")
+      const addressParts =
+        updatedData.address?.split(",").map((part) => part.trim()) || [];
+      const address = addressParts[0] || "";
+      const city = addressParts[1] || "";
+      let state = "";
+      let zipCode = "";
+
+      if (addressParts.length > 2) {
+        const stateZipParts = addressParts[2]?.split(" ");
+        if (stateZipParts?.length >= 2) {
+          state = stateZipParts[0] || "";
+          zipCode = stateZipParts.slice(1).join(" ") || "";
+        }
+      }
+
+      // Create profile update object
+      const profileUpdates = {
+        first_name: firstName,
+        last_name: lastName,
+        phone: updatedData.phone,
+        address,
+        city,
+        state,
+        zip_code: zipCode,
+      };
+
+      // Update profile in Supabase
+      const updatedProfile = await updateProfile(user.id, profileUpdates);
+      setProfile(updatedProfile);
+
+      Alert.alert("Success", "Profile updated successfully");
+    } catch (err: any) {
+      console.error("Profile update error:", err);
+      Alert.alert("Error", err.message || "Failed to update profile");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Transform profile data to format expected by ProfileSettings
   const customerData = profile
@@ -75,7 +124,6 @@ export default function CustomerProfileScreen() {
           push: true,
           sms: false,
         },
-        // In a real app, you'd fetch payment methods from a secure source
         paymentMethods: [],
       }
     : null;
@@ -108,7 +156,11 @@ export default function CustomerProfileScreen() {
 
       <View className="flex-1">
         {customerData ? (
-          <ProfileSettings userType="customer" userData={customerData} />
+          <ProfileSettings
+            userType="customer"
+            userData={customerData}
+            onUpdateProfile={handleUpdateProfile}
+          />
         ) : (
           <View className="flex-1 justify-center items-center p-4">
             <Text>Profile data not available</Text>
