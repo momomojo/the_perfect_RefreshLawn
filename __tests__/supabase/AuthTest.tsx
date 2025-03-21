@@ -66,7 +66,7 @@ export default function AuthTest() {
         if (params.password !== params.confirmPassword) {
           throw new Error("Passwords do not match");
         }
-        await signUp(params.email, params.password, params.role);
+        await signUp(params.email, params.password, params.role, {});
         return { message: "User signed up successfully" };
       },
     },
