@@ -23,22 +23,36 @@ export default function UsersScreen() {
   const fetchUsers = async () => {
     try {
       setLoading(true);
+      setError(null);
 
-      // Get all profiles with user data
-      const { data: profiles, error } = await supabase
+      // Get all profiles
+      const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
-        .select("*, auth.users(email)")
+        .select("*")
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
+      if (profilesError) throw profilesError;
+
+      // Get auth users data using the function instead of direct join
+      const { data: authUsers, error: authUsersError } = await supabase.rpc(
+        "get_users_with_email"
+      );
+
+      if (authUsersError) throw authUsersError;
+
+      // Map auth data to profiles
+      const authUsersMap = {};
+      authUsers.forEach((user) => {
+        authUsersMap[user.id] = user;
+      });
 
       // Format profiles for UserManagement component
       const formattedUsers = profiles.map((profile) => ({
         id: profile.id,
         name: `${profile.first_name} ${profile.last_name}`,
-        email: profile.auth?.users?.email || "No email",
+        email: authUsersMap[profile.id]?.email || "No email",
         role: profile.role,
-        status: profile.auth?.users?.banned_until ? "inactive" : "active",
+        status: authUsersMap[profile.id]?.banned_until ? "inactive" : "active",
         dateJoined: profile.created_at
           ? format(new Date(profile.created_at), "yyyy-MM-dd")
           : "Unknown",
