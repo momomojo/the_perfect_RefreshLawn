@@ -1,39 +1,90 @@
 import React, { useState } from "react";
-import { View, Text, TouchableOpacity, ScrollView, Image } from "react-native";
-import { Camera, CheckCircle, Clock, Upload, X } from "lucide-react-native";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  Image,
+  Alert,
+} from "react-native";
+import {
+  Camera,
+  CheckCircle,
+  Clock,
+  Upload,
+  X,
+  AlertCircle,
+} from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 
 interface JobStatusUpdaterProps {
-  jobId?: string;
-  currentStatus?: "scheduled" | "in-progress" | "completed" | "cancelled";
-  onStatusUpdate?: (status: string, data?: any) => void;
+  jobId: string;
+  currentStatus:
+    | "pending"
+    | "scheduled"
+    | "in_progress"
+    | "completed"
+    | "cancelled";
+  onStatusUpdate: (status: string, data?: any) => void;
 }
 
 const JobStatusUpdater = ({
-  jobId = "12345",
-  currentStatus = "scheduled",
-  onStatusUpdate = () => {},
+  jobId,
+  currentStatus,
+  onStatusUpdate,
 }: JobStatusUpdaterProps) => {
   const [status, setStatus] = useState(currentStatus);
   const [beforePhotos, setBeforePhotos] = useState<string[]>([]);
   const [afterPhotos, setAfterPhotos] = useState<string[]>([]);
   const [notes, setNotes] = useState("");
+  const [uploading, setUploading] = useState(false);
 
   const handleStatusChange = (
-    newStatus: "scheduled" | "in-progress" | "completed" | "cancelled",
+    newStatus:
+      | "pending"
+      | "scheduled"
+      | "in_progress"
+      | "completed"
+      | "cancelled"
   ) => {
     setStatus(newStatus);
     onStatusUpdate(newStatus);
   };
 
   const pickImage = async (type: "before" | "after") => {
-    // Mock image picker functionality
-    const mockImage = `https://images.unsplash.com/photo-1558904541-efa843a96f01?w=400&q=80`;
+    try {
+      // Ask for permission
+      const { status } =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
 
-    if (type === "before") {
-      setBeforePhotos([...beforePhotos, mockImage]);
-    } else {
-      setAfterPhotos([...afterPhotos, mockImage]);
+      if (status !== "granted") {
+        Alert.alert(
+          "Permission needed",
+          "We need access to your photos to upload them"
+        );
+        return;
+      }
+
+      // Launch image library
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.7,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const selectedImage = result.assets[0].uri;
+
+        if (type === "before") {
+          setBeforePhotos([...beforePhotos, selectedImage]);
+        } else {
+          setAfterPhotos([...afterPhotos, selectedImage]);
+        }
+      }
+    } catch (error) {
+      console.error("Error picking image:", error);
+      Alert.alert("Error", "There was a problem selecting the image");
     }
   };
 
@@ -45,10 +96,25 @@ const JobStatusUpdater = ({
     }
   };
 
-  const submitJobReport = () => {
-    // Submit job report with status, photos, and notes
-    onStatusUpdate("completed", { beforePhotos, afterPhotos, notes });
-    // Reset form or navigate away
+  const submitJobReport = async () => {
+    try {
+      setUploading(true);
+      // In a real implementation, you would upload all photos to storage
+      // and store their URLs in the database with the booking.
+
+      // For now, just update status
+      onStatusUpdate("completed", { beforePhotos, afterPhotos, notes });
+
+      // Reset photos to avoid duplicate submissions
+      setBeforePhotos([]);
+      setAfterPhotos([]);
+      setNotes("");
+    } catch (error) {
+      console.error("Error submitting job report:", error);
+      Alert.alert("Error", "There was a problem submitting the job report");
+    } finally {
+      setUploading(false);
+    }
   };
 
   return (
@@ -56,9 +122,11 @@ const JobStatusUpdater = ({
       <Text className="text-xl font-bold mb-4">Update Job Status</Text>
 
       {/* Status Buttons */}
-      <View className="flex-row justify-between mb-6">
+      <View className="flex-row justify-between mb-6 flex-wrap">
         <TouchableOpacity
-          className={`px-3 py-2 rounded-full flex-row items-center ${status === "scheduled" ? "bg-blue-100" : "bg-gray-100"}`}
+          className={`px-3 py-2 rounded-full flex-row items-center ${
+            status === "scheduled" ? "bg-blue-100" : "bg-gray-100"
+          } mb-2`}
           onPress={() => handleStatusChange("scheduled")}
         >
           <Clock
@@ -66,29 +134,37 @@ const JobStatusUpdater = ({
             color={status === "scheduled" ? "#3b82f6" : "#6b7280"}
           />
           <Text
-            className={`ml-1 ${status === "scheduled" ? "text-blue-600" : "text-gray-600"}`}
+            className={`ml-1 ${
+              status === "scheduled" ? "text-blue-600" : "text-gray-600"
+            }`}
           >
             Scheduled
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          className={`px-3 py-2 rounded-full flex-row items-center ${status === "in-progress" ? "bg-yellow-100" : "bg-gray-100"}`}
-          onPress={() => handleStatusChange("in-progress")}
+          className={`px-3 py-2 rounded-full flex-row items-center ${
+            status === "in_progress" ? "bg-yellow-100" : "bg-gray-100"
+          } mb-2`}
+          onPress={() => handleStatusChange("in_progress")}
         >
           <Clock
             size={16}
-            color={status === "in-progress" ? "#f59e0b" : "#6b7280"}
+            color={status === "in_progress" ? "#f59e0b" : "#6b7280"}
           />
           <Text
-            className={`ml-1 ${status === "in-progress" ? "text-yellow-600" : "text-gray-600"}`}
+            className={`ml-1 ${
+              status === "in_progress" ? "text-yellow-600" : "text-gray-600"
+            }`}
           >
             In Progress
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          className={`px-3 py-2 rounded-full flex-row items-center ${status === "completed" ? "bg-green-100" : "bg-gray-100"}`}
+          className={`px-3 py-2 rounded-full flex-row items-center ${
+            status === "completed" ? "bg-green-100" : "bg-gray-100"
+          } mb-2`}
           onPress={() => handleStatusChange("completed")}
         >
           <CheckCircle
@@ -96,9 +172,30 @@ const JobStatusUpdater = ({
             color={status === "completed" ? "#10b981" : "#6b7280"}
           />
           <Text
-            className={`ml-1 ${status === "completed" ? "text-green-600" : "text-gray-600"}`}
+            className={`ml-1 ${
+              status === "completed" ? "text-green-600" : "text-gray-600"
+            }`}
           >
             Completed
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          className={`px-3 py-2 rounded-full flex-row items-center ${
+            status === "cancelled" ? "bg-red-100" : "bg-gray-100"
+          } mb-2`}
+          onPress={() => handleStatusChange("cancelled")}
+        >
+          <AlertCircle
+            size={16}
+            color={status === "cancelled" ? "#ef4444" : "#6b7280"}
+          />
+          <Text
+            className={`ml-1 ${
+              status === "cancelled" ? "text-red-600" : "text-gray-600"
+            }`}
+          >
+            Cancelled
           </Text>
         </TouchableOpacity>
       </View>
@@ -136,7 +233,7 @@ const JobStatusUpdater = ({
           </View>
         </ScrollView>
 
-        {status === "in-progress" || status === "completed" ? (
+        {status === "in_progress" || status === "completed" ? (
           <>
             <Text className="font-semibold mb-2">After Photos</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -171,17 +268,23 @@ const JobStatusUpdater = ({
       {/* Submit Button */}
       {status === "completed" && (
         <TouchableOpacity
-          className="bg-green-500 py-3 rounded-lg items-center"
+          className={`bg-green-500 py-3 rounded-lg items-center ${
+            uploading ? "opacity-70" : ""
+          }`}
           onPress={submitJobReport}
+          disabled={uploading}
         >
-          <Text className="text-white font-semibold">Submit Job Report</Text>
+          <Text className="text-white font-semibold">
+            {uploading ? "Submitting..." : "Submit Job Report"}
+          </Text>
         </TouchableOpacity>
       )}
 
-      {status === "in-progress" && (
+      {status === "in_progress" && (
         <TouchableOpacity
           className="bg-blue-500 py-3 rounded-lg items-center"
           onPress={() => handleStatusChange("completed")}
+          disabled={uploading}
         >
           <Text className="text-white font-semibold">Mark as Completed</Text>
         </TouchableOpacity>
@@ -190,10 +293,19 @@ const JobStatusUpdater = ({
       {status === "scheduled" && (
         <TouchableOpacity
           className="bg-yellow-500 py-3 rounded-lg items-center"
-          onPress={() => handleStatusChange("in-progress")}
+          onPress={() => handleStatusChange("in_progress")}
+          disabled={uploading}
         >
           <Text className="text-white font-semibold">Start Job</Text>
         </TouchableOpacity>
+      )}
+
+      {status === "cancelled" && (
+        <View className="bg-red-100 p-3 rounded-lg">
+          <Text className="text-red-600 text-center">
+            This job has been cancelled.
+          </Text>
+        </View>
       )}
     </View>
   );

@@ -1,18 +1,11 @@
 import React from "react";
 import { View, Text, Image, ScrollView, TouchableOpacity } from "react-native";
-import { Star } from "lucide-react-native";
-
-interface ServiceItem {
-  id: string;
-  date: string;
-  service: string;
-  beforeImage: string;
-  afterImage: string;
-  rating?: number;
-}
+import { Star, Calendar } from "lucide-react-native";
+import { Booking } from "../../../lib/data";
+import { format } from "date-fns";
 
 interface RecentServicesProps {
-  services?: ServiceItem[];
+  services?: Booking[];
   onRateService?: (id: string, rating: number) => void;
   onViewDetails?: (id: string) => void;
 }
@@ -22,25 +15,32 @@ const RecentServices = ({
   onRateService = () => {},
   onViewDetails = () => {},
 }: RecentServicesProps) => {
-  const renderRatingStars = (serviceId: string, currentRating?: number) => {
+  // Format date to readable format
+  const formatDate = (dateString: string) => {
+    try {
+      return format(new Date(dateString), "MMMM d, yyyy");
+    } catch (err) {
+      console.error("Error formatting date:", err);
+      return dateString;
+    }
+  };
+
+  const renderRatingStars = (booking: Booking) => {
+    const currentRating = booking.review?.rating || 0;
+
     return (
       <View className="flex-row mt-2">
         {[1, 2, 3, 4, 5].map((star) => (
           <TouchableOpacity
             key={star}
-            onPress={() => onRateService(serviceId, star)}
+            onPress={() => onRateService(booking.id, star)}
+            disabled={!!booking.review}
             className="mr-1"
           >
             <Star
               size={20}
-              color={
-                currentRating && star <= currentRating ? "#FFD700" : "#D1D5DB"
-              }
-              fill={
-                currentRating && star <= currentRating
-                  ? "#FFD700"
-                  : "transparent"
-              }
+              color={star <= currentRating ? "#FFD700" : "#D1D5DB"}
+              fill={star <= currentRating ? "#FFD700" : "transparent"}
             />
           </TouchableOpacity>
         ))}
@@ -64,39 +64,50 @@ const RecentServices = ({
               className="mb-4 border-b border-gray-200 pb-4"
               onPress={() => onViewDetails(service.id)}
             >
-              <Text className="font-medium text-base">{service.service}</Text>
-              <Text className="text-gray-600 text-sm mb-2">{service.date}</Text>
+              <Text className="font-medium text-base">
+                {service.service?.name || "Unknown Service"}
+              </Text>
+              <View className="flex-row items-center">
+                <Calendar size={14} color="#6b7280" />
+                <Text className="text-gray-600 text-sm ml-1 mb-2">
+                  {formatDate(service.scheduled_date)}
+                </Text>
+              </View>
 
               <View className="flex-row justify-between">
                 <View className="w-[48%]">
                   <Text className="text-xs text-gray-500 mb-1">Before</Text>
                   <Image
-                    source={{ uri: service.beforeImage }}
+                    source={{
+                      uri: "https://images.unsplash.com/photo-1589923188900-85dae523342b?w=400&q=80",
+                    }}
                     className="w-full h-24 rounded-md bg-gray-200"
                   />
                 </View>
                 <View className="w-[48%]">
                   <Text className="text-xs text-gray-500 mb-1">After</Text>
                   <Image
-                    source={{ uri: service.afterImage }}
+                    source={{
+                      uri: "https://images.unsplash.com/photo-1632771918880-37ca331d3429?w=400&q=80",
+                    }}
                     className="w-full h-24 rounded-md bg-gray-200"
                   />
                 </View>
               </View>
 
-              {!service.rating ? (
+              {!service.review ? (
                 <View className="mt-2">
                   <Text className="text-sm text-gray-600 mb-1">
                     Rate this service:
                   </Text>
-                  {renderRatingStars(service.id)}
+                  {renderRatingStars(service)}
                 </View>
               ) : (
                 <View className="mt-2">
                   <Text className="text-sm text-gray-600 mb-1">
                     Your rating:
                   </Text>
-                  {renderRatingStars(service.id, service.rating)}
+                  {renderRatingStars(service)}
                 </View>
               )}
             </TouchableOpacity>

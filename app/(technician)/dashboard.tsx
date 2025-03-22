@@ -1,13 +1,42 @@
-import React from "react";
-import { View, Text, ScrollView, TouchableOpacity } from "react-native";
+import React, { useState, useEffect } from "react";
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+} from "react-native";
 import { useRouter } from "expo-router";
 import { Bell, Settings, MapPin } from "lucide-react-native";
 
 import TodayJobs from "../components/technician/TodayJobs";
 import WeeklySchedule from "../components/technician/WeeklySchedule";
+import { useAuth } from "../../lib/auth";
+import { getProfile } from "../../lib/data";
 
 export default function TechnicianDashboard() {
   const router = useRouter();
+  const { user } = useAuth();
+  const [profile, setProfile] = useState<{ first_name: string } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const loadProfile = async () => {
+      try {
+        setLoading(true);
+        const userProfile = await getProfile(user.id);
+        setProfile(userProfile);
+      } catch (err) {
+        console.error("Error loading profile:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadProfile();
+  }, [user?.id]);
 
   const handleJobSelect = (jobId: string) => {
     router.push(`/(technician)/job-details/${jobId}`);
@@ -15,7 +44,7 @@ export default function TechnicianDashboard() {
 
   const handleDayPress = (date: string) => {
     console.log(`Viewing schedule for: ${date}`);
-    // Navigate to a detailed day view or filter jobs by this date
+    // Future enhancement: Navigate to a detailed day view or filter jobs by this date
   };
 
   return (
@@ -28,7 +57,7 @@ export default function TechnicianDashboard() {
             <View className="flex-row items-center mt-1">
               <MapPin size={14} color="#ffffff" />
               <Text className="text-white text-sm ml-1">
-                Current Location: Service Area 3
+                Current Location: Service Area
               </Text>
             </View>
           </View>
@@ -50,12 +79,18 @@ export default function TechnicianDashboard() {
       <ScrollView className="flex-1 px-4 pt-4">
         {/* Welcome Message */}
         <View className="bg-white p-4 rounded-lg shadow-sm mb-4">
-          <Text className="text-lg font-medium text-gray-800">
-            Welcome back, Alex!
-          </Text>
-          <Text className="text-gray-600">
-            You have 4 jobs scheduled for today.
-          </Text>
+          {loading ? (
+            <ActivityIndicator size="small" color="#22c55e" />
+          ) : (
+            <>
+              <Text className="text-lg font-medium text-gray-800">
+                Welcome back, {profile?.first_name || "Technician"}!
+              </Text>
+              <Text className="text-gray-600">
+                Check your schedule below for today's jobs.
+              </Text>
+            </>
+          )}
         </View>
 
         {/* Weekly Schedule */}

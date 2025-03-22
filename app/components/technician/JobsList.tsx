@@ -1,10 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
   TextInput,
+  ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
 import {
@@ -14,7 +15,11 @@ import {
   MapPin,
   Clock,
   ChevronRight,
+  AlertCircle,
 } from "lucide-react-native";
+import { getTechnicianBookings } from "../../../lib/data";
+import { useAuth } from "../../../lib/auth";
+import { format, parseISO } from "date-fns";
 
 interface Job {
   id: string;
@@ -23,72 +28,57 @@ interface Job {
   date: string;
   time: string;
   serviceType: string;
-  status: "scheduled" | "in-progress" | "completed" | "cancelled";
+  status: "pending" | "scheduled" | "in_progress" | "completed" | "cancelled";
 }
 
-interface JobsListProps {
-  jobs?: Job[];
-}
-
-const JobsList = ({ jobs = [] }: JobsListProps) => {
+const JobsList = () => {
   const router = useRouter();
+  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"date" | "status">("date");
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Default jobs if none provided
-  const defaultJobs: Job[] = [
-    {
-      id: "1",
-      customerName: "John Smith",
-      address: "123 Main St, Anytown, USA",
-      date: "2023-06-15",
-      time: "09:00 AM",
-      serviceType: "Lawn Mowing",
-      status: "scheduled",
-    },
-    {
-      id: "2",
-      customerName: "Sarah Johnson",
-      address: "456 Oak Ave, Somewhere, USA",
-      date: "2023-06-15",
-      time: "01:30 PM",
-      serviceType: "Hedge Trimming",
-      status: "in-progress",
-    },
-    {
-      id: "3",
-      customerName: "Michael Brown",
-      address: "789 Pine Rd, Elsewhere, USA",
-      date: "2023-06-16",
-      time: "10:15 AM",
-      serviceType: "Lawn Mowing & Fertilization",
-      status: "scheduled",
-    },
-    {
-      id: "4",
-      customerName: "Emily Davis",
-      address: "321 Cedar Ln, Nowhere, USA",
-      date: "2023-06-14",
-      time: "03:45 PM",
-      serviceType: "Garden Cleanup",
-      status: "completed",
-    },
-    {
-      id: "5",
-      customerName: "Robert Wilson",
-      address: "654 Maple Dr, Anywhere, USA",
-      date: "2023-06-17",
-      time: "11:30 AM",
-      serviceType: "Lawn Mowing",
-      status: "scheduled",
-    },
-  ];
+  useEffect(() => {
+    if (!user?.id) return;
 
-  const allJobs = jobs.length > 0 ? jobs : defaultJobs;
+    const loadJobs = async () => {
+      try {
+        setLoading(true);
+        // Get all technician bookings from Supabase
+        const bookings = await getTechnicianBookings(user.id);
+
+        // Map the bookings to the Job interface format
+        const mappedJobs = bookings.map((booking) => ({
+          id: booking.id,
+          customerName:
+            booking.customer?.first_name + " " + booking.customer?.last_name,
+          address: booking.address || "",
+          date: booking.scheduled_date,
+          time: format(
+            new Date(`2000-01-01T${booking.scheduled_time}`),
+            "h:mm a"
+          ),
+          serviceType: booking.service?.name || "",
+          status: booking.status as any, // Cast to match the Job interface
+        }));
+
+        setJobs(mappedJobs);
+      } catch (err) {
+        console.error("Error loading technician jobs:", err);
+        setError("Failed to load jobs");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadJobs();
+  }, [user?.id]);
 
   // Filter jobs based on search query and status filter
-  const filteredJobs = allJobs.filter((job) => {
+  const filteredJobs = jobs.filter((job) => {
     const matchesSearch =
       job.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       job.address.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -103,16 +93,17 @@ const JobsList = ({ jobs = [] }: JobsListProps) => {
   const sortedJobs = [...filteredJobs].sort((a, b) => {
     if (sortBy === "date") {
       return (
-        new Date(a.date + " " + a.time).getTime() -
-        new Date(b.date + " " + b.time).getTime()
+        new Date(a.date + "T" + a.time).getTime() -
+        new Date(b.date + "T" + b.time).getTime()
       );
     } else {
-      // Sort by status priority: in-progress, scheduled, completed, cancelled
+      // Sort by status priority: in_progress, scheduled, pending, completed, cancelled
       const statusPriority = {
-        "in-progress": 0,
+        in_progress: 0,
         scheduled: 1,
-        completed: 2,
-        cancelled: 3,
+        pending: 2,
+        completed: 3,
+        cancelled: 4,
       };
       return statusPriority[a.status] - statusPriority[b.status];
     }
@@ -122,8 +113,10 @@ const JobsList = ({ jobs = [] }: JobsListProps) => {
     switch (status) {
       case "scheduled":
         return "bg-blue-100 text-blue-800";
-      case "in-progress":
+      case "in_progress":
         return "bg-yellow-100 text-yellow-800";
+      case "pending":
+        return "bg-amber-100 text-amber-800";
       case "completed":
         return "bg-green-100 text-green-800";
       case "cancelled":
@@ -134,8 +127,26 @@ const JobsList = ({ jobs = [] }: JobsListProps) => {
   };
 
   const handleJobPress = (jobId: string) => {
-    router.push(`/job-details/${jobId}`);
+    router.push(`/(technician)/job-details/${jobId}`);
   };
+
+  if (loading) {
+    return (
+      <View className="flex-1 bg-white justify-center items-center">
+        <ActivityIndicator size="large" color="#10b981" />
+        <Text className="text-gray-500 mt-2">Loading jobs...</Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View className="flex-1 bg-white justify-center items-center p-4">
+        <AlertCircle size={40} color="#ef4444" />
+        <Text className="text-red-500 text-center mt-2">{error}</Text>
+      </View>
+    );
+  }
 
   return (
     <View className="flex-1 bg-white">
@@ -153,38 +164,84 @@ const JobsList = ({ jobs = [] }: JobsListProps) => {
 
         <View className="flex-row justify-between">
           {/* Filter Buttons */}
-          <View className="flex-row">
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            className="flex-row"
+          >
             <TouchableOpacity
-              className={`flex-row items-center mr-2 px-3 py-1 rounded-full ${filterStatus === null ? "bg-blue-500" : "bg-gray-200"}`}
+              className={`flex-row items-center mr-2 px-3 py-1 rounded-full ${
+                filterStatus === null ? "bg-blue-500" : "bg-gray-200"
+              }`}
               onPress={() => setFilterStatus(null)}
             >
               <Text
-                className={`${filterStatus === null ? "text-white" : "text-gray-800"}`}
+                className={`${
+                  filterStatus === null ? "text-white" : "text-gray-800"
+                }`}
               >
                 All
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              className={`flex-row items-center mr-2 px-3 py-1 rounded-full ${filterStatus === "scheduled" ? "bg-blue-500" : "bg-gray-200"}`}
+              className={`flex-row items-center mr-2 px-3 py-1 rounded-full ${
+                filterStatus === "pending" ? "bg-blue-500" : "bg-gray-200"
+              }`}
+              onPress={() => setFilterStatus("pending")}
+            >
+              <Text
+                className={`${
+                  filterStatus === "pending" ? "text-white" : "text-gray-800"
+                }`}
+              >
+                Pending
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              className={`flex-row items-center mr-2 px-3 py-1 rounded-full ${
+                filterStatus === "scheduled" ? "bg-blue-500" : "bg-gray-200"
+              }`}
               onPress={() => setFilterStatus("scheduled")}
             >
               <Text
-                className={`${filterStatus === "scheduled" ? "text-white" : "text-gray-800"}`}
+                className={`${
+                  filterStatus === "scheduled" ? "text-white" : "text-gray-800"
+                }`}
               >
                 Scheduled
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              className={`flex-row items-center mr-2 px-3 py-1 rounded-full ${filterStatus === "in-progress" ? "bg-blue-500" : "bg-gray-200"}`}
-              onPress={() => setFilterStatus("in-progress")}
+              className={`flex-row items-center mr-2 px-3 py-1 rounded-full ${
+                filterStatus === "in_progress" ? "bg-blue-500" : "bg-gray-200"
+              }`}
+              onPress={() => setFilterStatus("in_progress")}
             >
               <Text
-                className={`${filterStatus === "in-progress" ? "text-white" : "text-gray-800"}`}
+                className={`${
+                  filterStatus === "in_progress"
+                    ? "text-white"
+                    : "text-gray-800"
+                }`}
               >
                 In Progress
               </Text>
             </TouchableOpacity>
-          </View>
+            <TouchableOpacity
+              className={`flex-row items-center mr-2 px-3 py-1 rounded-full ${
+                filterStatus === "completed" ? "bg-blue-500" : "bg-gray-200"
+              }`}
+              onPress={() => setFilterStatus("completed")}
+            >
+              <Text
+                className={`${
+                  filterStatus === "completed" ? "text-white" : "text-gray-800"
+                }`}
+              >
+                Completed
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
 
           {/* Sort Button */}
           <TouchableOpacity
@@ -221,7 +278,9 @@ const JobsList = ({ jobs = [] }: JobsListProps) => {
                   </View>
                   <View className="flex-row items-center mt-1">
                     <Calendar size={16} color="#6b7280" />
-                    <Text className="ml-1 text-gray-600">{job.date}</Text>
+                    <Text className="ml-1 text-gray-600">
+                      {format(new Date(job.date), "MMM d, yyyy")}
+                    </Text>
                     <Clock size={16} color="#6b7280" className="ml-3" />
                     <Text className="ml-1 text-gray-600">{job.time}</Text>
                   </View>
@@ -229,10 +288,12 @@ const JobsList = ({ jobs = [] }: JobsListProps) => {
                 </View>
                 <View className="flex-row items-center">
                   <View
-                    className={`px-2 py-1 rounded-full ${getStatusColor(job.status)}`}
+                    className={`px-2 py-1 rounded-full ${getStatusColor(
+                      job.status
+                    )}`}
                   >
                     <Text className="text-xs font-medium capitalize">
-                      {job.status.replace("-", " ")}
+                      {job.status.replace("_", " ")}
                     </Text>
                   </View>
                   <ChevronRight size={20} color="#9ca3af" className="ml-2" />

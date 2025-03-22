@@ -225,7 +225,16 @@ const CustomerDashboard = () => {
   };
 
   const handleBookService = (serviceId: string) => {
-    router.push(`/customer/booking?service=${serviceId}`);
+    // Find the actual service ID from the service's name
+    const service = servicesList.find(
+      (s) => s.name === serviceId || s.id === serviceId
+    );
+    if (service) {
+      router.push(`/(customer)/booking?serviceId=${service.id}`);
+    } else {
+      // If service not found by name, redirect to services page
+      router.push("/(customer)/services");
+    }
   };
 
   const handleRateService = async (id: string, rating: number) => {
@@ -390,7 +399,12 @@ const CustomerDashboard = () => {
 
           <View style={{ marginBottom: 24 }}>
             <UpcomingAppointments
-              appointments={upcomingAppointments}
+              appointments={upcomingBookings.filter(
+                (booking) =>
+                  booking.status === "scheduled" ||
+                  booking.status === "pending" ||
+                  booking.status === "in_progress"
+              )}
               onViewAppointment={handleViewAppointment}
             />
           </View>
@@ -398,23 +412,29 @@ const CustomerDashboard = () => {
           <View style={{ marginBottom: 24 }}>
             <QuickBooking
               onServiceSelect={handleBookService}
-              services={
-                quickBookingServices.length > 0
-                  ? quickBookingServices
-                  : [
-                      { id: "1", name: "Lawn Mowing", icon: "mowing" },
-                      { id: "2", name: "Fertilizing", icon: "fertilizing" },
-                      { id: "3", name: "Yard Cleanup", icon: "cleanup" },
-                      { id: "4", name: "Irrigation", icon: "irrigation" },
-                      { id: "5", name: "Schedule", icon: "schedule" },
-                    ]
-              }
+              services={servicesList.slice(0, 5).map((service) => ({
+                id: service.id,
+                name: service.name,
+                // Map the service type to an icon
+                icon: service.name.toLowerCase().includes("mow")
+                  ? "mowing"
+                  : service.name.toLowerCase().includes("fertil")
+                  ? "fertilizing"
+                  : service.name.toLowerCase().includes("clean")
+                  ? "cleanup"
+                  : service.name.toLowerCase().includes("water") ||
+                    service.name.toLowerCase().includes("irrigat")
+                  ? "irrigation"
+                  : "schedule",
+              }))}
             />
           </View>
 
           <View style={{ marginBottom: 24 }}>
             <RecentServices
-              services={completedServices}
+              services={upcomingBookings.filter(
+                (booking) => booking.status === "completed"
+              )}
               onRateService={handleRateService}
               onViewDetails={handleViewServiceDetails}
             />
