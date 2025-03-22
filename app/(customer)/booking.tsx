@@ -17,6 +17,7 @@ import {
   Profile,
 } from "../../lib/data";
 import { supabase } from "../../lib/supabase";
+import { useAuth } from "../../lib/auth";
 
 interface BookingFormData {
   serviceId: string;
@@ -32,7 +33,9 @@ interface BookingFormData {
 
 export default function BookingScreen() {
   const router = useRouter();
-  const { serviceId } = useLocalSearchParams();
+  const params = useLocalSearchParams();
+  const { serviceId } = params;
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,42 +52,38 @@ export default function BookingScreen() {
         "Please select a service from the services page.",
         [
           {
-            text: "Go to Services",
+            text: "OK",
             onPress: () => router.replace("/(customer)/services"),
           },
         ]
       );
     }
-  }, [serviceId, router]);
+  }, [serviceId]);
 
   const fetchServiceAndUserData = async () => {
     try {
       setLoading(true);
+      setError(null);
 
-      // Fetch service data
-      const serviceData = await getService(serviceId as string);
-
-      if (!serviceData) {
-        setError("Service not found");
-        return;
+      // Get current user's session
+      if (!user?.id) {
+        throw new Error("User not authenticated");
       }
 
+      // Fetch service details
+      const serviceData = await getService(serviceId as string);
       setService(serviceData);
 
       // Fetch user profile
-      const { data: session } = await supabase.auth.getSession();
-      if (session?.session?.user) {
-        try {
-          const profileData = await getProfile(session.session.user.id);
-          setUserProfile(profileData);
-        } catch (profileError: any) {
-          console.error("Error fetching profile:", profileError);
-          // Continue without profile data
-        }
-      }
+      const profileData = await getProfile(user.id);
+      setUserProfile(profileData);
     } catch (err: any) {
-      setError(err.message || "An unexpected error occurred");
-      console.error("Error fetching data:", err);
+      console.error("Error fetching service data:", err);
+      setError(err.message || "Failed to load service details");
+      Alert.alert(
+        "Error",
+        err.message || "Failed to load service details. Please try again."
+      );
     } finally {
       setLoading(false);
     }
@@ -93,68 +92,47 @@ export default function BookingScreen() {
   const handleBookingComplete = async (bookingData: BookingFormData) => {
     try {
       setSubmitting(true);
+      setError(null);
 
-      // Get current user
-      const { data: session } = await supabase.auth.getSession();
-      if (!session?.session?.user) {
-        Alert.alert("Error", "You must be logged in to book a service");
-        return;
+      if (!user) {
+        throw new Error("User not authenticated");
       }
 
-      if (!service) {
-        Alert.alert("Error", "Service details are missing");
-        return;
-      }
-
-      const userId = session.session.user.id;
-
-      // Format the booking data for submission
-      const newBooking = {
-        customer_id: userId,
-        service_id: bookingData.serviceId || service.id,
-        status: "pending" as
-          | "pending"
-          | "scheduled"
-          | "in_progress"
-          | "completed"
-          | "cancelled",
+      // Create a new booking
+      const newBooking: Omit<Booking, "id" | "created_at" | "updated_at"> = {
+        customer_id: user.id,
+        service_id: bookingData.serviceId,
+        status: "pending", // All new bookings start as pending
+        price: bookingData.price,
         scheduled_date: bookingData.date,
         scheduled_time: bookingData.time,
-        address: bookingData.address || userProfile?.address || "",
-        price: bookingData.price || service.base_price,
-        recurring_plan_id:
-          bookingData.isRecurring && bookingData.recurringPlan
-            ? bookingData.recurringPlan
-            : undefined,
-        payment_method_id: bookingData.paymentMethod,
+        address: bookingData.address,
+        recurring_plan_id: bookingData.isRecurring
+          ? bookingData.recurringPlan
+          : undefined,
+        notes: "Customer booking from app",
       };
 
-      try {
-        const bookingResponse = await createBooking(newBooking);
+      console.log("Creating booking with data:", newBooking);
 
-        // Successful booking - show confirmation
-        Alert.alert(
-          "Booking Confirmed",
-          "Your booking has been successfully created!",
-          [
-            {
-              text: "View Bookings",
-              onPress: () => router.replace("/(customer)/history"),
-            },
-            {
-              text: "Return to Dashboard",
-              onPress: () => router.replace("/(customer)/dashboard"),
-            },
-          ]
-        );
-      } catch (error: any) {
-        // Handle the error thrown by createBooking
-        Alert.alert("Error", error.message || "Failed to create booking");
-        return;
-      }
+      // Submit to Supabase
+      const booking = await createBooking(newBooking);
+
+      // Show success message
+      Alert.alert(
+        "Booking Successful!",
+        "Your service has been booked. You will receive a confirmation soon.",
+        [
+          {
+            text: "OK",
+            onPress: () => router.replace("/(customer)/dashboard"),
+          },
+        ]
+      );
     } catch (err: any) {
-      Alert.alert("Error", err.message || "Failed to complete booking");
-      console.error("Booking error:", err);
+      console.error("Error creating booking:", err);
+      setError(err.message || "Failed to create booking. Please try again.");
+      Alert.alert("Error", err.message || "Failed to create booking");
     } finally {
       setSubmitting(false);
     }

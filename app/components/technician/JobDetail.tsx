@@ -6,6 +6,7 @@ import {
   Image,
   TouchableOpacity,
   StyleSheet,
+  Linking,
 } from "react-native";
 import {
   MapPin,
@@ -18,6 +19,7 @@ import {
   Home,
   User,
 } from "lucide-react-native";
+import { format } from "date-fns";
 
 interface JobDetailProps {
   jobId?: string;
@@ -32,7 +34,7 @@ interface JobDetailProps {
   propertySize?: string;
   specialInstructions?: string;
   propertyImage?: string;
-  status?: "scheduled" | "in-progress" | "completed" | "cancelled";
+  status?: "pending" | "scheduled" | "in_progress" | "completed" | "cancelled";
 }
 
 const JobDetail = ({
@@ -52,9 +54,11 @@ const JobDetail = ({
 }: JobDetailProps) => {
   const getStatusColor = () => {
     switch (status) {
+      case "pending":
+        return "bg-amber-100 text-amber-800";
       case "scheduled":
         return "bg-blue-100 text-blue-800";
-      case "in-progress":
+      case "in_progress":
         return "bg-yellow-100 text-yellow-800";
       case "completed":
         return "bg-green-100 text-green-800";
@@ -67,9 +71,11 @@ const JobDetail = ({
 
   const getStatusText = () => {
     switch (status) {
+      case "pending":
+        return "Pending";
       case "scheduled":
         return "Scheduled";
-      case "in-progress":
+      case "in_progress":
         return "In Progress";
       case "completed":
         return "Completed";
@@ -80,117 +86,135 @@ const JobDetail = ({
     }
   };
 
+  const handlePhonePress = () => {
+    if (customerPhone) {
+      Linking.openURL(`tel:${customerPhone}`);
+    }
+  };
+
+  const handleEmailPress = () => {
+    if (customerEmail) {
+      Linking.openURL(`mailto:${customerEmail}`);
+    }
+  };
+
   return (
-    <ScrollView className="flex-1 bg-white">
-      <View className="p-4">
-        {/* Header with Job ID and Status */}
-        <View className="flex-row justify-between items-center mb-4">
-          <View>
-            <Text className="text-sm text-gray-500">Job ID</Text>
-            <Text className="text-lg font-bold">{jobId}</Text>
-          </View>
-          <View className={`px-3 py-1 rounded-full ${getStatusColor()}`}>
-            <Text className={`font-medium`}>{getStatusText()}</Text>
+    <View className="bg-white">
+      {/* Header with Job ID and Status */}
+      <View className="flex-row justify-between items-center mb-4">
+        <View>
+          <Text className="text-sm text-gray-500">Job ID</Text>
+          <Text className="text-lg font-bold">{jobId}</Text>
+        </View>
+        <View className={`px-3 py-1 rounded-full ${getStatusColor()}`}>
+          <Text className={`font-medium`}>{getStatusText()}</Text>
+        </View>
+      </View>
+
+      {/* Property Image */}
+      <View className="mb-6 rounded-lg overflow-hidden">
+        <Image
+          source={{ uri: propertyImage }}
+          className="w-full h-48 rounded-lg"
+          resizeMode="cover"
+        />
+      </View>
+
+      {/* Service Details Section */}
+      <View className="mb-6 bg-gray-50 p-4 rounded-lg">
+        <Text className="text-lg font-bold mb-3">Service Details</Text>
+
+        <View className="flex-row items-center mb-3">
+          <Clipboard size={20} color="#4b5563" />
+          <View className="ml-3">
+            <Text className="text-gray-500">Service Type</Text>
+            <Text className="font-medium">{serviceType}</Text>
           </View>
         </View>
 
-        {/* Property Image */}
-        <View className="mb-6 rounded-lg overflow-hidden">
-          <Image
-            source={{ uri: propertyImage }}
-            className="w-full h-48 rounded-lg"
-            resizeMode="cover"
-          />
-        </View>
-
-        {/* Service Details Section */}
-        <View className="mb-6 bg-gray-50 p-4 rounded-lg">
-          <Text className="text-lg font-bold mb-3">Service Details</Text>
-
-          <View className="flex-row items-center mb-3">
-            <Clipboard size={20} color="#4b5563" />
-            <View className="ml-3">
-              <Text className="text-gray-500">Service Type</Text>
-              <Text className="font-medium">{serviceType}</Text>
-            </View>
-          </View>
-
-          <View className="flex-row items-center mb-3">
-            <Calendar size={20} color="#4b5563" />
-            <View className="ml-3">
-              <Text className="text-gray-500">Date</Text>
-              <Text className="font-medium">{scheduledDate}</Text>
-            </View>
-          </View>
-
-          <View className="flex-row items-center mb-3">
-            <Clock size={20} color="#4b5563" />
-            <View className="ml-3">
-              <Text className="text-gray-500">Time</Text>
-              <Text className="font-medium">{scheduledTime}</Text>
-            </View>
-          </View>
-
-          <View className="flex-row items-center">
-            <Clock size={20} color="#4b5563" />
-            <View className="ml-3">
-              <Text className="text-gray-500">Estimated Duration</Text>
-              <Text className="font-medium">{estimatedDuration}</Text>
-            </View>
+        <View className="flex-row items-center mb-3">
+          <Calendar size={20} color="#4b5563" />
+          <View className="ml-3">
+            <Text className="text-gray-500">Date</Text>
+            <Text className="font-medium">{scheduledDate}</Text>
           </View>
         </View>
 
-        {/* Property Details Section */}
-        <View className="mb-6 bg-gray-50 p-4 rounded-lg">
-          <Text className="text-lg font-bold mb-3">Property Details</Text>
-
-          <View className="flex-row items-center mb-3">
-            <MapPin size={20} color="#4b5563" />
-            <View className="ml-3">
-              <Text className="text-gray-500">Address</Text>
-              <Text className="font-medium">{address}</Text>
-            </View>
-          </View>
-
-          <View className="flex-row items-center">
-            <Home size={20} color="#4b5563" />
-            <View className="ml-3">
-              <Text className="text-gray-500">Property Size</Text>
-              <Text className="font-medium">{propertySize}</Text>
-            </View>
+        <View className="flex-row items-center mb-3">
+          <Clock size={20} color="#4b5563" />
+          <View className="ml-3">
+            <Text className="text-gray-500">Time</Text>
+            <Text className="font-medium">{scheduledTime}</Text>
           </View>
         </View>
 
-        {/* Customer Information Section */}
-        <View className="mb-6 bg-gray-50 p-4 rounded-lg">
-          <Text className="text-lg font-bold mb-3">Customer Information</Text>
-
-          <View className="flex-row items-center mb-3">
-            <User size={20} color="#4b5563" />
-            <View className="ml-3">
-              <Text className="text-gray-500">Name</Text>
-              <Text className="font-medium">{customerName}</Text>
-            </View>
+        <View className="flex-row items-center">
+          <Clock size={20} color="#4b5563" />
+          <View className="ml-3">
+            <Text className="text-gray-500">Estimated Duration</Text>
+            <Text className="font-medium">{estimatedDuration}</Text>
           </View>
+        </View>
+      </View>
 
-          <TouchableOpacity className="flex-row items-center mb-3">
-            <Phone size={20} color="#4b5563" />
-            <View className="ml-3">
-              <Text className="text-gray-500">Phone</Text>
-              <Text className="font-medium text-blue-600">{customerPhone}</Text>
-            </View>
-          </TouchableOpacity>
+      {/* Property Details Section */}
+      <View className="mb-6 bg-gray-50 p-4 rounded-lg">
+        <Text className="text-lg font-bold mb-3">Property Details</Text>
 
-          <TouchableOpacity className="flex-row items-center">
-            <Mail size={20} color="#4b5563" />
-            <View className="ml-3">
-              <Text className="text-gray-500">Email</Text>
-              <Text className="font-medium text-blue-600">{customerEmail}</Text>
-            </View>
-          </TouchableOpacity>
+        <View className="flex-row items-center mb-3">
+          <MapPin size={20} color="#4b5563" />
+          <View className="ml-3">
+            <Text className="text-gray-500">Address</Text>
+            <Text className="font-medium">{address}</Text>
+          </View>
         </View>
 
-        {/* Special Instructions Section */}
+        <View className="flex-row items-center">
+          <Home size={20} color="#4b5563" />
+          <View className="ml-3">
+            <Text className="text-gray-500">Property Size</Text>
+            <Text className="font-medium">{propertySize}</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Customer Information Section */}
+      <View className="mb-6 bg-gray-50 p-4 rounded-lg">
+        <Text className="text-lg font-bold mb-3">Customer Information</Text>
+
+        <View className="flex-row items-center mb-3">
+          <User size={20} color="#4b5563" />
+          <View className="ml-3">
+            <Text className="text-gray-500">Name</Text>
+            <Text className="font-medium">{customerName}</Text>
+          </View>
+        </View>
+
+        <TouchableOpacity
+          className="flex-row items-center mb-3"
+          onPress={handlePhonePress}
+        >
+          <Phone size={20} color="#4b5563" />
+          <View className="ml-3">
+            <Text className="text-gray-500">Phone</Text>
+            <Text className="font-medium text-blue-600">{customerPhone}</Text>
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          className="flex-row items-center"
+          onPress={handleEmailPress}
+        >
+          <Mail size={20} color="#4b5563" />
+          <View className="ml-3">
+            <Text className="text-gray-500">Email</Text>
+            <Text className="font-medium text-blue-600">{customerEmail}</Text>
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      {/* Special Instructions Section */}
+      {specialInstructions && (
         <View className="mb-6 bg-gray-50 p-4 rounded-lg">
           <Text className="text-lg font-bold mb-3">Special Instructions</Text>
 
@@ -199,8 +223,8 @@ const JobDetail = ({
             <Text className="ml-3 text-gray-700">{specialInstructions}</Text>
           </View>
         </View>
-      </View>
-    </ScrollView>
+      )}
+    </View>
   );
 };
 

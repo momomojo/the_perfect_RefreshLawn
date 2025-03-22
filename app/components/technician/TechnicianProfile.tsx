@@ -8,6 +8,7 @@ import {
   TextInput,
   Alert,
   Image,
+  ActivityIndicator,
 } from "react-native";
 import {
   ChevronDown,
@@ -20,6 +21,8 @@ import {
   ChevronRight,
 } from "lucide-react-native";
 import { useAuth } from "../../../lib/auth";
+import { supabase } from "../../../lib/supabase";
+import { updateProfile } from "../../../lib/data";
 
 interface TechnicianProfileProps {
   name?: string;
@@ -122,16 +125,33 @@ const TechnicianProfile = ({
     });
   };
 
-  const handleSave = () => {
-    // In a real app, this would save the profile data to the backend
-    console.log("Profile saved", {
-      name: editedName,
-      email: editedEmail,
-      phone: editedPhone,
-      skills: editedSkills,
-      availability: editedAvailability,
-      notificationPreferences: editedNotifications,
-    });
+  const handleSave = async () => {
+    try {
+      setLoading(true);
+
+      // Get the current user ID from auth
+      const userId = (await supabase.auth.getSession()).data.session?.user.id;
+
+      if (!userId) {
+        Alert.alert("Error", "You must be logged in to update your profile");
+        return;
+      }
+
+      // Update the profile in Supabase
+      await updateProfile(userId, {
+        first_name: editedName.split(" ")[0],
+        last_name: editedName.split(" ").slice(1).join(" "),
+        phone: editedPhone,
+        // Note: We're not updating email as that would require auth verification
+      });
+
+      Alert.alert("Success", "Profile updated successfully");
+    } catch (error) {
+      console.error("Error saving profile:", error);
+      Alert.alert("Error", "Failed to update profile. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleLogout = async () => {
@@ -387,17 +407,28 @@ const TechnicianProfile = ({
         </View>
 
         {/* Save Button */}
-        <TouchableOpacity
-          className="bg-green-500 rounded-lg py-3 items-center mb-8"
-          onPress={handleSave}
-        >
-          <View className="flex-row items-center">
-            <Save size={20} color="white" className="mr-2" />
-            <Text className="text-white font-semibold text-lg">
-              Save Changes
+        <View className="mt-8 px-4 mb-8">
+          <TouchableOpacity
+            className={`bg-green-600 py-3 rounded-lg flex-row justify-center items-center ${
+              loadingState ? "opacity-70" : ""
+            }`}
+            onPress={handleSave}
+            disabled={loadingState}
+          >
+            {loadingState ? (
+              <ActivityIndicator
+                size="small"
+                color="white"
+                style={{ marginRight: 8 }}
+              />
+            ) : (
+              <Save size={20} color="#ffffff" style={{ marginRight: 8 }} />
+            )}
+            <Text className="text-white font-bold text-lg">
+              {loadingState ? "Saving..." : "Save Changes"}
             </Text>
-          </View>
-        </TouchableOpacity>
+          </TouchableOpacity>
+        </View>
       </View>
     </ScrollView>
   );

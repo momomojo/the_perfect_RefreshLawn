@@ -158,7 +158,31 @@ const BookingForm = ({
   };
 
   const handleTimeSelect = (time: string) => {
-    setBookingData({ ...bookingData, time });
+    // Convert from 12-hour format (e.g., "8:00 AM") to 24-hour format (e.g., "08:00:00")
+    let timeValue = time;
+    try {
+      const [timePart, meridiem] = time.split(" ");
+      let [hours, minutes] = timePart.split(":");
+      let hoursInt = parseInt(hours);
+
+      // Convert to 24-hour format
+      if (meridiem === "PM" && hoursInt < 12) {
+        hoursInt += 12;
+      } else if (meridiem === "AM" && hoursInt === 12) {
+        hoursInt = 0;
+      }
+
+      // Format with leading zeros
+      const formattedHours = hoursInt.toString().padStart(2, "0");
+      timeValue = `${formattedHours}:${minutes}:00`;
+    } catch (err) {
+      console.error("Error formatting time:", err);
+    }
+
+    setBookingData({
+      ...bookingData,
+      time: timeValue,
+    });
     nextStep();
   };
 
