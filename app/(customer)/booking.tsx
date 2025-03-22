@@ -8,10 +8,17 @@ import {
 } from "react-native";
 import { Stack, useRouter, useLocalSearchParams } from "expo-router";
 import BookingForm from "../components/customer/BookingForm";
-import { getService, createBooking, getProfile } from "../../lib/data";
-import { supabase } from "../../utils/supabase";
+import {
+  getService,
+  createBooking,
+  getProfile,
+  Booking,
+  Service,
+  Profile,
+} from "../../lib/data";
+import { supabase } from "../../lib/supabase";
 
-interface BookingData {
+interface BookingFormData {
   serviceId: string;
   serviceName: string;
   date: string;
@@ -29,8 +36,8 @@ export default function BookingScreen() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [service, setService] = useState<any>(null);
-  const [userProfile, setUserProfile] = useState<any>(null);
+  const [service, setService] = useState<Service | null>(null);
+  const [userProfile, setUserProfile] = useState<Profile | null>(null);
 
   useEffect(() => {
     if (serviceId) {
@@ -48,7 +55,7 @@ export default function BookingScreen() {
         ]
       );
     }
-  }, [serviceId]);
+  }, [serviceId, router]);
 
   const fetchServiceAndUserData = async () => {
     try {
@@ -83,7 +90,7 @@ export default function BookingScreen() {
     }
   };
 
-  const handleBookingComplete = async (bookingData: BookingData) => {
+  const handleBookingComplete = async (bookingData: BookingFormData) => {
     try {
       setSubmitting(true);
 
@@ -94,48 +101,57 @@ export default function BookingScreen() {
         return;
       }
 
-      const userId = session.session.user.id;
+      if (!service) {
+        Alert.alert("Error", "Service details are missing");
+        return;
+      }
 
-      // Extract date and time separately to match database schema
-      const dateString = bookingData.date;
-      const timeString = bookingData.time;
+      const userId = session.session.user.id;
 
       // Format the booking data for submission
       const newBooking = {
         customer_id: userId,
-        service_id: service.id,
-        status: "pending",
-        scheduled_date: new Date(
-          `${bookingData.date} ${bookingData.time}`
-        ).toISOString(),
-        address: bookingData.address || userProfile?.address,
-        price: service.price,
-        is_recurring: bookingData.isRecurring,
-        recurring_frequency: bookingData.recurringPlan,
+        service_id: bookingData.serviceId || service.id,
+        status: "pending" as
+          | "pending"
+          | "scheduled"
+          | "in_progress"
+          | "completed"
+          | "cancelled",
+        scheduled_date: bookingData.date,
+        scheduled_time: bookingData.time,
+        address: bookingData.address || userProfile?.address || "",
+        price: bookingData.price || service.base_price,
+        recurring_plan_id:
+          bookingData.isRecurring && bookingData.recurringPlan
+            ? bookingData.recurringPlan
+            : undefined,
         payment_method_id: bookingData.paymentMethod,
       };
 
-      const { data, error } = await createBooking(newBooking);
+      try {
+        const bookingResponse = await createBooking(newBooking);
 
-      if (error) {
+        // Successful booking - show confirmation
+        Alert.alert(
+          "Booking Confirmed",
+          "Your booking has been successfully created!",
+          [
+            {
+              text: "View Bookings",
+              onPress: () => router.replace("/(customer)/history"),
+            },
+            {
+              text: "Return to Dashboard",
+              onPress: () => router.replace("/(customer)/dashboard"),
+            },
+          ]
+        );
+      } catch (error: any) {
+        // Handle the error thrown by createBooking
         Alert.alert("Error", error.message || "Failed to create booking");
         return;
       }
-
-      Alert.alert(
-        "Booking Confirmed",
-        "Your booking has been successfully created!",
-        [
-          {
-            text: "View Bookings",
-            onPress: () => router.replace("/(customer)/history"),
-          },
-          {
-            text: "Return to Dashboard",
-            onPress: () => router.replace("/(customer)/dashboard"),
-          },
-        ]
-      );
     } catch (err: any) {
       Alert.alert("Error", err.message || "Failed to complete booking");
       console.error("Booking error:", err);

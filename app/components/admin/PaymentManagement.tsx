@@ -5,6 +5,7 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
+  Alert,
 } from "react-native";
 import {
   ChevronDown,
@@ -15,6 +16,7 @@ import {
   AlertCircle,
   CheckCircle,
   Filter,
+  RefreshCcw,
 } from "lucide-react-native";
 
 interface Transaction {
@@ -27,7 +29,15 @@ interface Transaction {
   service: string;
 }
 
-const PaymentManagement = () => {
+interface PaymentManagementProps {
+  transactions?: Transaction[];
+  onRefund?: (paymentId: string, amount: number) => void;
+}
+
+const PaymentManagement = ({
+  transactions = [],
+  onRefund = () => {},
+}: PaymentManagementProps) => {
   const [activeTab, setActiveTab] = useState<
     "transactions" | "subscriptions" | "refunds"
   >("transactions");
@@ -43,57 +53,8 @@ const PaymentManagement = () => {
     "all" | "one-time" | "subscription"
   >("all");
 
-  // Mock data for transactions
-  const mockTransactions: Transaction[] = [
-    {
-      id: "TX123456",
-      date: "2023-06-15",
-      customer: "John Smith",
-      amount: 75.0,
-      status: "completed",
-      type: "one-time",
-      service: "Lawn Mowing",
-    },
-    {
-      id: "TX123457",
-      date: "2023-06-14",
-      customer: "Sarah Johnson",
-      amount: 120.0,
-      status: "completed",
-      type: "subscription",
-      service: "Weekly Maintenance",
-    },
-    {
-      id: "TX123458",
-      date: "2023-06-13",
-      customer: "Michael Brown",
-      amount: 95.5,
-      status: "pending",
-      type: "one-time",
-      service: "Hedge Trimming",
-    },
-    {
-      id: "TX123459",
-      date: "2023-06-12",
-      customer: "Emily Davis",
-      amount: 45.0,
-      status: "refunded",
-      type: "one-time",
-      service: "Weed Control",
-    },
-    {
-      id: "TX123460",
-      date: "2023-06-11",
-      customer: "Robert Wilson",
-      amount: 150.0,
-      status: "failed",
-      type: "subscription",
-      service: "Monthly Garden Care",
-    },
-  ];
-
   // Filter transactions based on search query and filters
-  const filteredTransactions = mockTransactions.filter((transaction) => {
+  const filteredTransactions = transactions.filter((transaction) => {
     // Search filter
     const matchesSearch =
       transaction.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -125,6 +86,33 @@ const PaymentManagement = () => {
 
     return matchesSearch && matchesDate && matchesStatus && matchesType;
   });
+
+  // Get tab-specific transactions
+  const getTabTransactions = () => {
+    switch (activeTab) {
+      case "subscriptions":
+        return filteredTransactions.filter((t) => t.type === "subscription");
+      case "refunds":
+        return filteredTransactions.filter((t) => t.status === "refunded");
+      default:
+        return filteredTransactions;
+    }
+  };
+
+  // Handle refund action
+  const handleRefund = (transaction: Transaction) => {
+    if (
+      transaction.status === "completed" ||
+      transaction.status === "pending"
+    ) {
+      onRefund(transaction.id, transaction.amount);
+    } else {
+      Alert.alert(
+        "Cannot Refund",
+        `This payment already has status: ${transaction.status}`
+      );
+    }
+  };
 
   // Get status color based on transaction status
   const getStatusColor = (status: Transaction["status"]) => {
@@ -171,33 +159,45 @@ const PaymentManagement = () => {
       </View>
 
       {/* Tabs */}
-      <View className="flex-row border-b border-gray-200">
+      <View className="flex-row bg-white border-b border-gray-200">
         <TouchableOpacity
-          className={`flex-1 py-3 ${activeTab === "transactions" ? "border-b-2 border-green-600" : ""}`}
+          className={`flex-1 py-3 ${
+            activeTab === "transactions" ? "border-b-2 border-green-600" : ""
+          }`}
           onPress={() => setActiveTab("transactions")}
         >
           <Text
-            className={`text-center font-medium ${activeTab === "transactions" ? "text-green-600" : "text-gray-600"}`}
+            className={`text-center font-medium ${
+              activeTab === "transactions" ? "text-green-600" : "text-gray-600"
+            }`}
           >
             Transactions
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          className={`flex-1 py-3 ${activeTab === "subscriptions" ? "border-b-2 border-green-600" : ""}`}
+          className={`flex-1 py-3 ${
+            activeTab === "subscriptions" ? "border-b-2 border-green-600" : ""
+          }`}
           onPress={() => setActiveTab("subscriptions")}
         >
           <Text
-            className={`text-center font-medium ${activeTab === "subscriptions" ? "text-green-600" : "text-gray-600"}`}
+            className={`text-center font-medium ${
+              activeTab === "subscriptions" ? "text-green-600" : "text-gray-600"
+            }`}
           >
             Subscriptions
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          className={`flex-1 py-3 ${activeTab === "refunds" ? "border-b-2 border-green-600" : ""}`}
+          className={`flex-1 py-3 ${
+            activeTab === "refunds" ? "border-b-2 border-green-600" : ""
+          }`}
           onPress={() => setActiveTab("refunds")}
         >
           <Text
-            className={`text-center font-medium ${activeTab === "refunds" ? "text-green-600" : "text-gray-600"}`}
+            className={`text-center font-medium ${
+              activeTab === "refunds" ? "text-green-600" : "text-gray-600"
+            }`}
           >
             Refunds
           </Text>
@@ -205,7 +205,7 @@ const PaymentManagement = () => {
       </View>
 
       {/* Search and Filter */}
-      <View className="px-4 py-3 bg-gray-50">
+      <View className="p-4">
         <View className="flex-row items-center bg-white rounded-md border border-gray-300 px-3 py-2 mb-3">
           <Search size={20} color="#6b7280" />
           <TextInput
@@ -244,11 +244,17 @@ const PaymentManagement = () => {
               {(["all", "today", "week", "month"] as const).map((option) => (
                 <TouchableOpacity
                   key={option}
-                  className={`mr-2 mb-2 px-3 py-1 rounded-full ${dateFilter === option ? "bg-green-100 border border-green-600" : "bg-gray-100 border border-gray-300"}`}
+                  className={`mr-2 mb-2 px-3 py-1 rounded-full ${
+                    dateFilter === option
+                      ? "bg-green-100 border border-green-600"
+                      : "bg-gray-100 border border-gray-300"
+                  }`}
                   onPress={() => setDateFilter(option)}
                 >
                   <Text
-                    className={`${dateFilter === option ? "text-green-800" : "text-gray-700"}`}
+                    className={`${
+                      dateFilter === option ? "text-green-800" : "text-gray-700"
+                    }`}
                   >
                     {option.charAt(0).toUpperCase() + option.slice(1)}
                   </Text>
@@ -263,11 +269,19 @@ const PaymentManagement = () => {
               ).map((option) => (
                 <TouchableOpacity
                   key={option}
-                  className={`mr-2 mb-2 px-3 py-1 rounded-full ${statusFilter === option ? "bg-green-100 border border-green-600" : "bg-gray-100 border border-gray-300"}`}
+                  className={`mr-2 mb-2 px-3 py-1 rounded-full ${
+                    statusFilter === option
+                      ? "bg-green-100 border border-green-600"
+                      : "bg-gray-100 border border-gray-300"
+                  }`}
                   onPress={() => setStatusFilter(option)}
                 >
                   <Text
-                    className={`${statusFilter === option ? "text-green-800" : "text-gray-700"}`}
+                    className={`${
+                      statusFilter === option
+                        ? "text-green-800"
+                        : "text-gray-700"
+                    }`}
                   >
                     {option.charAt(0).toUpperCase() + option.slice(1)}
                   </Text>
@@ -280,17 +294,23 @@ const PaymentManagement = () => {
               {(["all", "one-time", "subscription"] as const).map((option) => (
                 <TouchableOpacity
                   key={option}
-                  className={`mr-2 mb-2 px-3 py-1 rounded-full ${typeFilter === option ? "bg-green-100 border border-green-600" : "bg-gray-100 border border-gray-300"}`}
+                  className={`mr-2 mb-2 px-3 py-1 rounded-full ${
+                    typeFilter === option
+                      ? "bg-green-100 border border-green-600"
+                      : "bg-gray-100 border border-gray-300"
+                  }`}
                   onPress={() => setTypeFilter(option)}
                 >
                   <Text
-                    className={`${typeFilter === option ? "text-green-800" : "text-gray-700"}`}
+                    className={`${
+                      typeFilter === option ? "text-green-800" : "text-gray-700"
+                    }`}
                   >
                     {option === "all"
                       ? "All"
                       : option === "one-time"
-                        ? "One-time"
-                        : "Subscription"}
+                      ? "One-time"
+                      : "Subscription"}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -300,109 +320,92 @@ const PaymentManagement = () => {
       </View>
 
       {/* Transaction List */}
-      {activeTab === "transactions" && (
-        <ScrollView className="flex-1">
-          {filteredTransactions.length > 0 ? (
-            filteredTransactions.map((transaction) => (
-              <TouchableOpacity
-                key={transaction.id}
-                className="p-4 border-b border-gray-200 bg-white"
-                onPress={() => {
-                  // Handle transaction details view
-                  console.log("View transaction details:", transaction.id);
-                }}
-              >
-                <View className="flex-row justify-between items-start">
-                  <View>
-                    <Text className="text-gray-900 font-medium">
-                      {transaction.id}
-                    </Text>
-                    <Text className="text-gray-600 text-sm">
-                      {transaction.customer}
-                    </Text>
-                  </View>
-                  <Text className="text-gray-900 font-bold">
+      <ScrollView className="flex-1 px-4">
+        <Text className="text-lg font-semibold mb-2">
+          {activeTab === "transactions" && "All Transactions"}
+          {activeTab === "subscriptions" && "Recurring Subscriptions"}
+          {activeTab === "refunds" && "Refunded Payments"}
+          {` (${getTabTransactions().length})`}
+        </Text>
+
+        {getTabTransactions().length === 0 ? (
+          <View className="bg-gray-50 rounded-lg p-5 items-center justify-center">
+            <Text className="text-gray-500">No transactions found</Text>
+          </View>
+        ) : (
+          getTabTransactions().map((transaction) => (
+            <TouchableOpacity
+              key={transaction.id}
+              className="bg-white border border-gray-200 rounded-lg p-4 mb-3 shadow-sm"
+            >
+              <View className="flex-row justify-between items-center">
+                <View>
+                  <Text className="font-semibold">{transaction.customer}</Text>
+                  <Text className="text-gray-700 text-sm">
+                    ID: {transaction.id}
+                  </Text>
+                </View>
+                <View>
+                  <Text className="text-lg font-bold text-green-600">
                     ${transaction.amount.toFixed(2)}
                   </Text>
                 </View>
+              </View>
 
-                <View className="flex-row justify-between items-center mt-2">
-                  <View>
-                    <Text className="text-gray-600 text-sm">
-                      {transaction.service}
-                    </Text>
-                    <Text className="text-gray-500 text-xs">
-                      {transaction.date}
+              <View className="flex-row justify-between items-center mt-2">
+                <View>
+                  <Text className="text-gray-600 text-sm">
+                    {transaction.service}
+                  </Text>
+                  <Text className="text-gray-500 text-xs">
+                    {transaction.date}
+                  </Text>
+                </View>
+
+                <View className="flex-row items-center">
+                  <View
+                    className={`flex-row items-center px-2 py-1 rounded-full ${getStatusColor(
+                      transaction.status
+                    )}`}
+                  >
+                    {getStatusIcon(transaction.status)}
+                    <Text
+                      className={`ml-1 text-xs font-medium ${getStatusColor(
+                        transaction.status
+                      )}`}
+                    >
+                      {transaction.status.charAt(0).toUpperCase() +
+                        transaction.status.slice(1)}
                     </Text>
                   </View>
-
-                  <View className="flex-row items-center">
-                    <View
-                      className={`flex-row items-center px-2 py-1 rounded-full ${getStatusColor(transaction.status)}`}
-                    >
-                      {getStatusIcon(transaction.status)}
-                      <Text
-                        className={`ml-1 text-xs font-medium ${getStatusColor(transaction.status)}`}
-                      >
-                        {transaction.status.charAt(0).toUpperCase() +
-                          transaction.status.slice(1)}
-                      </Text>
-                    </View>
-                    <View className="ml-2 bg-gray-100 px-2 py-1 rounded-full">
-                      <Text className="text-xs text-gray-700">
-                        {transaction.type === "one-time"
-                          ? "One-time"
-                          : "Subscription"}
-                      </Text>
-                    </View>
+                  <View className="ml-2 bg-gray-100 px-2 py-1 rounded-full">
+                    <Text className="text-xs text-gray-700">
+                      {transaction.type === "one-time"
+                        ? "One-time"
+                        : "Subscription"}
+                    </Text>
                   </View>
                 </View>
-              </TouchableOpacity>
-            ))
-          ) : (
-            <View className="p-8 items-center justify-center">
-              <Text className="text-gray-500 text-center">
-                No transactions found matching your filters.
-              </Text>
-              <TouchableOpacity
-                className="mt-3 bg-green-600 rounded-md px-4 py-2"
-                onPress={() => {
-                  setSearchQuery("");
-                  setDateFilter("all");
-                  setStatusFilter("all");
-                  setTypeFilter("all");
-                }}
-              >
-                <Text className="text-white font-medium">Clear Filters</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </ScrollView>
-      )}
+              </View>
 
-      {/* Subscriptions Tab */}
-      {activeTab === "subscriptions" && (
-        <View className="flex-1 items-center justify-center p-4">
-          <Text className="text-gray-500 text-center">
-            Subscription management view would be displayed here.
-          </Text>
-          <Text className="text-gray-400 text-center mt-2">
-            Manage recurring payment plans and customer subscriptions.
-          </Text>
-        </View>
-      )}
-
-      {/* Refunds Tab */}
-      {activeTab === "refunds" && (
-        <View className="flex-1 items-center justify-center p-4">
-          <Text className="text-gray-500 text-center">
-            Refund management view would be displayed here.
-          </Text>
-          <Text className="text-gray-400 text-center mt-2">
-            Process refunds and view refund history.
-          </Text>
-        </View>
-      )}
+              {/* Actions */}
+              {transaction.status !== "refunded" && (
+                <View className="flex-row justify-end mt-3 pt-2 border-t border-gray-100">
+                  <TouchableOpacity
+                    className="flex-row items-center bg-blue-50 px-3 py-1 rounded-md"
+                    onPress={() => handleRefund(transaction)}
+                  >
+                    <RefreshCcw size={16} color="#2563eb" />
+                    <Text className="ml-1 text-blue-700 text-sm font-medium">
+                      Refund
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </TouchableOpacity>
+          ))
+        )}
+      </ScrollView>
     </View>
   );
 };

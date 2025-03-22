@@ -129,18 +129,18 @@ const ProfileSettings = ({
   };
 
   const handleLogout = async () => {
-    console.log("Logout button pressed");
+    console.log("ProfileSettings: Logout button pressed");
     try {
       setLoading(true);
 
-      // Try to sign out
+      // Use the auth context's signOut function
+      console.log("ProfileSettings: Calling signOut from auth context");
       await signOut();
-      console.log("Sign out API call completed");
+      console.log("ProfileSettings: signOut completed successfully");
 
-      // No need for additional setTimeout or checks
-      // The auth context will handle the navigation once signed out
+      // No need for additional navigation - auth context will handle it
     } catch (error) {
-      console.error("Logout error:", error);
+      console.error("ProfileSettings: Logout error:", error);
       Alert.alert("Error", "Failed to log out. Please try again.");
     } finally {
       setLoading(false);

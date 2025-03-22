@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { Bookmark, Clock, DollarSign, Info, Star } from "lucide-react-native";
-import { supabase } from "../../../utils/supabase";
+import { supabase } from "../../../lib/supabase";
 
 interface ServiceProps {
   id: string;

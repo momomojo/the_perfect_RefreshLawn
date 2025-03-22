@@ -10,7 +10,7 @@ import {
   verifyJwtHookWorking,
   refreshJWTClaims,
 } from "../../utils/userRoleManager";
-import { supabase } from "../../utils/supabase";
+import { supabase } from "../../lib/supabase";
 
 /**
  * JWT Debugger Component

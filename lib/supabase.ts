@@ -4,9 +4,16 @@ import * as SecureStore from "expo-secure-store";
 import { createClient } from "@supabase/supabase-js";
 import Constants from "expo-constants";
 
-// Get Supabase URL and anon key from app config extra
-const supabaseUrl = Constants.expoConfig?.extra?.supabaseUrl as string;
-const supabaseAnonKey = Constants.expoConfig?.extra?.supabaseAnonKey as string;
+// IMPORTANT: This is the only Supabase client initialization file that should be used.
+// Do not create or use multiple Supabase clients to avoid auth issues.
+
+// Get Supabase URL and anon key - try both methods for compatibility
+const supabaseUrl =
+  process.env.EXPO_PUBLIC_SUPABASE_URL ||
+  Constants.expoConfig?.extra?.supabaseUrl;
+const supabaseAnonKey =
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
+  Constants.expoConfig?.extra?.supabaseAnonKey;
 
 // SecureStore adapter for more secure storage in production
 const SecureStoreAdapter = {
@@ -21,8 +28,8 @@ const SecureStoreAdapter = {
   },
 };
 
-// Flag to enable/disable session persistence - set to false to disable
-// IMPORTANT: Set this to true when you want to re-enable session persistence
+// Flag to enable/disable session persistence
+// Setting this to true for consistent behavior
 const ENABLE_SESSION_PERSISTENCE = true;
 
 // No-op storage adapter that doesn't actually store anything
@@ -33,7 +40,7 @@ const NoopStorageAdapter = {
 };
 
 // Create Supabase client
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+export const supabase = createClient(supabaseUrl || "", supabaseAnonKey || "", {
   auth: {
     // Use appropriate storage adapter based on persistence flag
     storage: ENABLE_SESSION_PERSISTENCE

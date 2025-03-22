@@ -182,14 +182,26 @@ export async function getService(serviceId: string) {
 export async function createService(
   service: Omit<Service, "id" | "created_at" | "updated_at">
 ) {
-  const { data, error } = await supabase
-    .from("services")
-    .insert(service)
-    .select()
-    .single();
+  try {
+    console.log("Creating service with data:", JSON.stringify(service));
 
-  if (error) throw error;
-  return data as Service;
+    const { data, error } = await supabase
+      .from("services")
+      .insert(service)
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Supabase error creating service:", error);
+      throw error;
+    }
+
+    console.log("Service created successfully:", data);
+    return data as Service;
+  } catch (err) {
+    console.error("Error in createService function:", err);
+    throw err;
+  }
 }
 
 export async function updateService(
