@@ -519,38 +519,78 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // Sign out
   const signOut = async () => {
     try {
-      console.log("Auth context: Starting signOut process");
       setLoading(true);
       setError(null);
 
-      // Call the signOut method
-      const { error } = await supabase.auth.signOut();
+      // Clear any stored session first
+      await clearStoredSession();
 
-      if (error) {
-        console.error("Error in signOut:", error.message);
-        setError(error.message);
-        Alert.alert("Error", error.message);
-        return;
+      // For web platform, clear localStorage
+      if (Platform.OS === "web" && typeof window !== "undefined") {
+        try {
+          // Clear all Supabase and auth related items from localStorage
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && (key.includes("supabase") || key.includes("auth"))) {
+              localStorage.removeItem(key);
+            }
+          }
+          
+          // Also clear session storage
+          for (let i = 0; i < sessionStorage.length; i++) {
+            const key = sessionStorage.key(i);
+            if (key && (key.includes("supabase") || key.includes("auth"))) {
+              sessionStorage.removeItem(key);
+            }
+          }
+        } catch (e) {
+          console.error("Error clearing storage:", e);
+        }
       }
 
-      console.log("Auth context: SignOut API call successful");
-
-      // Force clear session and user state
+      // Force clear session state first to update UI immediately
       setSession(null);
       setUser(null);
-
-      // Reset user role states
       setIsAdmin(false);
       setIsTechnician(false);
       setIsCustomer(false);
 
-      // Force navigation to login page
-      console.log("Auth context: Redirecting to login page");
-      router.replace("/");
+      // Call signOut with global scope to sign out of all devices
+      const { error } = await supabase.auth.signOut({
+        scope: "global",
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      // Force navigation and cleanup
+      if (Platform.OS === "web") {
+        // For web, use a hard redirect to prevent any state issues
+        window.location.href = "/";
+      } else {
+        // For mobile, use router
+        router.replace("/");
+      }
     } catch (error: any) {
-      console.error("Caught error in signOut:", error.message);
+      console.error("Error in signOut:", error);
       setError(error.message);
-      Alert.alert("Error", error.message);
+      Alert.alert("Error", "Failed to logout: " + error.message);
+      
+      // Try one more time with a different approach if first attempt failed
+      try {
+        await supabase.auth.signOut();
+        
+        // Force navigation even if there was an initial error
+        if (Platform.OS === "web") {
+          window.location.href = "/";
+        } else {
+          router.replace("/");
+        }
+      } catch (retryError) {
+        // Just log the retry error, we've already shown an alert for the main error
+        console.error("Retry logout failed:", retryError);
+      }
     } finally {
       setLoading(false);
     }

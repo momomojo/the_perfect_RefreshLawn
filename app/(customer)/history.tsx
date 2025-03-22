@@ -3,7 +3,7 @@ import { View, Text, SafeAreaView, ActivityIndicator } from "react-native";
 import { Stack } from "expo-router";
 import ServiceHistory from "../components/customer/ServiceHistory";
 import { getCustomerBookings } from "../../lib/data";
-import { supabase } from "../../utils/supabase";
+import { supabase } from "../../lib/supabase";
 
 export default function HistoryScreen() {
   const [loading, setLoading] = useState(true);

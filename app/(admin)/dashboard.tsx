@@ -1,100 +1,199 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
   ScrollView,
   SafeAreaView,
   TouchableOpacity,
+  ActivityIndicator,
 } from "react-native";
 import { Bell } from "lucide-react-native";
 import BusinessMetrics from "../components/admin/BusinessMetrics";
 import TodayOverview from "../components/admin/TodayOverview";
 import QuickActions from "../components/admin/QuickActions";
 import { useUserRole } from "../../hooks/useUserRole";
+import { router } from "expo-router";
+import { supabase } from "../../lib/supabase";
+import { getAllBookings, Booking, Profile } from "../../lib/data";
+import { format } from "date-fns";
 
 const AdminDashboard = () => {
   const { refreshRole } = useUserRole();
-
-  // Mock data for business metrics
-  const metricsData = {
-    revenue: "$12,450",
-    revenueChange: "+12.5%",
+  const [loading, setLoading] = useState(true);
+  const [metricsData, setMetricsData] = useState({
+    revenue: "$0",
+    revenueChange: "+0%",
     revenueIsPositive: true,
-    jobsCompleted: "156",
-    jobsChange: "+8.2%",
+    jobsCompleted: "0",
+    jobsChange: "+0%",
     jobsIsPositive: true,
-    customerSatisfaction: "4.8/5",
-    satisfactionChange: "+0.3",
+    customerSatisfaction: "0/5",
+    satisfactionChange: "+0",
     satisfactionIsPositive: true,
-    activeCustomers: "243",
-    customersChange: "+5.7%",
+    activeCustomers: "0",
+    customersChange: "+0%",
     customersIsPositive: true,
+  });
+  const [upcomingJobs, setUpcomingJobs] = useState<Booking[]>([]);
+  const [issuesCount, setIssuesCount] = useState(0);
+  const [completedCount, setCompletedCount] = useState(0);
+  const [inProgressCount, setInProgressCount] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+
+  // Format bookings to match the TodayOverview component's expectations
+  const formatBookingsForDisplay = (bookings: Booking[]) => {
+    return bookings.map((booking) => ({
+      id: booking.id,
+      time: booking.scheduled_time,
+      address: booking.address || "No address provided",
+      service: booking.service?.name || "Unknown service",
+      technician: booking.technician?.first_name
+        ? `${booking.technician.first_name} ${booking.technician.last_name}`
+        : "Unassigned",
+      status: booking.status as
+        | "scheduled"
+        | "in-progress"
+        | "completed"
+        | "issue",
+    }));
   };
 
-  // Mock data for upcoming jobs
-  type JobStatus = "scheduled" | "in-progress" | "completed" | "issue";
+  // Fetch metrics and bookings data on component mount
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        setLoading(true);
 
-  interface JobSummary {
-    id: string;
-    time: string;
-    address: string;
-    service: string;
-    technician: string;
-    status: JobStatus;
-  }
+        // Get today's date in ISO format (YYYY-MM-DD)
+        const today = format(new Date(), "yyyy-MM-dd");
 
-  const upcomingJobs: JobSummary[] = [
-    {
-      id: "JB-1234",
-      time: "9:00 AM",
-      address: "123 Oak St, Springfield",
-      service: "Premium Lawn Mowing",
-      technician: "John Smith",
-      status: "scheduled",
-    },
-    {
-      id: "JB-1235",
-      time: "10:30 AM",
-      address: "456 Maple Ave, Springfield",
-      service: "Garden Maintenance",
-      technician: "Sarah Johnson",
-      status: "scheduled",
-    },
-    {
-      id: "JB-1236",
-      time: "1:00 PM",
-      address: "789 Pine Rd, Springfield",
-      service: "Basic Lawn Mowing",
-      technician: "Robert Brown",
-      status: "scheduled",
-    },
-    {
-      id: "JB-1237",
-      time: "3:30 PM",
-      address: "321 Cedar Ln, Springfield",
-      service: "Premium Lawn Mowing",
-      technician: "James Wilson",
-      status: "scheduled",
-    },
-  ];
+        // Fetch all bookings
+        const allBookings = await getAllBookings();
+
+        // Filter bookings for today
+        const todaysBookings = allBookings.filter(
+          (booking) => booking.scheduled_date === today
+        );
+
+        // Calculate metrics
+        const totalRevenue = allBookings.reduce(
+          (sum, booking) => sum + Number(booking.price),
+          0
+        );
+
+        const completedBookings = allBookings.filter(
+          (booking) => booking.status === "completed"
+        );
+
+        const completedTodayCount = todaysBookings.filter(
+          (booking) => booking.status === "completed"
+        ).length;
+
+        const inProgressTodayCount = todaysBookings.filter(
+          (booking) => booking.status === "in_progress"
+        ).length;
+
+        const issuesCount = todaysBookings.filter(
+          (booking) => booking.status === "cancelled"
+        ).length;
+
+        // Get scheduled bookings for today
+        const scheduledToday = todaysBookings.filter(
+          (booking) =>
+            booking.status === "scheduled" || booking.status === "pending"
+        );
+
+        // Calculate customer satisfaction from reviews
+        const { data: reviews } = await supabase
+          .from("reviews")
+          .select("rating");
+
+        const averageRating =
+          reviews && reviews.length > 0
+            ? (
+                reviews.reduce((sum, review) => sum + review.rating, 0) /
+                reviews.length
+              ).toFixed(1)
+            : "0.0";
+
+        // Get customer count
+        const { data: customers } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("role", "customer");
+
+        const customerCount = customers ? customers.length : 0;
+
+        // Update state with real data
+        setMetricsData({
+          revenue: `$${totalRevenue.toFixed(2)}`,
+          revenueChange: "+12.5%", // Would need historical data for real calculation
+          revenueIsPositive: true,
+          jobsCompleted: completedBookings.length.toString(),
+          jobsChange: "+8.2%", // Would need historical data for real calculation
+          jobsIsPositive: true,
+          customerSatisfaction: `${averageRating}/5`,
+          satisfactionChange: "+0.3", // Would need historical data for real calculation
+          satisfactionIsPositive: true,
+          activeCustomers: customerCount.toString(),
+          customersChange: "+5.7%", // Would need historical data for real calculation
+          customersIsPositive: true,
+        });
+
+        setUpcomingJobs(scheduledToday);
+        setCompletedCount(completedTodayCount);
+        setInProgressCount(inProgressTodayCount);
+        setIssuesCount(issuesCount);
+      } catch (err: any) {
+        console.error("Error fetching dashboard data:", err);
+        setError(err.message || "Failed to load dashboard data");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, []);
 
   // Handler functions for quick actions
   const handleAddUser = () => {
-    // Navigation or modal logic would go here
-    console.log("Add user action triggered");
+    router.push("/(admin)/users");
   };
 
   const handleAddService = () => {
-    console.log("Add service action triggered");
+    router.push("/(admin)/services");
   };
 
   const handleGenerateReport = () => {
-    console.log("Generate report action triggered");
+    router.push("/(admin)/analytics");
   };
 
   const handleManagePayments = () => {
-    console.log("Manage payments action triggered");
+    router.push("/(admin)/payments");
   };
+
+  if (loading) {
+    return (
+      <SafeAreaView className="flex-1 bg-gray-100 justify-center items-center">
+        <ActivityIndicator size="large" color="#16a34a" />
+        <Text className="mt-4 text-gray-600">Loading dashboard data...</Text>
+      </SafeAreaView>
+    );
+  }
+
+  if (error) {
+    return (
+      <SafeAreaView className="flex-1 bg-gray-100 justify-center items-center p-4">
+        <Text className="text-red-500 text-lg mb-4">{error}</Text>
+        <TouchableOpacity
+          className="bg-green-600 py-2 px-4 rounded-lg"
+          onPress={() => window.location.reload()}
+        >
+          <Text className="text-white font-semibold">Retry</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView className="flex-1 bg-gray-100">
@@ -121,10 +220,10 @@ const AdminDashboard = () => {
           {/* Today's Overview */}
           <View className="mb-6">
             <TodayOverview
-              scheduledJobs={upcomingJobs}
-              issuesCount={1}
-              completedCount={1}
-              inProgressCount={1}
+              scheduledJobs={formatBookingsForDisplay(upcomingJobs)}
+              issuesCount={issuesCount}
+              completedCount={completedCount}
+              inProgressCount={inProgressCount}
             />
           </View>
 
@@ -156,40 +255,6 @@ const AdminDashboard = () => {
                 Refresh Role Claims
               </Text>
             </TouchableOpacity>
-          </View>
-
-          {/* Sample Admin Content */}
-          <View className="mb-6">
-            <Text className="text-xl font-bold mb-4">User Management</Text>
-            <View className="bg-white border border-gray-200 rounded-lg p-4">
-              <Text className="text-gray-700">
-                User management tools would appear here, allowing administrators
-                to view and manage technicians and customers.
-              </Text>
-            </View>
-          </View>
-
-          <View className="mb-6">
-            <Text className="text-xl font-bold mb-4">
-              Service Configuration
-            </Text>
-            <View className="bg-white border border-gray-200 rounded-lg p-4">
-              <Text className="text-gray-700">
-                Service configuration tools would appear here, allowing
-                administrators to define service types, pricing, and
-                availability.
-              </Text>
-            </View>
-          </View>
-
-          <View className="mb-6">
-            <Text className="text-xl font-bold mb-4">Analytics</Text>
-            <View className="bg-white border border-gray-200 rounded-lg p-4">
-              <Text className="text-gray-700">
-                Analytics and reporting tools would appear here, providing
-                insights into business performance.
-              </Text>
-            </View>
           </View>
         </View>
       </ScrollView>

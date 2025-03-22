@@ -21,17 +21,19 @@ import {
   getRecurringPlans,
   getServices,
   RecurringPlan,
+  Service,
+  Profile,
 } from "../../../lib/data";
 import { format, addDays } from "date-fns";
 
 interface BookingFormProps {
-  service?: any;
-  userProfile?: any;
-  onComplete?: (bookingData: BookingData) => void;
+  service?: Service | null;
+  userProfile?: Profile | null;
+  onComplete?: (bookingData: BookingFormData) => void;
   isSubmitting?: boolean;
 }
 
-interface BookingData {
+export interface BookingFormData {
   serviceId: string;
   serviceName: string;
   date: string;
@@ -50,7 +52,7 @@ const BookingForm = ({
   isSubmitting = false,
 }: BookingFormProps) => {
   const [currentStep, setCurrentStep] = useState(1);
-  const [bookingData, setBookingData] = useState<BookingData>({
+  const [bookingData, setBookingData] = useState<BookingFormData>({
     serviceId: service?.id || "",
     serviceName: service?.name || "",
     date: "",
@@ -62,7 +64,7 @@ const BookingForm = ({
     price: service?.base_price || 0,
   });
 
-  const [services, setServices] = useState<any[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
   const [recurringPlans, setRecurringPlans] = useState<RecurringPlan[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -132,20 +134,13 @@ const BookingForm = ({
         setCurrentStep(2); // Move to date selection
       }
     }
-  }, [service]);
+  }, [service, currentStep]);
 
-  // Generate payment methods based on user profile or default
-  const getPaymentMethods = () => {
-    if (userProfile?.paymentMethods?.length > 0) {
-      return userProfile.paymentMethods;
-    }
-
-    // Fallback payment methods
-    return [
-      { id: "cash", name: "Cash on Delivery" },
-      { id: "card", name: "Credit Card", last4: "Add a new card" },
-    ];
-  };
+  // Payment methods as a constant
+  const paymentMethods = [
+    { id: "cash", name: "Cash on Delivery" },
+    { id: "card", name: "Credit Card", last4: "Add a new card" },
+  ];
 
   const handleServiceSelect = (id: string, name: string, price: number) => {
     setBookingData({
@@ -344,8 +339,8 @@ const BookingForm = ({
   };
 
   const renderAddressStep = () => {
-    // For demo purposes, we'll use a pre-filled address
-    const demoAddress = "123 Main Street, Anytown, USA";
+    // Use profile address or fallback to default
+    const demoAddress = userProfile?.address || "123 Main Street, Anytown, USA";
 
     return (
       <View className="flex-1 px-4">
@@ -477,8 +472,6 @@ const BookingForm = ({
   };
 
   const renderPaymentStep = () => {
-    const paymentMethods = getPaymentMethods();
-
     return (
       <View className="flex-1 px-4">
         <Text className="text-xl font-bold mb-4">Payment Method</Text>
@@ -523,6 +516,13 @@ const BookingForm = ({
   };
 
   const renderConfirmationStep = () => {
+    const selectedPlan = recurringPlans.find(
+      (plan) => plan.id === bookingData.recurringPlan
+    );
+    const selectedPaymentMethod = paymentMethods.find(
+      (method) => method.id === bookingData.paymentMethod
+    );
+
     return (
       <View className="flex-1 px-4">
         <Text className="text-xl font-bold mb-4">Booking Confirmation</Text>
@@ -532,7 +532,7 @@ const BookingForm = ({
               <Check size={32} color="#10B981" />
             </View>
             <Text className="text-xl font-bold text-green-500">
-              Booking Confirmed!
+              Ready to Book!
             </Text>
           </View>
 
@@ -566,14 +566,23 @@ const BookingForm = ({
               <View className="flex-row mb-2">
                 <Text className="text-gray-600 w-1/3">Plan:</Text>
                 <Text className="font-medium flex-1">
-                  {bookingData.recurringPlan}
+                  {selectedPlan?.name || "Custom plan"}
                 </Text>
               </View>
             )}
             <View className="flex-row mb-2">
               <Text className="text-gray-600 w-1/3">Payment:</Text>
               <Text className="font-medium flex-1">
-                {bookingData.paymentMethod}
+                {selectedPaymentMethod?.name || bookingData.paymentMethod}
+              </Text>
+            </View>
+            <View className="flex-row mb-2">
+              <Text className="text-gray-600 w-1/3">Total:</Text>
+              <Text className="font-medium flex-1 text-green-600">
+                ${bookingData.price.toFixed(2)}
+                {bookingData.isRecurring &&
+                  selectedPlan?.discount_percentage &&
+                  ` (Save ${selectedPlan.discount_percentage}% with recurring plan)`}
               </Text>
             </View>
           </View>
@@ -582,8 +591,15 @@ const BookingForm = ({
         <TouchableOpacity
           className="bg-green-500 rounded-lg py-4 items-center"
           onPress={() => onComplete(bookingData)}
+          disabled={isSubmitting}
         >
-          <Text className="text-white font-bold text-lg">View My Bookings</Text>
+          {isSubmitting ? (
+            <ActivityIndicator color="#ffffff" />
+          ) : (
+            <Text className="text-white font-bold text-lg">
+              Confirm Booking
+            </Text>
+          )}
         </TouchableOpacity>
       </View>
     );

@@ -6,7 +6,7 @@ import {
   TouchableOpacity,
   ScrollView,
 } from "react-native";
-import { supabase } from "../../utils/supabase";
+import { supabase } from "../../lib/supabase";
 import {
   getRoleFromClaims,
   refreshJWTClaims,

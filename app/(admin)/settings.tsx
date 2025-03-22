@@ -1,446 +1,456 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
-  ScrollView,
-  TouchableOpacity,
-  Alert,
+  SafeAreaView,
   Switch,
+  TouchableOpacity,
+  ScrollView,
+  Alert,
   ActivityIndicator,
+  Platform,
 } from "react-native";
+import { router } from "expo-router";
+import { supabase } from "../../lib/supabase";
 import {
-  User,
-  Mail,
-  Phone,
-  Shield,
   Bell,
-  ChevronRight,
+  Mail,
+  MessageSquare,
   LogOut,
-  Lock,
-  Sliders,
-  Trash2,
   AlertTriangle,
+  CheckCircle,
+  XCircle,
+  User,
+  Calendar,
+  CreditCard,
+  Star,
   Database,
-  Code,
 } from "lucide-react-native";
 import { useAuth } from "../../lib/auth";
-import { supabase } from "../../lib/supabase";
-import { router } from "expo-router";
 
-const AdminSettings = () => {
-  const { user, signOut } = useAuth();
+const Settings = () => {
   const [loading, setLoading] = useState(false);
-  const [deleteTestDataLoading, setDeleteTestDataLoading] = useState(false);
-  const [deleteResult, setDeleteResult] = useState<null | {
-    status: string;
-    customers_deleted: number;
-    technicians_deleted: number;
-    bookings_deleted: number;
-    payment_methods_deleted: number;
-    reviews_deleted: number;
-  }>(null);
-  const [notificationPreferences, setNotificationPreferences] = useState({
-    emailAlerts: true,
-    systemUpdates: true,
-    newUserSignups: true,
-    paymentAlerts: true,
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const { signOut } = useAuth();
+  const [notificationPrefs, setNotificationPrefs] = useState({
+    emailNotifications: true,
+    pushNotifications: true,
+    marketingEmails: false,
   });
 
-  const handleToggleNotification = (
-    key: keyof typeof notificationPreferences
-  ) => {
-    setNotificationPreferences((prev) => ({
+  // Function to handle notification toggle
+  const handleToggle = (key: keyof typeof notificationPrefs) => {
+    setNotificationPrefs((prev) => ({
       ...prev,
       [key]: !prev[key],
     }));
+
+    // In a real app, you would save this to user preferences in the database
+    Alert.alert(
+      "Preference Updated",
+      `${key} have been ${!notificationPrefs[key] ? "enabled" : "disabled"}.`,
+      [{ text: "OK" }]
+    );
   };
 
+  // Handle user logout - Enhanced with more robust techniques
   const handleLogout = async () => {
-    console.log("Admin logout button pressed");
+    console.log("handleLogout function called - starting logout process");
+    setLoading(true);
     try {
-      setLoading(true);
+      // Clear localStorage and sessionStorage for web platform
+      if (Platform.OS === "web" && typeof window !== "undefined") {
+        console.log("Clearing web storage for Supabase and auth items");
+        try {
+          // Clear all Supabase and auth related items from localStorage
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && (key.includes("supabase") || key.includes("auth"))) {
+              console.log(`Removing localStorage item: ${key}`);
+              localStorage.removeItem(key);
+            }
+          }
 
-      // Call signOut method from auth context
+          // Also clear session storage
+          for (let i = 0; i < sessionStorage.length; i++) {
+            const key = sessionStorage.key(i);
+            if (key && (key.includes("supabase") || key.includes("auth"))) {
+              console.log(`Removing sessionStorage item: ${key}`);
+              sessionStorage.removeItem(key);
+            }
+          }
+          console.log("Web storage cleared successfully");
+        } catch (e) {
+          console.error("Error clearing web storage:", e);
+        }
+      }
+
+      console.log("Calling signOut from auth context");
+      // Use the auth context's signOut method which will handle navigation
       await signOut();
-      console.log("Sign out API call completed");
-
-      // The auth context will handle the navigation once signed out
+      console.log("signOut completed successfully");
     } catch (error) {
       console.error("Logout error:", error);
-      Alert.alert("Error", "Failed to log out. Please try again.");
+      Alert.alert(
+        "Error",
+        "Failed to logout. Try using the Force Logout page."
+      );
+
+      console.log("Attempting direct Supabase logout as fallback");
+      // If regular logout fails, try a direct Supabase logout with global scope
+      try {
+        console.log("Calling supabase.auth.signOut with global scope");
+        await supabase.auth.signOut({ scope: "global" });
+        console.log("Direct Supabase logout successful");
+
+        // Force navigation even if there was an initial error
+        if (Platform.OS === "web") {
+          console.log("Redirecting to home page (web)");
+          window.location.href = "/";
+        } else {
+          console.log("Redirecting to home page (native)");
+          router.replace("/");
+        }
+      } catch (retryError) {
+        console.error("Retry logout failed:", retryError);
+
+        // As a last resort, forcibly redirect
+        console.log("Force redirecting as last resort");
+        if (Platform.OS === "web") {
+          window.location.href = "/";
+        } else {
+          router.replace("/");
+        }
+      }
     } finally {
+      console.log("Logout process completed");
       setLoading(false);
     }
   };
 
-  const handleDeleteAllTestData = async () => {
-    // Show confirmation alert first
+  // Show logout confirmation
+  const confirmLogout = () => {
+    console.log("Logout button pressed - showing confirmation dialog");
+    if (Platform.OS === "web") {
+      // For web, we'll directly log out without confirmation as Alert may not work well
+      console.log("Web platform detected, proceeding with logout");
+      handleLogout();
+      return;
+    }
+
+    Alert.alert("Confirm Logout", "Are you sure you want to log out?", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Logout", onPress: handleLogout, style: "destructive" },
+    ]);
+  };
+
+  // Delete test data function
+  const deleteTestData = async () => {
+    setDeleteLoading(true);
+    const results: { [key: string]: number } = {
+      reviews: 0,
+      payment_methods: 0,
+      bookings: 0,
+      user_roles: 0,
+      profiles: 0,
+    };
+
+    try {
+      // Get current user
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        throw new Error("No authenticated user found");
+      }
+
+      // Delete reviews
+      const { error: reviewsError, count: reviewsCount } = await supabase
+        .from("reviews")
+        .delete({ count: "exact" })
+        .neq("id", "00000000-0000-0000-0000-000000000000"); // Dummy ID to delete all
+
+      if (reviewsError) throw reviewsError;
+      results.reviews = reviewsCount || 0;
+
+      // Delete payment methods
+      const { error: paymentMethodsError, count: paymentMethodsCount } =
+        await supabase
+          .from("payment_methods")
+          .delete({ count: "exact" })
+          .neq("id", "00000000-0000-0000-0000-000000000000");
+
+      if (paymentMethodsError) throw paymentMethodsError;
+      results.payment_methods = paymentMethodsCount || 0;
+
+      // Delete bookings
+      const { error: bookingsError, count: bookingsCount } = await supabase
+        .from("bookings")
+        .delete({ count: "exact" })
+        .neq("id", "00000000-0000-0000-0000-000000000000");
+
+      if (bookingsError) throw bookingsError;
+      results.bookings = bookingsCount || 0;
+
+      // Get all profiles (excluding the current admin user)
+      const { data: profiles, error: profilesError } = await supabase
+        .from("profiles")
+        .select("id, role")
+        .neq("id", user.id); // Exclude current user
+
+      if (profilesError) throw profilesError;
+
+      // Delete user_roles for non-admin users
+      for (const profile of profiles || []) {
+        if (profile.role !== "admin") {
+          const { error: userRoleError } = await supabase
+            .from("user_roles")
+            .delete()
+            .eq("user_id", profile.id);
+
+          if (userRoleError) throw userRoleError;
+          results.user_roles++;
+        }
+      }
+
+      // Delete profiles (excluding admins)
+      const nonAdminProfiles = (profiles || []).filter(
+        (p) => p.role !== "admin"
+      );
+      for (const profile of nonAdminProfiles) {
+        const { error: profileDeleteError } = await supabase
+          .from("profiles")
+          .delete()
+          .eq("id", profile.id);
+
+        if (profileDeleteError) throw profileDeleteError;
+        results.profiles++;
+      }
+
+      // Format results message
+      const message = Object.entries(results)
+        .map(([table, count]) => `${table}: ${count} records deleted`)
+        .join("\n");
+
+      Alert.alert(
+        "Test Data Deleted",
+        `The following records were deleted:\n\n${message}`,
+        [{ text: "OK" }]
+      );
+    } catch (error: any) {
+      Alert.alert(
+        "Error Deleting Data",
+        error.message || "An error occurred while deleting test data"
+      );
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  // Confirm test data deletion
+  const confirmDeleteTestData = () => {
     Alert.alert(
       "Delete Test Data",
-      "This will permanently delete ALL customers and providers (technicians) along with their related data. This action cannot be undone. Continue?",
+      "This will permanently delete all test data including bookings, reviews, and non-admin users. This action cannot be undone.",
       [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "Delete All Test Data",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              setDeleteTestDataLoading(true);
-              setDeleteResult(null);
-
-              // Get admin user IDs to exclude from deletion
-              const { data: adminData, error: adminError } = await supabase
-                .from("user_roles")
-                .select("user_id")
-                .eq("role", "admin");
-
-              if (adminError) throw adminError;
-
-              const adminIds = adminData.map((admin) => admin.user_id);
-
-              // Keep track of deletion counts
-              let reviewsDeleted = 0;
-              let paymentMethodsDeleted = 0;
-              let bookingsDeleted = 0;
-              let customersDeleted = 0;
-              let techniciansDeleted = 0;
-
-              // Start with related data - reviews
-              const { data: reviewData, error: reviewError } = await supabase
-                .from("reviews")
-                .delete()
-                .or(
-                  `customer_id.not.in.(${adminIds.join(
-                    ","
-                  )}),technician_id.not.in.(${adminIds.join(",")})`
-                )
-                .select("id");
-
-              if (reviewError) throw reviewError;
-              reviewsDeleted = reviewData?.length || 0;
-
-              // Delete payment methods
-              const { data: paymentData, error: paymentError } = await supabase
-                .from("payment_methods")
-                .delete()
-                .not("customer_id", "in", `(${adminIds.join(",")})`)
-                .select("id");
-
-              if (paymentError) throw paymentError;
-              paymentMethodsDeleted = paymentData?.length || 0;
-
-              // Delete bookings
-              const { data: bookingData, error: bookingError } = await supabase
-                .from("bookings")
-                .delete()
-                .or(
-                  `customer_id.not.in.(${adminIds.join(
-                    ","
-                  )}),technician_id.not.in.(${adminIds.join(",")})`
-                )
-                .select("id");
-
-              if (bookingError) throw bookingError;
-              bookingsDeleted = bookingData?.length || 0;
-
-              // Delete customer user_roles
-              await supabase
-                .from("user_roles")
-                .delete()
-                .eq("role", "customer")
-                .not("user_id", "in", `(${adminIds.join(",")})`);
-
-              // Delete technician user_roles
-              await supabase
-                .from("user_roles")
-                .delete()
-                .eq("role", "technician")
-                .not("user_id", "in", `(${adminIds.join(",")})`);
-
-              // Delete customer profiles and count
-              const { data: customerData, error: customerError } =
-                await supabase
-                  .from("profiles")
-                  .delete()
-                  .eq("role", "customer")
-                  .not("id", "in", `(${adminIds.join(",")})`)
-                  .select("id");
-
-              if (customerError) throw customerError;
-              customersDeleted = customerData?.length || 0;
-
-              // Delete technician profiles and count
-              const { data: technicianData, error: technicianError } =
-                await supabase
-                  .from("profiles")
-                  .delete()
-                  .eq("role", "technician")
-                  .not("id", "in", `(${adminIds.join(",")})`)
-                  .select("id");
-
-              if (technicianError) throw technicianError;
-              techniciansDeleted = technicianData?.length || 0;
-
-              // Format results similar to what the database function would return
-              const result = {
-                status: "SUCCESS: All customers and providers deleted",
-                customers_deleted: customersDeleted,
-                technicians_deleted: techniciansDeleted,
-                bookings_deleted: bookingsDeleted,
-                payment_methods_deleted: paymentMethodsDeleted,
-                reviews_deleted: reviewsDeleted,
-              };
-
-              setDeleteResult(result);
-
-              Alert.alert(
-                "Success",
-                `Deleted ${result.customers_deleted} customers, ${result.technicians_deleted} technicians, ${result.bookings_deleted} bookings, ${result.payment_methods_deleted} payment methods, and ${result.reviews_deleted} reviews.`
-              );
-            } catch (error: any) {
-              console.error("Error deleting test data:", error);
-              Alert.alert(
-                "Error",
-                error.message || "Failed to delete test data. Try again later."
-              );
-            } finally {
-              setDeleteTestDataLoading(false);
-            }
-          },
-        },
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete", onPress: deleteTestData, style: "destructive" },
       ]
     );
   };
 
   return (
-    <ScrollView className="flex-1 bg-white">
-      <View className="p-4">
-        {/* Admin Profile Header */}
-        <View className="items-center mb-6 pt-4">
-          <View className="w-24 h-24 rounded-full bg-purple-100 mb-2 items-center justify-center">
-            <User size={40} color="#8B5CF6" />
-          </View>
-          <Text className="text-xl font-bold">Admin User</Text>
-          <Text className="text-gray-500">{user?.email}</Text>
-          <View className="bg-purple-100 px-3 py-1 rounded-full mt-2">
-            <Text className="text-purple-700 font-semibold">Administrator</Text>
-          </View>
-        </View>
-
-        {/* System Settings */}
-        <View className="mb-6 bg-gray-50 rounded-xl p-4">
-          <Text className="text-lg font-semibold mb-4">System Settings</Text>
-
-          <TouchableOpacity className="flex-row justify-between items-center p-3 bg-white rounded-md mb-2">
-            <View className="flex-row items-center">
-              <Sliders size={18} color="#6b7280" className="mr-3" />
-              <Text>System Configuration</Text>
-            </View>
-            <ChevronRight size={16} color="#9ca3af" />
-          </TouchableOpacity>
-
-          <TouchableOpacity className="flex-row justify-between items-center p-3 bg-white rounded-md mb-2">
-            <View className="flex-row items-center">
-              <Shield size={18} color="#6b7280" className="mr-3" />
-              <Text>Security Settings</Text>
-            </View>
-            <ChevronRight size={16} color="#9ca3af" />
-          </TouchableOpacity>
-        </View>
-
-        {/* Test Data Management */}
-        <View className="mb-6 bg-red-50 rounded-xl p-4">
-          <Text className="text-lg font-semibold mb-4 text-red-700">
-            Test Data Management
+    <SafeAreaView className="flex-1 bg-white">
+      <ScrollView>
+        {/* Header */}
+        <View className="px-4 py-6 bg-green-700">
+          <Text className="text-2xl font-bold text-white">Settings</Text>
+          <Text className="text-white opacity-80 mt-1">
+            Manage your account and application settings
           </Text>
+        </View>
 
-          <TouchableOpacity
-            className={`flex-row justify-between items-center p-3 ${
-              deleteTestDataLoading ? "bg-red-100" : "bg-white"
-            } rounded-md mb-2`}
-            onPress={handleDeleteAllTestData}
-            disabled={deleteTestDataLoading}
-          >
-            <View className="flex-row items-center">
-              <Trash2 size={18} color="#ef4444" className="mr-3" />
-              <View>
-                <Text className="text-red-600 font-medium">
-                  Delete All Customers & Providers
-                </Text>
-                <Text className="text-gray-500 text-xs mt-1">
-                  Deletes all non-admin users and their related data
-                </Text>
-              </View>
-            </View>
-            {deleteTestDataLoading ? (
-              <ActivityIndicator color="#ef4444" />
-            ) : (
-              <AlertTriangle size={16} color="#ef4444" />
-            )}
-          </TouchableOpacity>
+        {/* Notifications Section */}
+        <View className="p-4">
+          <Text className="text-lg font-semibold mb-3">Notifications</Text>
 
-          {deleteResult && (
-            <View className="bg-white p-3 rounded-md mt-2">
-              <Text className="font-medium mb-1">
-                {deleteResult.status.startsWith("ERROR")
-                  ? "Error:"
-                  : "Results:"}
-              </Text>
-              {!deleteResult.status.startsWith("ERROR") && (
-                <View className="space-y-1">
-                  <Text className="text-sm">
-                    • Customers deleted:{" "}
-                    <Text className="font-medium">
-                      {deleteResult.customers_deleted}
-                    </Text>
+          <View className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-6">
+            <View className="flex-row justify-between items-center p-4 border-b border-gray-100">
+              <View className="flex-row items-center">
+                <View className="w-8 h-8 rounded-full bg-blue-100 items-center justify-center mr-3">
+                  <Mail size={18} color="#3b82f6" />
+                </View>
+                <View>
+                  <Text className="font-medium text-gray-800">
+                    Email Notifications
                   </Text>
-                  <Text className="text-sm">
-                    • Technicians deleted:{" "}
-                    <Text className="font-medium">
-                      {deleteResult.technicians_deleted}
-                    </Text>
-                  </Text>
-                  <Text className="text-sm">
-                    • Bookings deleted:{" "}
-                    <Text className="font-medium">
-                      {deleteResult.bookings_deleted}
-                    </Text>
-                  </Text>
-                  <Text className="text-sm">
-                    • Payment methods deleted:{" "}
-                    <Text className="font-medium">
-                      {deleteResult.payment_methods_deleted}
-                    </Text>
-                  </Text>
-                  <Text className="text-sm">
-                    • Reviews deleted:{" "}
-                    <Text className="font-medium">
-                      {deleteResult.reviews_deleted}
-                    </Text>
+                  <Text className="text-gray-500 text-sm">
+                    Receive booking updates via email
                   </Text>
                 </View>
-              )}
-            </View>
-          )}
-        </View>
-
-        {/* Notification Preferences */}
-        <View className="mb-6 bg-gray-50 rounded-xl p-4">
-          <Text className="text-lg font-semibold mb-4">
-            Notification Preferences
-          </Text>
-
-          <View className="space-y-3">
-            <View className="flex-row justify-between items-center py-2">
-              <View className="flex-row items-center">
-                <Bell size={18} color="#6b7280" className="mr-3" />
-                <Text>Email Alerts</Text>
               </View>
               <Switch
-                value={notificationPreferences.emailAlerts}
-                onValueChange={() => handleToggleNotification("emailAlerts")}
-                trackColor={{ false: "#d1d5db", true: "#10b981" }}
+                trackColor={{ false: "#d1d5db", true: "#22c55e" }}
+                thumbColor="#ffffff"
+                ios_backgroundColor="#d1d5db"
+                onValueChange={() => handleToggle("emailNotifications")}
+                value={notificationPrefs.emailNotifications}
               />
             </View>
 
-            <View className="flex-row justify-between items-center py-2">
+            <View className="flex-row justify-between items-center p-4 border-b border-gray-100">
               <View className="flex-row items-center">
-                <Bell size={18} color="#6b7280" className="mr-3" />
-                <Text>System Updates</Text>
+                <View className="w-8 h-8 rounded-full bg-green-100 items-center justify-center mr-3">
+                  <Bell size={18} color="#22c55e" />
+                </View>
+                <View>
+                  <Text className="font-medium text-gray-800">
+                    Push Notifications
+                  </Text>
+                  <Text className="text-gray-500 text-sm">
+                    Receive alerts on your device
+                  </Text>
+                </View>
               </View>
               <Switch
-                value={notificationPreferences.systemUpdates}
-                onValueChange={() => handleToggleNotification("systemUpdates")}
-                trackColor={{ false: "#d1d5db", true: "#10b981" }}
+                trackColor={{ false: "#d1d5db", true: "#22c55e" }}
+                thumbColor="#ffffff"
+                ios_backgroundColor="#d1d5db"
+                onValueChange={() => handleToggle("pushNotifications")}
+                value={notificationPrefs.pushNotifications}
               />
             </View>
 
-            <View className="flex-row justify-between items-center py-2">
+            <View className="flex-row justify-between items-center p-4">
               <View className="flex-row items-center">
-                <Bell size={18} color="#6b7280" className="mr-3" />
-                <Text>New User Signups</Text>
+                <View className="w-8 h-8 rounded-full bg-purple-100 items-center justify-center mr-3">
+                  <MessageSquare size={18} color="#8b5cf6" />
+                </View>
+                <View>
+                  <Text className="font-medium text-gray-800">
+                    Marketing Emails
+                  </Text>
+                  <Text className="text-gray-500 text-sm">
+                    Receive promotional offers
+                  </Text>
+                </View>
               </View>
               <Switch
-                value={notificationPreferences.newUserSignups}
-                onValueChange={() => handleToggleNotification("newUserSignups")}
-                trackColor={{ false: "#d1d5db", true: "#10b981" }}
-              />
-            </View>
-
-            <View className="flex-row justify-between items-center py-2">
-              <View className="flex-row items-center">
-                <Bell size={18} color="#6b7280" className="mr-3" />
-                <Text>Payment Alerts</Text>
-              </View>
-              <Switch
-                value={notificationPreferences.paymentAlerts}
-                onValueChange={() => handleToggleNotification("paymentAlerts")}
-                trackColor={{ false: "#d1d5db", true: "#10b981" }}
+                trackColor={{ false: "#d1d5db", true: "#22c55e" }}
+                thumbColor="#ffffff"
+                ios_backgroundColor="#d1d5db"
+                onValueChange={() => handleToggle("marketingEmails")}
+                value={notificationPrefs.marketingEmails}
               />
             </View>
           </View>
         </View>
 
-        {/* Developer Tools */}
-        <View className="mb-6 bg-indigo-50 rounded-xl p-4">
-          <Text className="text-lg font-semibold mb-4 text-indigo-700">
-            Developer Tools
-          </Text>
+        {/* Data Management Section */}
+        <View className="px-4 pb-4">
+          <Text className="text-lg font-semibold mb-3">Data Management</Text>
 
-          <TouchableOpacity
-            className="flex-row justify-between items-center p-3 bg-white rounded-md mb-2"
-            onPress={() => router.push("/supabase-test-hub")}
-          >
-            <View className="flex-row items-center">
-              <Database size={18} color="#6366f1" className="mr-3" />
-              <View>
-                <Text className="text-indigo-600 font-medium">
-                  Supabase Test Hub
+          <View className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-6">
+            <TouchableOpacity
+              className="flex-row items-center p-4 border-b border-gray-100"
+              onPress={confirmDeleteTestData}
+              disabled={deleteLoading}
+            >
+              <View className="w-8 h-8 rounded-full bg-red-100 items-center justify-center mr-3">
+                <AlertTriangle size={18} color="#ef4444" />
+              </View>
+              <View className="flex-1">
+                <Text className="font-medium text-gray-800">
+                  Delete Test Data
                 </Text>
-                <Text className="text-gray-500 text-xs mt-1">
-                  Test Supabase connections, auth, and JWT claims
+                <Text className="text-gray-500 text-sm">
+                  Remove all test bookings, reviews, and non-admin users
                 </Text>
               </View>
+              {deleteLoading ? (
+                <ActivityIndicator size="small" color="#22c55e" />
+              ) : (
+                <XCircle size={20} color="#ef4444" />
+              )}
+            </TouchableOpacity>
+
+            {/* Supabase Test Hub Link */}
+            <TouchableOpacity
+              className="flex-row items-center p-4 border-b border-gray-100"
+              onPress={() => router.push("/supabase-test")}
+            >
+              <View className="w-8 h-8 rounded-full bg-blue-100 items-center justify-center mr-3">
+                <Database size={18} color="#3b82f6" />
+              </View>
+              <View className="flex-1">
+                <Text className="font-medium text-gray-800">
+                  Supabase Test Hub
+                </Text>
+                <Text className="text-gray-500 text-sm">
+                  Test and debug Supabase integration features
+                </Text>
+              </View>
+              <CheckCircle size={20} color="#22c55e" />
+            </TouchableOpacity>
+
+            {/* Data Stats - Could be implemented to show counts */}
+            <View className="p-4">
+              <Text className="font-medium text-gray-800 mb-2">
+                Database Statistics
+              </Text>
+
+              <View className="flex-row items-center mb-2">
+                <User size={16} color="#6b7280" />
+                <Text className="ml-2 text-gray-600">Users (profiles)</Text>
+              </View>
+
+              <View className="flex-row items-center mb-2">
+                <Calendar size={16} color="#6b7280" />
+                <Text className="ml-2 text-gray-600">Bookings</Text>
+              </View>
+
+              <View className="flex-row items-center mb-2">
+                <CreditCard size={16} color="#6b7280" />
+                <Text className="ml-2 text-gray-600">Payment Methods</Text>
+              </View>
+
+              <View className="flex-row items-center">
+                <Star size={16} color="#6b7280" />
+                <Text className="ml-2 text-gray-600">Reviews</Text>
+              </View>
             </View>
-            <ChevronRight size={16} color="#9ca3af" />
-          </TouchableOpacity>
+          </View>
         </View>
 
-        {/* Account Settings */}
-        <View className="mb-6 bg-gray-50 rounded-xl p-4">
-          <Text className="text-lg font-semibold mb-4">Account Settings</Text>
-
-          <TouchableOpacity className="flex-row justify-between items-center p-3 bg-white rounded-md mb-2">
-            <View className="flex-row items-center">
-              <Lock size={18} color="#6b7280" className="mr-3" />
-              <Text>Change Password</Text>
-            </View>
-            <ChevronRight size={16} color="#9ca3af" />
-          </TouchableOpacity>
+        {/* Account Section */}
+        <View className="px-4 pb-8">
+          <Text className="text-lg font-semibold mb-3">Account</Text>
 
           <TouchableOpacity
-            className="flex-row justify-between items-center p-3 bg-white rounded-md"
-            onPress={handleLogout}
+            className="bg-white rounded-lg border border-gray-200 p-4 flex-row items-center"
+            onPress={confirmLogout}
             disabled={loading}
           >
-            <View className="flex-row items-center">
-              <LogOut size={18} color="#ef4444" className="mr-3" />
-              <Text className="text-red-500">
-                {loading ? "Logging out..." : "Log Out"}
+            <View className="w-8 h-8 rounded-full bg-red-100 items-center justify-center mr-3">
+              <LogOut size={18} color="#ef4444" />
+            </View>
+            <View className="flex-1">
+              <Text className="font-medium text-gray-800">Logout</Text>
+              <Text className="text-gray-500 text-sm">
+                Sign out of your account
               </Text>
             </View>
-            <ChevronRight size={16} color="#9ca3af" />
+            {loading ? (
+              <ActivityIndicator size="small" color="#22c55e" />
+            ) : (
+              <Text className="text-red-500 font-medium">Sign Out</Text>
+            )}
           </TouchableOpacity>
         </View>
-
-        {/* Add some bottom padding */}
-        <View style={{ height: 40 }} />
-      </View>
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 
-export default AdminSettings;
+export default Settings;

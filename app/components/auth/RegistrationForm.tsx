@@ -20,7 +20,7 @@ import {
   Home,
 } from "lucide-react-native";
 import { useAuth } from "../../../lib/auth";
-import { supabase } from "../../../utils/supabase";
+import { supabase } from "../../../lib/supabase";
 import { signUpWithRole, UserRole } from "../../../utils/userRoleManager";
 
 const RegistrationForm = () => {
