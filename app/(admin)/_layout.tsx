@@ -8,6 +8,7 @@ import {
   BarChart3,
   CreditCard,
   Cog,
+  Calendar,
 } from "lucide-react-native";
 import ProtectedRoute from "../components/common/ProtectedRoute";
 
@@ -47,6 +48,18 @@ export default function AdminLayout() {
               tabBarLabel: ({ color }) => (
                 <Text style={{ color, fontSize: 12, marginBottom: 5 }}>
                   Dashboard
+                </Text>
+              ),
+            }}
+          />
+          <Tabs.Screen
+            name="bookings"
+            options={{
+              title: "Bookings",
+              tabBarIcon: ({ color }) => <Calendar size={24} color={color} />,
+              tabBarLabel: ({ color }) => (
+                <Text style={{ color, fontSize: 12, marginBottom: 5 }}>
+                  Bookings
                 </Text>
               ),
             }}

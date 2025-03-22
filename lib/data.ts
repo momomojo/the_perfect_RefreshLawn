@@ -139,7 +139,8 @@ export async function getTechnicians() {
   const { data, error } = await supabase
     .from("profiles")
     .select("*")
-    .eq("role", "technician");
+    .eq("role", "technician")
+    .order("first_name", { ascending: true });
 
   if (error) throw error;
   return data as Profile[];
@@ -444,17 +445,59 @@ export async function assignTechnician(
   bookingId: string,
   technicianId: string
 ) {
-  return updateBooking(bookingId, {
-    technician_id: technicianId,
-    status: "scheduled",
-  });
+  try {
+    // First try to use the new RPC function
+    const { data, error } = await supabase.rpc("assign_booking_technician", {
+      p_booking_id: bookingId,
+      p_technician_id: technicianId,
+    });
+
+    if (error) {
+      console.warn(
+        "RPC assign_booking_technician failed, falling back to direct update:",
+        error
+      );
+      // Fall back to direct update if RPC isn't available yet
+      return updateBooking(bookingId, {
+        technician_id: technicianId,
+        status: "scheduled",
+      });
+    }
+
+    // If RPC was successful, fetch the updated booking
+    return getBooking(bookingId);
+  } catch (err) {
+    console.error("Error assigning technician:", err);
+    throw err;
+  }
 }
 
 export async function updateBookingStatus(
   bookingId: string,
   status: Booking["status"]
 ) {
-  return updateBooking(bookingId, { status });
+  try {
+    // First try to use the new RPC function
+    const { data, error } = await supabase.rpc("update_booking_status", {
+      p_booking_id: bookingId,
+      p_status: status,
+    });
+
+    if (error) {
+      console.warn(
+        "RPC update_booking_status failed, falling back to direct update:",
+        error
+      );
+      // Fall back to direct update if RPC isn't available yet
+      return updateBooking(bookingId, { status });
+    }
+
+    // If RPC was successful, fetch the updated booking
+    return getBooking(bookingId);
+  } catch (err) {
+    console.error("Error updating booking status:", err);
+    throw err;
+  }
 }
 
 /**
@@ -848,12 +891,31 @@ export async function getUnreadNotificationsCount() {
  * @returns Success status
  */
 export async function markNotificationRead(notificationId: string) {
-  const { data, error } = await supabase.rpc("mark_notification_read", {
-    p_notification_id: notificationId,
-  });
+  try {
+    const { data, error } = await supabase.rpc("mark_notification_read", {
+      p_notification_id: notificationId,
+    });
 
-  if (error) throw error;
-  return data as boolean;
+    if (error) {
+      console.error("Error marking notification read with RPC:", error);
+      // Fallback to direct update if RPC fails
+      const { data: updateData, error: updateError } = await supabase
+        .from("notifications")
+        .update({ is_read: true })
+        .eq("id", notificationId)
+        .eq("user_id", await getCurrentUserId());
+
+      if (updateError) {
+        console.error("Error with direct update fallback:", updateError);
+        throw updateError;
+      }
+      return true;
+    }
+    return data as boolean;
+  } catch (err) {
+    console.error("Notification update failed:", err);
+    return false;
+  }
 }
 
 /**
@@ -861,10 +923,35 @@ export async function markNotificationRead(notificationId: string) {
  * @returns Success status
  */
 export async function markAllNotificationsRead() {
-  const { data, error } = await supabase.rpc("mark_all_notifications_read");
+  try {
+    const { data, error } = await supabase.rpc("mark_all_notifications_read");
 
-  if (error) throw error;
-  return data as boolean;
+    if (error) {
+      console.error("Error marking all notifications read with RPC:", error);
+      // Fallback to direct update if RPC fails
+      const { data: updateData, error: updateError } = await supabase
+        .from("notifications")
+        .update({ is_read: true })
+        .eq("user_id", await getCurrentUserId())
+        .eq("is_read", false);
+
+      if (updateError) {
+        console.error("Error with direct update fallback:", updateError);
+        throw updateError;
+      }
+      return true;
+    }
+    return data as boolean;
+  } catch (err) {
+    console.error("Notification update failed:", err);
+    return false;
+  }
+}
+
+// Helper function to get current user ID
+async function getCurrentUserId(): Promise<string> {
+  const { data } = await supabase.auth.getSession();
+  return data.session?.user.id || "";
 }
 
 /**

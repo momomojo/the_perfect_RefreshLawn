@@ -7,6 +7,7 @@ import {
   MapPin,
   User,
 } from "lucide-react-native";
+import { router } from "expo-router";
 
 interface JobSummary {
   id: string;
@@ -22,6 +23,7 @@ interface TodayOverviewProps {
   issuesCount?: number;
   completedCount?: number;
   inProgressCount?: number;
+  onJobSelect?: (jobId: string) => void;
 }
 
 const TodayOverview = ({
@@ -62,6 +64,7 @@ const TodayOverview = ({
   issuesCount = 1,
   completedCount = 1,
   inProgressCount = 1,
+  onJobSelect = (jobId) => router.push(`/booking/${jobId}`),
 }: TodayOverviewProps) => {
   return (
     <View className="bg-white rounded-lg p-4 shadow-md w-full">
@@ -90,11 +93,14 @@ const TodayOverview = ({
 
       {/* Jobs List */}
       <Text className="text-lg font-semibold mb-2">Today's Jobs</Text>
-      <ScrollView className="max-h-40">
+      <ScrollView className="max-h-[300px]">
         {scheduledJobs.map((job) => (
           <TouchableOpacity
             key={job.id}
-            className={`p-3 mb-2 rounded-md flex-row items-center ${getJobStatusColor(job.status)}`}
+            className={`p-3 mb-2 rounded-md flex-row items-center ${getJobStatusColor(
+              job.status
+            )}`}
+            onPress={() => onJobSelect(job.id)}
           >
             <View className="flex-1">
               <View className="flex-row items-center mb-1">
