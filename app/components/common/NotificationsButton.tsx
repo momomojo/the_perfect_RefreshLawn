@@ -6,7 +6,8 @@ import {
   getNotifications,
   markAllNotificationsRead,
   markNotificationRead,
-} from "../../../lib/data";
+  Notification,
+} from "../../../lib/notification";
 import NotificationCenter from "./NotificationCenter";
 import { useAuth } from "../../../lib/auth";
 
@@ -45,7 +46,7 @@ const NotificationsButton = ({
     try {
       setLoading(true);
       // Get all notifications including read ones
-      const notificationsData = await getNotifications(true);
+      const notificationsData: Notification[] = await getNotifications(true);
 
       // Format notifications for the NotificationCenter component
       const formattedNotifications = notificationsData.map((notification) => ({

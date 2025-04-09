@@ -15,15 +15,17 @@ import {
   getTechnicians,
   getCustomers,
   getProfile,
-  getCustomerBookings,
-  getTechnicianBookings,
-  getBooking,
   getDashboardMetrics,
   Service,
   RecurringPlan,
   Profile,
-  Booking,
 } from "../../../lib/data";
+import {
+  Booking,
+  getCustomerBookings,
+  getTechnicianBookings,
+  getBooking,
+} from "../../../lib/booking";
 
 type TestResult = {
   success: boolean;

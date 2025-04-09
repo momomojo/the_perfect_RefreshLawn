@@ -8,19 +8,10 @@ import {
 } from "react-native";
 import { Bell, Check, ChevronRight, X } from "lucide-react-native";
 import { BlurView } from "expo-blur";
+import { Notification } from "../../../lib/notification";
 
 type NotificationType = "info" | "success" | "warning" | "error";
 type UserRole = "customer" | "technician" | "admin";
-
-interface Notification {
-  id: string;
-  title: string;
-  message: string;
-  timestamp: Date;
-  read: boolean;
-  type: NotificationType;
-  actionUrl?: string;
-}
 
 interface NotificationCenterProps {
   userRole?: UserRole;
@@ -36,34 +27,37 @@ const getDefaultNotifications = (role: UserRole): Notification[] => {
   const baseNotifications: Notification[] = [
     {
       id: "1",
+      user_id: "system",
       title: "Welcome to LawnCare Pro",
       message:
         "Thank you for joining our platform. Get started by exploring the app.",
-      timestamp: new Date(Date.now() - 1000 * 60 * 30), // 30 minutes ago
-      read: false,
-      type: "info",
+      created_at: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
+      is_read: false,
+      type: "info" as Notification["type"],
+      data: null,
     },
     {
       id: "2",
+      user_id: "system",
       title: "Profile Incomplete",
       message:
         "Please complete your profile to get the most out of our services.",
-      timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2), // 2 hours ago
-      read: true,
-      type: "warning",
-      actionUrl: "/profile",
+      created_at: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
+      is_read: true,
+      type: "warning" as Notification["type"],
+      data: { path: "/profile" },
     },
   ];
 
-  const roleSpecificNotifications: Record<UserRole, Notification[]> = {
+  const roleSpecificNotifications: Record<UserRole, Partial<Notification>[]> = {
     customer: [
       {
         id: "3",
         title: "Upcoming Service",
         message:
           "Your lawn mowing service is scheduled for tomorrow at 10:00 AM.",
-        timestamp: new Date(Date.now() - 1000 * 60 * 60 * 5), // 5 hours ago
-        read: false,
+        created_at: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(),
+        is_read: false,
         type: "info",
       },
       {
@@ -71,8 +65,8 @@ const getDefaultNotifications = (role: UserRole): Notification[] => {
         title: "Payment Successful",
         message:
           "Your payment for the recent lawn service has been processed successfully.",
-        timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24), // 1 day ago
-        read: false,
+        created_at: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
+        is_read: false,
         type: "success",
       },
     ],
@@ -81,16 +75,16 @@ const getDefaultNotifications = (role: UserRole): Notification[] => {
         id: "3",
         title: "New Job Assigned",
         message: "You have been assigned a new lawn mowing job for tomorrow.",
-        timestamp: new Date(Date.now() - 1000 * 60 * 60 * 3), // 3 hours ago
-        read: false,
+        created_at: new Date(Date.now() - 1000 * 60 * 60 * 3).toISOString(),
+        is_read: false,
         type: "info",
       },
       {
         id: "4",
         title: "Schedule Change",
         message: "Your afternoon appointment has been rescheduled to 3:00 PM.",
-        timestamp: new Date(Date.now() - 1000 * 60 * 60 * 8), // 8 hours ago
-        read: true,
+        created_at: new Date(Date.now() - 1000 * 60 * 60 * 8).toISOString(),
+        is_read: true,
         type: "warning",
       },
     ],
@@ -99,28 +93,40 @@ const getDefaultNotifications = (role: UserRole): Notification[] => {
         id: "3",
         title: "New User Registration",
         message: "A new technician has registered and requires approval.",
-        timestamp: new Date(Date.now() - 1000 * 60 * 60 * 4), // 4 hours ago
-        read: false,
+        created_at: new Date(Date.now() - 1000 * 60 * 60 * 4).toISOString(),
+        is_read: false,
         type: "info",
-        actionUrl: "/users",
+        data: { path: "/users" },
       },
       {
         id: "4",
         title: "Revenue Alert",
         message:
           "Monthly revenue has exceeded targets by 15%. View detailed report.",
-        timestamp: new Date(Date.now() - 1000 * 60 * 60 * 12), // 12 hours ago
-        read: false,
+        created_at: new Date(Date.now() - 1000 * 60 * 60 * 12).toISOString(),
+        is_read: false,
         type: "success",
-        actionUrl: "/analytics",
+        data: { path: "/analytics" },
       },
     ],
   };
 
-  return [...baseNotifications, ...roleSpecificNotifications[role]];
+  const combinedNotifications = [
+    ...baseNotifications,
+    ...roleSpecificNotifications[role].map((n) => ({
+      user_id: "system",
+      data: null,
+      ...n,
+      type: n.type as Notification["type"],
+    })),
+  ];
+
+  return combinedNotifications;
 };
 
-const formatTimeAgo = (date: Date): string => {
+const formatTimeAgo = (dateString: string): string => {
+  if (!dateString) return "";
+  const date = new Date(dateString);
   const now = new Date();
   const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
 
@@ -159,7 +165,9 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
 
   const handleMarkAsRead = (id: string) => {
     setActiveNotifications((prev) =>
-      prev.map((notif) => (notif.id === id ? { ...notif, read: true } : notif)),
+      prev.map((notif) =>
+        notif.id === id ? { ...notif, is_read: true } : notif
+      )
     );
     if (onNotificationRead) onNotificationRead(id);
   };
@@ -169,7 +177,7 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
     if (onNotificationDismiss) onNotificationDismiss(id);
   };
 
-  const unreadCount = activeNotifications.filter((n) => !n.read).length;
+  const unreadCount = activeNotifications.filter((n) => !n.is_read).length;
 
   if (!isOpen) {
     return null;
@@ -204,56 +212,52 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
         {activeNotifications.length > 0 ? (
           <ScrollView className="max-h-[500px]">
             {activeNotifications.map((notification) => (
-              <View
+              <Pressable
                 key={notification.id}
-                className={`p-4 border-b border-gray-100 ${!notification.read ? "bg-gray-50" : ""}`}
+                onPress={() => {
+                  if (!notification.is_read) handleMarkAsRead(notification.id);
+                }}
+                className={`p-3 mb-2 border-l-4 rounded-r-lg ${
+                  notification.is_read ? "bg-gray-50" : "bg-white"
+                } ${getNotificationColor(
+                  notification.type as NotificationType
+                )}`}
               >
                 <View className="flex-row justify-between items-start">
-                  <View className="flex-1">
-                    <View className="flex-row items-center justify-between">
-                      <Text className="font-semibold text-gray-800">
-                        {notification.title}
-                      </Text>
-                      <Text className="text-xs text-gray-500">
-                        {formatTimeAgo(notification.timestamp)}
-                      </Text>
-                    </View>
-                    <Text className="text-gray-600 mt-1">
+                  <View className="flex-1 pr-2">
+                    <Text
+                      className={`font-semibold ${
+                        notification.is_read ? "text-gray-600" : "text-gray-800"
+                      }`}
+                    >
+                      {notification.title}
+                    </Text>
+                    <Text
+                      className={`text-sm mt-1 ${
+                        notification.is_read ? "text-gray-500" : "text-gray-700"
+                      }`}
+                    >
                       {notification.message}
                     </Text>
-
-                    <View className="flex-row mt-3 items-center">
-                      {!notification.read && (
-                        <TouchableOpacity
-                          onPress={() => handleMarkAsRead(notification.id)}
-                          className="flex-row items-center mr-4"
-                        >
-                          <Check size={16} color="#3B82F6" />
-                          <Text className="text-blue-500 text-sm ml-1">
-                            Mark as read
-                          </Text>
-                        </TouchableOpacity>
-                      )}
-
-                      {notification.actionUrl && (
-                        <TouchableOpacity className="flex-row items-center">
-                          <Text className="text-blue-500 text-sm">
-                            View details
-                          </Text>
-                          <ChevronRight size={16} color="#3B82F6" />
-                        </TouchableOpacity>
-                      )}
-                    </View>
                   </View>
-
-                  <TouchableOpacity
-                    onPress={() => handleDismiss(notification.id)}
-                    className="p-1"
-                  >
-                    <X size={16} color="#9CA3AF" />
-                  </TouchableOpacity>
+                  <View className="flex-col items-end">
+                    <Text className="text-xs text-gray-400 whitespace-nowrap">
+                      {formatTimeAgo(notification.created_at)}
+                    </Text>
+                    {!notification.is_read && (
+                      <TouchableOpacity
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleMarkAsRead(notification.id);
+                        }}
+                        className="mt-2 p-1 bg-blue-100 rounded-full"
+                      >
+                        <Check size={14} color="#3B82F6" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 </View>
-              </View>
+              </Pressable>
             ))}
           </ScrollView>
         ) : (

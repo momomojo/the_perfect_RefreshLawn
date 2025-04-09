@@ -103,7 +103,6 @@
    - Add consistent error handling across all data operations
    - Implement retry mechanisms for transient failures
 
-
 ## Priority 2: Stripe Integration Setup
 
 ### Task 2.1: Set Up Stripe Account and API Keys
@@ -479,52 +478,18 @@
 
 2. **Implement retry logic for network operations**
 
+   - Enhance the existing `lib/queryWithRetry.ts` to ensure it handles common network/server errors robustly, potentially incorporating checks from the plan's original `isRetryableError` suggestion if deemed necessary.
+   - Ensure this consolidated retry logic is used consistently for relevant network operations.
+   - _Decision: We will consolidate retry logic into `lib/queryWithRetry.ts` instead of creating a new `withRetry` function in `lib/utils.ts`._
+
    ```typescript
-   // In lib/utils.ts
-   export async function withRetry<T>(
-     fn: () => Promise<T>,
-     maxRetries: number = 3,
-     delay: number = 1000
+   // Example (already exists in lib/queryWithRetry.ts - enhance if needed)
+   export async function queryWithRetry<T>(
+     queryFn: () => Promise<T>,
+     maxRetries = 3,
+     delay = 1000
    ): Promise<T> {
-     let lastError: any;
-
-     for (let attempt = 1; attempt <= maxRetries; attempt++) {
-       try {
-         return await fn();
-       } catch (error) {
-         lastError = error;
-
-         // Only retry for network errors or 5xx server errors
-         if (!isRetryableError(error)) {
-           throw error;
-         }
-
-         console.warn(`Attempt ${attempt} failed, retrying in ${delay}ms...`);
-         await new Promise((resolve) => setTimeout(resolve, delay));
-
-         // Exponential backoff
-         delay *= 2;
-       }
-     }
-
-     throw lastError;
-   }
-
-   function isRetryableError(error: any): boolean {
-     // Network errors
-     if (
-       error.message?.includes("network") ||
-       error.message?.includes("timeout")
-     ) {
-       return true;
-     }
-
-     // Server errors (5xx)
-     if (error.status >= 500 && error.status < 600) {
-       return true;
-     }
-
-     return false;
+     // ... existing or enhanced implementation ...
    }
    ```
 
@@ -555,91 +520,7 @@
 
 1. **Create database triggers for profile updates**
 
-   - Create a PostgreSQL function and trigger to automatically update Stripe customer data when profiles change:
-
-     ```sql
-     -- First create the function that will be called by the trigger
-     CREATE OR REPLACE FUNCTION sync_profile_to_stripe()
-     RETURNS TRIGGER AS $$
-     DECLARE
-       stripe_customer_id text;
-       customer_data json;
-       response json;
-     BEGIN
-       -- Only proceed if there's a Stripe customer ID and relevant fields changed
-       IF OLD.stripe_customer_id IS NOT NULL AND
-          (OLD.email != NEW.email OR
-           OLD.first_name != NEW.first_name OR
-           OLD.last_name != NEW.last_name OR
-           OLD.phone != NEW.phone OR
-           OLD.address != NEW.address OR
-           OLD.city != NEW.city OR
-           OLD.state != NEW.state OR
-           OLD.zip_code != NEW.zip_code) THEN
-
-         -- Prepare customer data for update
-         customer_data := json_build_object(
-           'email', NEW.email,
-           'name', concat(NEW.first_name, ' ', NEW.last_name),
-           'phone', NEW.phone,
-           'address', json_build_object(
-             'line1', NEW.address,
-             'city', NEW.city,
-             'state', NEW.state,
-             'postal_code', NEW.zip_code,
-             'country', 'US'
-           ),
-           'metadata', json_build_object(
-             'user_id', NEW.id,
-             'updated_at', now()
-           )
-         );
-
-         -- Update the customer in Stripe using the Foreign Data Wrapper
-         UPDATE stripe.customers
-         SET
-           email = NEW.email,
-           name = concat(NEW.first_name, ' ', NEW.last_name),
-           phone = NEW.phone,
-           address = customer_data->>'address',
-           metadata = customer_data->>'metadata'
-         WHERE id = OLD.stripe_customer_id;
-
-         -- Log the sync operation
-         INSERT INTO sync_logs (entity_type, entity_id, operation, status, details)
-         VALUES ('profile', NEW.id, 'update', 'success', json_build_object(
-           'stripe_customer_id', OLD.stripe_customer_id,
-           'changes', json_build_object(
-             'email', json_build_object('old', OLD.email, 'new', NEW.email),
-             'name', json_build_object(
-               'old', concat(OLD.first_name, ' ', OLD.last_name),
-               'new', concat(NEW.first_name, ' ', NEW.last_name)
-             )
-           )
-         ));
-       END IF;
-
-       RETURN NEW;
-     EXCEPTION WHEN OTHERS THEN
-       -- Log the error
-       INSERT INTO sync_logs (entity_type, entity_id, operation, status, details)
-       VALUES ('profile', NEW.id, 'update', 'error', json_build_object(
-         'error', SQLERRM,
-         'stripe_customer_id', OLD.stripe_customer_id
-       ));
-
-       RETURN NEW;
-     END;
-     $$ LANGUAGE plpgsql;
-
-     -- Create the trigger on the profiles table
-     CREATE TRIGGER profile_update_sync_stripe
-     AFTER UPDATE ON profiles
-     FOR EACH ROW
-     EXECUTE FUNCTION sync_profile_to_stripe();
-     ```
-
-   - Create a sync_logs table to track synchronization operations:
+   - **Create a `sync_logs` table** to track synchronization operations:
 
      ```sql
      -- Create a table to log sync operations
@@ -658,96 +539,207 @@
      CREATE INDEX IF NOT EXISTS idx_sync_logs_status ON sync_logs(status);
      ```
 
-2. **Implement webhook handlers for Stripe customer updates**
+   - **Create a new Edge Function (`sync-profile-to-stripe`)** responsible for taking profile data and updating the corresponding Stripe customer via the Stripe API.
 
-   - Add a handler for `customer.updated` events in your webhook Edge Function:
-
-     ```typescript
-     // In your webhook handler function, add this case
-     case "customer.updated":
-       return await handleCustomerUpdated(event.data.object);
-
-     // Then implement the handler function
-     async function handleCustomerUpdated(customer) {
-       try {
-         // Extract the user ID from metadata
-         const userId = customer.metadata?.user_id;
-         if (!userId) {
-           console.log("No user ID found in customer metadata");
-           return { success: false, error: "No user ID found" };
-         }
-
-         // Get the current profile data
-         const { data: profile, error: profileError } = await supabase
-           .from("profiles")
-           .select("*")
-           .eq("id", userId)
-           .single();
-
-         if (profileError) {
-           console.error("Error fetching profile:", profileError);
-           return { success: false, error: profileError.message };
-         }
-
-         // Check if the update came from our system
-         if (customer.metadata?.updated_at) {
-           const stripeUpdateTime = new Date(customer.metadata.updated_at).getTime();
-           const profileUpdateTime = new Date(profile.updated_at).getTime();
-
-           // If our profile was updated more recently than the Stripe update,
-           // don't overwrite our data (prevents update loops)
-           if (profileUpdateTime >= stripeUpdateTime) {
-             return { success: true, skipped: true, reason: "Profile is more recent" };
-           }
-         }
-
-         // Extract name parts
-         let firstName = profile.first_name;
-         let lastName = profile.last_name;
-
-         if (customer.name) {
-           const nameParts = customer.name.split(' ');
-           if (nameParts.length > 0) {
-             firstName = nameParts[0];
-             lastName = nameParts.slice(1).join(' ');
-           }
-         }
-
-         // Extract address parts
-         const address = customer.address || {};
-
-         // Update the profile with Stripe data
-         const { error: updateError } = await supabase
-           .from("profiles")
-           .update({
-             email: customer.email || profile.email,
-             first_name: firstName,
-             last_name: lastName,
-             phone: customer.phone || profile.phone,
-             address: address.line1 || profile.address,
-             city: address.city || profile.city,
-             state: address.state || profile.state,
-             zip_code: address.postal_code || profile.zip_code,
-             updated_at: new Date().toISOString(),
-             // Add a flag to indicate this update came from Stripe
-             metadata: { ...profile.metadata, updated_from_stripe: true }
-           })
-           .eq("id", userId);
-
-         if (updateError) {
-           console.error("Error updating profile:", updateError);
-           return { success: false, error: updateError.message };
-         }
-
-         return { success: true };
-       } catch (error) {
-         console.error("Error handling customer update:", error);
-         return { success: false, error: error.message };
-       }
-     }
+     ```bash
+     supabase functions new sync-profile-to-stripe
      ```
 
-3. **Add reconciliation process**
+     ```typescript
+     // In supabase/functions/sync-profile-to-stripe/index.ts
+     import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+     import Stripe from "https://esm.sh/stripe@12.4.0?dts";
+     import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
+
+     const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
+     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+
+     const stripe = new Stripe(stripeSecretKey, { apiVersion: "2023-10-16" });
+     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+     serve(async (req) => {
+       // IMPORTANT: Add security checks (e.g., verify a secret header)
+       // to ensure this function is only called legitimately (e.g., from the DB trigger)
+
+       try {
+         const { profile, stripeCustomerId } = await req.json();
+
+         if (!profile || !stripeCustomerId) {
+           return new Response(
+             JSON.stringify({
+               error: "Missing profile data or Stripe Customer ID",
+             }),
+             { status: 400 }
+           );
+         }
+
+         const customerData = {
+           email: profile.email,
+           name: `${profile.first_name || ""} ${
+             profile.last_name || ""
+           }`.trim(),
+           phone: profile.phone,
+           address: {
+             line1: profile.address,
+             city: profile.city,
+             state: profile.state,
+             postal_code: profile.zip_code,
+             country: "US", // Assuming US
+           },
+           metadata: {
+             user_id: profile.id,
+             // Add other relevant metadata if needed
+           },
+         };
+
+         const updatedCustomer = await stripe.customers.update(
+           stripeCustomerId,
+           customerData
+         );
+
+         // Optional: Log success to sync_logs via Supabase client
+         await supabase.from("sync_logs").insert({
+           entity_type: "profile",
+           entity_id: profile.id,
+           operation: "update_stripe_via_trigger",
+           status: "success",
+           details: { stripe_customer_id: stripeCustomerId },
+         });
+
+         return new Response(
+           JSON.stringify({ success: true, updatedCustomer }),
+           { status: 200 }
+         );
+       } catch (error) {
+         console.error("Error updating Stripe customer:", error);
+         // Optional: Log error to sync_logs via Supabase client
+         const profileId = (await req.json()).profile?.id;
+         const stripeId = (await req.json()).stripeCustomerId;
+         if (profileId && stripeId) {
+           await supabase.from("sync_logs").insert({
+             entity_type: "profile",
+             entity_id: profileId,
+             operation: "update_stripe_via_trigger",
+             status: "error",
+             details: { stripe_customer_id: stripeId, error: error.message },
+           });
+         }
+         return new Response(JSON.stringify({ error: error.message }), {
+           status: 500,
+         });
+       }
+     });
+     ```
+
+   - **Create a PostgreSQL function and trigger** on the `profiles` table. This trigger will call the `sync-profile-to-stripe` Edge Function using `pg_net` whenever relevant profile fields change.
+
+     ```sql
+     -- Ensure pg_net is enabled (usually done via Supabase dashboard)
+
+     -- Function called by the trigger
+     CREATE OR REPLACE FUNCTION trigger_sync_profile_to_stripe()
+     RETURNS TRIGGER AS $$
+     DECLARE
+       profile_data json;
+       request_id bigint;
+       function_url text := '[YOUR_SUPABASE_URL]/functions/v1/sync-profile-to-stripe'; -- Replace with your actual URL
+       -- Consider adding a secret for security verification in the Edge Function
+       -- headers jsonb := '{"Content-Type": "application/json", "Authorization": "Bearer [YOUR_SECRET_TOKEN]"}';
+       headers jsonb := '{"Content-Type": "application/json"}';
+     BEGIN
+       -- Only proceed if there's a Stripe customer ID and relevant fields changed
+       IF OLD.stripe_customer_id IS NOT NULL AND
+          (OLD.email != NEW.email OR
+           OLD.first_name != NEW.first_name OR
+           OLD.last_name != NEW.last_name OR
+           OLD.phone != NEW.phone OR
+           OLD.address != NEW.address OR
+           OLD.city != NEW.city OR
+           OLD.state != NEW.state OR
+           OLD.zip_code != NEW.zip_code) THEN
+
+         -- Prepare profile data payload
+         profile_data := json_build_object(
+            'profile', row_to_json(NEW),
+            'stripeCustomerId', OLD.stripe_customer_id
+         );
+
+         -- Asynchronously call the Edge Function using pg_net
+         SELECT net.http_post(
+           url:=function_url,
+           body:=profile_data,
+           headers:=headers,
+           timeout_milliseconds:=5000 -- Optional: Set timeout
+         ) INTO request_id;
+
+         -- Log the trigger invocation attempt (optional, sync_logs in Edge Function is better)
+         -- INSERT INTO sync_logs (entity_type, entity_id, operation, status, details)
+         -- VALUES ('profile', NEW.id, 'trigger_fired', 'pending', json_build_object('pg_net_request_id', request_id));
+
+       END IF;
+
+       RETURN NEW; -- Return NEW to allow the UPDATE operation to continue
+     EXCEPTION WHEN OTHERS THEN
+       -- Log the error if the trigger function itself fails
+       INSERT INTO sync_logs (entity_type, entity_id, operation, status, details)
+       VALUES ('profile', NEW.id, 'trigger_error', 'error', json_build_object(
+         'error', SQLERRM,
+         'stripe_customer_id', OLD.stripe_customer_id
+       ));
+       RAISE WARNING 'Trigger trigger_sync_profile_to_stripe failed: %', SQLERRM;
+       RETURN NEW; -- Still return NEW even if trigger fails, to not block profile update
+     END;
+     $$ LANGUAGE plpgsql SECURITY DEFINER; -- SECURITY DEFINER might be needed for pg_net depending on setup
+
+     -- Drop existing trigger if it exists from previous FDW attempt
+     DROP TRIGGER IF EXISTS profile_update_sync_stripe ON profiles;
+
+     -- Create the trigger on the profiles table
+     CREATE TRIGGER profile_update_sync_stripe_trigger
+     AFTER UPDATE ON profiles
+     FOR EACH ROW
+     EXECUTE FUNCTION trigger_sync_profile_to_stripe();
+     ```
+
+     _Note: Ensure the `sync-profile-to-stripe` function URL is correct and consider adding security headers._
+
+   - Create a sync*logs table to track synchronization operations:
+     \_Done above.*
+
+   - Create a **`reconciliation_logs` table** to track reconciliation runs:
+
+     ```sql
+     -- Create a table to log reconciliation runs
+     CREATE TABLE IF NOT EXISTS reconciliation_logs (
+       id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+       type TEXT NOT NULL,
+       results JSONB NOT NULL,
+       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+     );
+
+     -- Add index for faster queries
+     CREATE INDEX IF NOT EXISTS idx_reconciliation_logs_type ON reconciliation_logs(type);
+     CREATE INDEX IF NOT EXISTS idx_reconciliation_logs_created_at ON reconciliation_logs(created_at);
+     ```
+
+   - Set up a scheduled cron job to run the reconciliation process regularly:
+
+     ```bash
+     # Deploy the reconciliation function
+     supabase functions deploy stripe-reconciliation --no-verify-jwt
+
+     # Set up a scheduled job to run daily at 2 AM
+     # You can use a service like GitHub Actions, AWS Lambda, or a dedicated cron service
+     # Example cron expression: 0 2 * * *
+
+     # The scheduled job should make a POST request to:
+     # https://[YOUR_PROJECT_REF].supabase.co/functions/v1/stripe-reconciliation
+     # with the following body:
+     # { "limit": 500, "fix": true }
+     ```
+
+2. **Add reconciliation process**
 
    - Create a scheduled Edge Function to verify customer data consistency:
 
@@ -1025,6 +1017,23 @@
          .then(() => {})
          .catch((e) => console.error("Failed to log rate limit error", e));
      }
+     ```
+
+   - **Create a `stripe_rate_limit_logs` table** to store rate limit events for analysis:
+
+     ```sql
+     -- Create table to log Stripe rate limit events
+        CREATE TABLE IF NOT EXISTS stripe_rate_limit_logs (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        operation TEXT,
+        status_code INT,
+        error_type TEXT,
+        retry_after TEXT, -- Store as text as it can be seconds or a date
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_stripe_rate_limit_logs_created ON stripe_rate_limit_logs(created_at);
+        CREATE INDEX IF NOT EXISTS idx_stripe_rate_limit_logs_operation ON stripe_rate_limit_logs(operation);
      ```
 
 2. **Add circuit breaker pattern**

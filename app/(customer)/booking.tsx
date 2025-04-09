@@ -10,14 +10,17 @@ import { Stack, useRouter, useLocalSearchParams } from "expo-router";
 import BookingForm from "../components/customer/BookingForm";
 import {
   getService,
-  createBooking,
   getProfile,
   Booking,
   Service,
   Profile,
 } from "../../lib/data";
-import { supabase } from "../../lib/supabase";
+import { createBooking } from "../../lib/booking";
 import { useAuth } from "../../lib/auth";
+import { supabase } from "../../lib/supabase";
+import { format } from "date-fns";
+import { Button, Card } from "react-native-paper";
+import DateTimePickerModal from "react-native-modal-datetime-picker";
 
 interface BookingFormData {
   serviceId: string;

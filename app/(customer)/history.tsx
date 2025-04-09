@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { View, Text, SafeAreaView, ActivityIndicator } from "react-native";
 import { Stack } from "expo-router";
 import ServiceHistory from "../components/customer/ServiceHistory";
-import { getCustomerBookings } from "../../lib/data";
+import { getCustomerBookings } from "../../lib/booking";
 import { supabase } from "../../lib/supabase";
 
 export default function HistoryScreen() {

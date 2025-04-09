@@ -20,18 +20,20 @@ import {
 import { router } from "expo-router";
 import { useAuth } from "../../lib/auth";
 import {
-  getCustomerBookings,
   getServices,
   createReview,
   Service,
-  Booking,
-  getUpcomingBookings,
   getProfile,
   Profile,
-  subscribeToBookings,
   subscribeToProfiles,
   unsubscribeFromChannel,
 } from "../../lib/data";
+import {
+  Booking,
+  getCustomerBookings,
+  getUpcomingBookings,
+  subscribeToBookings,
+} from "../../lib/booking";
 import { format } from "date-fns";
 import { Card } from "react-native-paper";
 import { RealtimeChannel } from "@supabase/supabase-js";
