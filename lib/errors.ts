@@ -17,6 +17,20 @@ export class PaymentError extends AppError {
   }
 }
 
+/**
+ * Centralized error handler for API and database operations
+ *
+ * @param error - The error object to handle
+ * @returns An object with standardized error message and code
+ *
+ * Usage:
+ *   try {
+ *     // API or database operation
+ *   } catch (error) {
+ *     const { error: errorMessage, code } = handleApiError(error);
+ *     // Display error to user or handle programmatically
+ *   }
+ */
 export function handleApiError(error: any) {
   console.error("API Error:", error);
 

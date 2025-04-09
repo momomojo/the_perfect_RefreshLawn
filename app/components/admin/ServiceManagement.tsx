@@ -25,6 +25,7 @@ import { Service } from "../../lib/data";
 import * as ImagePicker from "expo-image-picker";
 import { supabase } from "../../../lib/supabase";
 import { decode } from "base64-arraybuffer";
+import { handleApiError } from "../../../lib/errors";
 
 interface ServiceManagementProps {
   services: Service[];
@@ -49,6 +50,7 @@ const ServiceManagement = ({
     duration_minutes: "",
     image_url: "",
   });
+  const [error, setError] = useState<string | null>(null);
 
   // Filter services based on search query
   const filteredServices = services.filter((service) => {
@@ -71,6 +73,7 @@ const ServiceManagement = ({
   };
 
   const pickImage = async () => {
+    setError(null);
     if (!editingService) return;
 
     try {
@@ -105,18 +108,20 @@ const ServiceManagement = ({
 
       const asset = result.assets[0];
       if (!asset.base64) {
-        Alert.alert("Error", "Failed to process image");
-        return;
+        throw new Error("Failed to process image (no base64 data)");
       }
 
       await uploadImage(asset.base64);
-    } catch (error) {
-      console.error("Error picking image:", error);
-      Alert.alert("Error", "Failed to pick image");
+    } catch (err: any) {
+      const errorResult = handleApiError(err);
+      setError(errorResult.error);
+      console.error("Error picking image:", err, `(Code: ${errorResult.code})`);
+      Alert.alert("Image Error", errorResult.error);
     }
   };
 
   const uploadImage = async (base64Image: string) => {
+    setError(null);
     try {
       setImageUploadLoading(true);
 
@@ -126,22 +131,21 @@ const ServiceManagement = ({
       const filePath = `${fileName}`;
 
       // Using the more direct approach to upload
-      const { data, error } = await supabase.storage
+      const { data, error: uploadError } = await supabase.storage
         .from("service_images") // Make sure this bucket exists in Supabase
         .upload(filePath, decode(base64Image), {
           contentType: "image/jpeg",
           upsert: true,
         });
 
-      if (error) {
-        if (error.message.includes("Bucket not found")) {
-          // Bucket doesn't exist - we should inform the user
-          Alert.alert(
-            "Storage Setup Required",
-            "The storage bucket for images doesn't exist. Please create a bucket named 'service_images' in your Supabase dashboard."
-          );
+      if (uploadError) {
+        if (uploadError.message.includes("Bucket not found")) {
+          const bucketErrorMsg =
+            "Storage Setup Required: The 'service_images' bucket doesn't exist. Please create it in your Supabase dashboard.";
+          setError(bucketErrorMsg);
+          Alert.alert("Storage Error", bucketErrorMsg);
         } else {
-          throw error;
+          throw uploadError;
         }
         return;
       }
@@ -157,12 +161,15 @@ const ServiceManagement = ({
           image_url: publicURLData.publicUrl,
         });
       }
-    } catch (error) {
-      console.error("Error uploading image:", error);
-      Alert.alert(
-        "Error",
-        "Failed to upload image. Check console for details."
+    } catch (err: any) {
+      const errorResult = handleApiError(err);
+      setError(errorResult.error);
+      console.error(
+        "Error uploading image:",
+        err,
+        `(Code: ${errorResult.code})`
       );
+      Alert.alert("Upload Error", errorResult.error);
     } finally {
       setImageUploadLoading(false);
     }
@@ -220,6 +227,13 @@ const ServiceManagement = ({
 
   return (
     <View className="flex-1 bg-white p-4">
+      {/* Display Error if exists */}
+      {error && (
+        <View className="p-3 mb-4 bg-red-100 border border-red-200 rounded-md">
+          <Text className="text-red-700">Error: {error}</Text>
+        </View>
+      )}
+
       {/* Search Bar */}
       <View className="bg-white rounded-lg shadow-sm border border-gray-200 mb-4 px-3 py-2 flex-row items-center">
         <Info size={18} color="#6b7280" />
@@ -367,6 +381,13 @@ const ServiceManagement = ({
                 <X size={20} color="#6b7280" />
               </TouchableOpacity>
             </View>
+
+            {/* Display Modal Error if exists */}
+            {error && (
+              <View className="p-3 mb-4 bg-red-100 border border-red-200 rounded-md">
+                <Text className="text-red-700">Error: {error}</Text>
+              </View>
+            )}
 
             {/* Image Upload Section */}
             <View className="mb-4 items-center">

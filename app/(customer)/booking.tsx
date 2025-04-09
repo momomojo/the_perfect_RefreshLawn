@@ -21,6 +21,7 @@ import { supabase } from "../../lib/supabase";
 import { format } from "date-fns";
 import { Button, Card } from "react-native-paper";
 import DateTimePickerModal from "react-native-modal-datetime-picker";
+import { handleApiError } from "../../lib/errors";
 
 interface BookingFormData {
   serviceId: string;
@@ -64,9 +65,9 @@ export default function BookingScreen() {
   }, [serviceId]);
 
   const fetchServiceAndUserData = async () => {
+    setError(null); // Clear previous errors
     try {
       setLoading(true);
-      setError(null);
 
       // Get current user's session
       if (!user?.id) {
@@ -81,21 +82,24 @@ export default function BookingScreen() {
       const profileData = await getProfile(user.id);
       setUserProfile(profileData);
     } catch (err: any) {
-      console.error("Error fetching service data:", err);
-      setError(err.message || "Failed to load service details");
-      Alert.alert(
-        "Error",
-        err.message || "Failed to load service details. Please try again."
-      );
+      // Use central handler
+      const errorResult = handleApiError(err);
+      setError(errorResult.error);
+      console.error(
+        "Error fetching service data:",
+        err,
+        `(Code: ${errorResult.code})`
+      ); // Keep detailed log
+      Alert.alert("Error Loading Data", errorResult.error); // Show standardized error
     } finally {
       setLoading(false);
     }
   };
 
   const handleBookingComplete = async (bookingData: BookingFormData) => {
+    setError(null); // Clear previous errors
     try {
       setSubmitting(true);
-      setError(null);
 
       if (!user) {
         throw new Error("User not authenticated");
@@ -133,9 +137,15 @@ export default function BookingScreen() {
         ]
       );
     } catch (err: any) {
-      console.error("Error creating booking:", err);
-      setError(err.message || "Failed to create booking. Please try again.");
-      Alert.alert("Error", err.message || "Failed to create booking");
+      // Use central handler
+      const errorResult = handleApiError(err);
+      setError(errorResult.error);
+      console.error(
+        "Error creating booking:",
+        err,
+        `(Code: ${errorResult.code})`
+      ); // Keep detailed log
+      Alert.alert("Booking Error", errorResult.error); // Show standardized error
     } finally {
       setSubmitting(false);
     }

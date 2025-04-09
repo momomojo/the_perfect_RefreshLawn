@@ -1,5 +1,6 @@
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
+import { queryWithRetry } from "./queryWithRetry"; // Import retry utility
 
 // Dedicated module for notification-related operations
 // (e.g., creating, fetching, marking notifications as read, subscribing)
@@ -34,7 +35,8 @@ export interface Notification {
 export async function getNotifications(includeRead = false) {
   // Helper function to get current user ID (moved here)
   async function getCurrentUserIdLocal(): Promise<string> {
-    const { data } = await supabase.auth.getSession();
+    // Apply retry logic to getSession
+    const { data } = await queryWithRetry(() => supabase.auth.getSession());
     return data.session?.user.id || "";
   }
 
@@ -51,7 +53,8 @@ export async function getNotifications(includeRead = false) {
     query = query.eq("is_read", false);
   }
 
-  const { data, error } = await query;
+  // Apply retry logic to the final query
+  const { data, error } = await queryWithRetry(() => query);
 
   if (error) throw error;
   return data as Notification[];
@@ -62,7 +65,10 @@ export async function getNotifications(includeRead = false) {
  * @returns Count of unread notifications
  */
 export async function getUnreadNotificationsCount() {
-  const { data, error } = await supabase.rpc("get_unread_notifications_count");
+  // Apply retry logic to the RPC call
+  const { data, error } = await queryWithRetry(() =>
+    supabase.rpc("get_unread_notifications_count")
+  );
 
   if (error) throw error;
   return data as number;
@@ -76,23 +82,34 @@ export async function getUnreadNotificationsCount() {
 export async function markNotificationRead(notificationId: string) {
   // Helper function to get current user ID (moved here)
   async function getCurrentUserIdLocal(): Promise<string> {
-    const { data } = await supabase.auth.getSession();
+    // Apply retry logic to getSession
+    const { data } = await queryWithRetry(() => supabase.auth.getSession());
     return data.session?.user.id || "";
   }
 
   try {
-    const { data, error } = await supabase.rpc("mark_notification_read", {
-      p_notification_id: notificationId,
-    });
+    // Apply retry logic to the RPC call
+    const { data, error } = await queryWithRetry(() =>
+      supabase.rpc("mark_notification_read", {
+        p_notification_id: notificationId,
+      })
+    );
 
     if (error) {
       console.error("Error marking notification read with RPC:", error);
       // Fallback to direct update if RPC fails
-      const { data: updateData, error: updateError } = await supabase
-        .from("notifications")
-        .update({ is_read: true })
-        .eq("id", notificationId)
-        .eq("user_id", await getCurrentUserIdLocal());
+      const currentUserId = await getCurrentUserIdLocal(); // Get user ID for fallback
+      if (!currentUserId)
+        throw new Error("User not authenticated for fallback.");
+
+      // Apply retry logic to the fallback update
+      const { error: updateError } = await queryWithRetry(() =>
+        supabase
+          .from("notifications")
+          .update({ is_read: true })
+          .eq("id", notificationId)
+          .eq("user_id", currentUserId)
+      );
 
       if (updateError) {
         console.error("Error with direct update fallback:", updateError);
@@ -114,21 +131,32 @@ export async function markNotificationRead(notificationId: string) {
 export async function markAllNotificationsRead() {
   // Helper function to get current user ID (moved here)
   async function getCurrentUserIdLocal(): Promise<string> {
-    const { data } = await supabase.auth.getSession();
+    // Apply retry logic to getSession
+    const { data } = await queryWithRetry(() => supabase.auth.getSession());
     return data.session?.user.id || "";
   }
 
   try {
-    const { data, error } = await supabase.rpc("mark_all_notifications_read");
+    // Apply retry logic to the RPC call
+    const { data, error } = await queryWithRetry(() =>
+      supabase.rpc("mark_all_notifications_read")
+    );
 
     if (error) {
       console.error("Error marking all notifications read with RPC:", error);
       // Fallback to direct update if RPC fails
-      const { data: updateData, error: updateError } = await supabase
-        .from("notifications")
-        .update({ is_read: true })
-        .eq("user_id", await getCurrentUserIdLocal())
-        .eq("is_read", false);
+      const currentUserId = await getCurrentUserIdLocal(); // Get user ID for fallback
+      if (!currentUserId)
+        throw new Error("User not authenticated for fallback.");
+
+      // Apply retry logic to the fallback update
+      const { error: updateError } = await queryWithRetry(() =>
+        supabase
+          .from("notifications")
+          .update({ is_read: true })
+          .eq("user_id", currentUserId)
+          .eq("is_read", false)
+      );
 
       if (updateError) {
         console.error("Error with direct update fallback:", updateError);
@@ -145,6 +173,7 @@ export async function markAllNotificationsRead() {
 
 /**
  * Create a notification manually (for testing or admin purposes)
+ * This function internally calls the `create_notification` RPC function.
  * @param userId User ID to notify
  * @param type Notification type
  * @param title Notification title
@@ -159,15 +188,15 @@ export async function createNotification(
   message: string,
   data?: any
 ) {
-  const { data: notificationId, error } = await supabase.rpc(
-    "create_notification",
-    {
+  // Apply retry logic to the RPC call
+  const { data: notificationId, error } = await queryWithRetry(() =>
+    supabase.rpc("create_notification", {
       p_user_id: userId,
       p_type: type,
       p_title: title,
       p_message: message,
-      p_data: data ? JSON.stringify(data) : null,
-    }
+      p_data: data ? JSON.stringify(data) : null, // Ensure data is stringified if provided
+    })
   );
 
   if (error) throw error;
@@ -181,7 +210,8 @@ export async function createNotification(
  */
 export function subscribeToNotifications(callback: (payload: any) => void) {
   // Get the current user id
-  // Note: Getting session directly inside might be better than top-level await
+  // Note: Applying retry here might be complex due to async setup.
+  // Better to handle potential initial session error gracefully.
   supabase.auth
     .getSession()
     .then(({ data: sessionData }) => {

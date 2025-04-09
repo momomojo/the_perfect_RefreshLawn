@@ -11,6 +11,7 @@ import { Search } from "lucide-react-native";
 import ServicesList from "../components/customer/ServicesList";
 import { TextInput } from "react-native-gesture-handler";
 import { getServices } from "../../lib/data";
+import { handleApiError } from "../../lib/errors";
 
 const ServicesScreen = () => {
   const router = useRouter();
@@ -25,13 +26,20 @@ const ServicesScreen = () => {
   }, []);
 
   const fetchServices = async () => {
+    setError(null); // Clear previous errors
     try {
       setLoading(true);
       const data = await getServices();
       setServices(data);
     } catch (err: any) {
-      setError(err.message || "An unexpected error occurred");
-      console.error("Error fetching services:", err);
+      // Use central handler
+      const errorResult = handleApiError(err);
+      setError(errorResult.error);
+      console.error(
+        "Error fetching services:",
+        err,
+        `(Code: ${errorResult.code})`
+      ); // Keep detailed log
     } finally {
       setLoading(false);
     }

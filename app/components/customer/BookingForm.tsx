@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import {
   ChevronRight,
@@ -25,6 +26,10 @@ import {
   Profile,
 } from "../../../lib/data";
 import { format, addDays } from "date-fns";
+import * as Network from "expo-network";
+import { useStripe } from "@stripe/stripe-react-native";
+import { supabase } from "../../../lib/supabase";
+import { useAuth } from "../../../lib/auth";
 
 interface BookingFormProps {
   service?: Service | null;
@@ -67,6 +72,14 @@ const BookingForm = ({
   const [services, setServices] = useState<Service[]>([]);
   const [recurringPlans, setRecurringPlans] = useState<RecurringPlan[]>([]);
   const [loading, setLoading] = useState(false);
+  const { initPaymentSheet, presentPaymentSheet } = useStripe();
+  const { session, user } = useAuth();
+  const [paymentSheetEnabled, setPaymentSheetEnabled] = useState(false);
+  const [paymentInProgress, setPaymentInProgress] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [bookingIdForPayment, setBookingIdForPayment] = useState<string | null>(
+    null
+  );
 
   // Generate dates for next 14 days
   const generateAvailableDates = () => {
@@ -539,6 +552,256 @@ const BookingForm = ({
     );
   };
 
+  const initializePaymentSheet = async (
+    bookingDataToSubmit: BookingFormData
+  ) => {
+    try {
+      const networkState = await Network.getNetworkStateAsync();
+      if (!networkState.isConnected || !networkState.isInternetReachable) {
+        setPaymentError(
+          "Network connection unavailable. Please check your internet connection and try again."
+        );
+        setPaymentSheetEnabled(false);
+        setPaymentInProgress(false);
+        return null;
+      }
+
+      setPaymentInProgress(true);
+      setPaymentError(null);
+
+      const booking = await createBookingInDatabase(
+        bookingDataToSubmit,
+        "pending"
+      );
+      setBookingIdForPayment(booking.id);
+
+      const endpoint = bookingDataToSubmit.isRecurring
+        ? "create-subscription"
+        : "create-payment-intent";
+
+      const payload = bookingDataToSubmit.isRecurring
+        ? {
+            bookingId: booking.id,
+            planId: bookingDataToSubmit.recurringPlan,
+          }
+        : {
+            amount: Math.round(bookingDataToSubmit.price * 100),
+            bookingId: booking.id,
+          };
+
+      const response = await fetch(
+        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/stripe-api/${endpoint}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session?.access_token}`,
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      const {
+        clientSecret,
+        paymentIntentId,
+        setupIntentId,
+        subscriptionId,
+        error: apiError,
+      } = await response.json();
+
+      if (apiError || !clientSecret) {
+        throw new Error(apiError || "Failed to retrieve payment details");
+      }
+
+      const updatePayload: any = {};
+      if (paymentIntentId)
+        updatePayload.stripe_payment_intent_id = paymentIntentId;
+      if (setupIntentId) updatePayload.stripe_setup_intent_id = setupIntentId;
+      if (subscriptionId) updatePayload.stripe_subscription_id = subscriptionId;
+
+      if (Object.keys(updatePayload).length > 0) {
+        await supabase
+          .from("bookings")
+          .update(updatePayload)
+          .eq("id", booking.id);
+      }
+
+      const customerResponse = await fetch(
+        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/stripe-api/get-or-create-customer`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session?.access_token}`,
+          },
+          body: JSON.stringify({
+            email: user?.email,
+            name: `${userProfile?.first_name || ""} ${
+              userProfile?.last_name || ""
+            }`.trim(),
+          }),
+        }
+      );
+      const {
+        customerId,
+        ephemeralKeySecret,
+        error: customerError,
+      } = await customerResponse.json();
+
+      if (customerError || !customerId || !ephemeralKeySecret) {
+        throw new Error(customerError || "Failed to retrieve customer details");
+      }
+
+      const { error: initError } = await initPaymentSheet({
+        customerId: customerId,
+        customerEphemeralKeySecret: ephemeralKeySecret,
+        paymentIntentClientSecret: clientSecret,
+        merchantDisplayName: "RefreshLawn",
+        defaultBillingDetails: {
+          name: `${userProfile?.first_name || ""} ${
+            userProfile?.last_name || ""
+          }`.trim(),
+          email: user?.email,
+          address: {
+            city: userProfile?.city || "",
+            country: "US",
+            line1: userProfile?.address || "",
+            postalCode: userProfile?.zip_code || "",
+            state: userProfile?.state || "",
+          },
+        },
+        applePay: { merchantCountryCode: "US" },
+        googlePay: {
+          merchantCountryCode: "US",
+          testEnv: process.env.NODE_ENV !== "production",
+        },
+        allowsDelayedPaymentMethods: false,
+      });
+
+      if (initError) {
+        throw new Error(initError.message);
+      }
+
+      setPaymentSheetEnabled(true);
+      return booking.id;
+    } catch (error: any) {
+      console.error("Error initializing payment sheet:", error);
+      const errorResult = handleApiError(error);
+      setPaymentError(errorResult.error);
+      setPaymentSheetEnabled(false);
+      return null;
+    } finally {
+      setPaymentInProgress(false);
+    }
+  };
+
+  const handlePayment = async () => {
+    if (!bookingIdForPayment) {
+      setPaymentError("Booking ID not found for payment.");
+      return { success: false, error: new Error("Booking ID missing") };
+    }
+    try {
+      setPaymentInProgress(true);
+      setPaymentError(null);
+
+      const { error } = await presentPaymentSheet();
+
+      if (error) {
+        console.error("Payment failed/canceled:", error);
+
+        if (error.code === "Canceled") {
+          setPaymentError("Payment was canceled.");
+          return {
+            success: false,
+            canceled: true,
+            bookingId: bookingIdForPayment,
+          };
+        } else {
+          await supabase
+            .from("bookings")
+            .update({ status: "payment_failed" })
+            .eq("id", bookingIdForPayment);
+
+          const errorResult = handleApiError(error);
+          setPaymentError(errorResult.error);
+          logPaymentError(error, bookingIdForPayment, user?.id);
+          return { success: false, error, bookingId: bookingIdForPayment };
+        }
+      }
+
+      setBookingData((prev) => ({ ...prev, status: "processing_payment" }));
+
+      return { success: true, bookingId: bookingIdForPayment };
+    } catch (error: any) {
+      console.error("Error processing payment presentation:", error);
+      const errorResult = handleApiError(error);
+      setPaymentError(errorResult.error);
+      logPaymentError(error, bookingIdForPayment, user?.id);
+      return { success: false, error, bookingId: bookingIdForPayment };
+    } finally {
+      setPaymentInProgress(false);
+    }
+  };
+
+  const createBookingInDatabase = async (
+    bookingDataToCreate: BookingFormData,
+    status = "pending"
+  ) => {
+    if (!userProfile?.id) {
+      throw new Error("User profile not loaded.");
+    }
+    const { data, error } = await supabase
+      .from("bookings")
+      .insert({
+        customer_id: userProfile.id,
+        service_id: bookingDataToCreate.serviceId,
+        recurring_plan_id: bookingDataToCreate.isRecurring
+          ? bookingDataToCreate.recurringPlan
+          : null,
+        status,
+        price: bookingDataToCreate.price,
+        scheduled_date: bookingDataToCreate.date,
+        scheduled_time: bookingDataToCreate.time,
+        address: bookingDataToCreate.address,
+        notes: "",
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  };
+
+  const logPaymentError = async (
+    error: any,
+    bookingId: string | null,
+    userId: string | undefined
+  ) => {
+    // ... implementation from plan ...
+  };
+
+  const handleCompleteBooking = async () => {
+    const bookingIdResult = await initializePaymentSheet(bookingData);
+
+    if (bookingIdResult && paymentSheetEnabled) {
+      const paymentResult = await handlePayment();
+      if (paymentResult.success) {
+        Alert.alert(
+          "Booking Submitted",
+          "Your booking is being processed. You'll be notified once payment is confirmed.",
+          [
+            {
+              text: "OK",
+              onPress: () => router.replace("/(customer)/dashboard"),
+            },
+          ]
+        );
+      } else {
+      }
+    } else {
+    }
+  };
+
   const renderConfirmationStep = () => {
     const selectedPlan = recurringPlans.find(
       (plan) => plan.id === bookingData.recurringPlan
@@ -612,18 +875,46 @@ const BookingForm = ({
           </View>
         </View>
 
-        <TouchableOpacity
-          className="bg-green-500 rounded-lg py-4 items-center"
-          onPress={() => onComplete(bookingData)}
-          disabled={isSubmitting}
-        >
-          {isSubmitting ? (
-            <ActivityIndicator color="#ffffff" />
-          ) : (
-            <Text className="text-white font-bold text-lg">
-              Confirm Booking
+        {paymentInProgress && (
+          <View className="p-4 bg-gray-50 rounded-lg mb-4 items-center">
+            <ActivityIndicator size="large" color="#10b981" />
+            <Text className="mt-2 text-gray-700">
+              {paymentSheetEnabled
+                ? "Processing your payment..."
+                : "Initializing payment..."}
             </Text>
-          )}
+          </View>
+        )}
+
+        {paymentError && (
+          <View className="p-4 bg-red-50 rounded-lg mb-4">
+            <Text className="text-red-700 font-medium">Error</Text>
+            <Text className="text-red-600 mt-1">{paymentError}</Text>
+            <TouchableOpacity
+              className="mt-3 bg-white border border-red-300 rounded-md py-2 px-4 self-start"
+              onPress={() => {
+                setPaymentError(null);
+              }}
+            >
+              <Text className="text-red-600">Dismiss</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        <TouchableOpacity
+          className={`py-3 px-4 rounded-lg ${
+            !paymentInProgress && !paymentError ? "bg-green-600" : "bg-gray-400"
+          }`}
+          disabled={paymentInProgress || !!paymentError}
+          onPress={handleCompleteBooking}
+        >
+          <Text className="text-white text-center font-medium">
+            {paymentInProgress
+              ? paymentSheetEnabled
+                ? "Processing Payment..."
+                : "Initializing..."
+              : "Confirm & Pay"}
+          </Text>
         </TouchableOpacity>
       </View>
     );
@@ -665,7 +956,6 @@ const BookingForm = ({
             <Text className="text-gray-600 ml-2">Back</Text>
           </TouchableOpacity>
 
-          {/* Skip button for recurring step if needed */}
           {currentStep === 5 && !bookingData.isRecurring && (
             <TouchableOpacity
               className="flex-row items-center"

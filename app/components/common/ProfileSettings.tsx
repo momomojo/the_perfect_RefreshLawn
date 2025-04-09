@@ -21,6 +21,7 @@ import {
   LogOut,
 } from "lucide-react-native";
 import { useAuth } from "../../../lib/auth";
+import { handleApiError } from "../../../lib/errors";
 
 interface ProfileSettingsProps {
   userType?: "customer" | "technician" | "admin";
@@ -80,6 +81,7 @@ const ProfileSettings = ({
   const [isEditing, setIsEditing] = useState(false);
   const { signOut, loading } = useAuth();
   const [loadingState, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({
@@ -108,40 +110,39 @@ const ProfileSettings = ({
   };
 
   const handleSaveProfile = async () => {
+    setError(null);
     try {
       setLoading(true);
 
-      // If a callback was provided, use it to update the profile
       if (onUpdateProfile) {
         await onUpdateProfile(formData);
       } else {
-        // Fallback to just logging the data
         console.log("Saving profile data:", formData);
       }
 
       setIsEditing(false);
-    } catch (error) {
-      console.error("Error saving profile:", error);
-      Alert.alert("Error", "Failed to save profile. Please try again.");
+      Alert.alert("Success", "Profile updated successfully.");
+    } catch (err: any) {
+      const errorResult = handleApiError(err);
+      setError(errorResult.error);
+      Alert.alert("Error", errorResult.error);
     } finally {
       setLoading(false);
     }
   };
 
   const handleLogout = async () => {
+    setError(null);
     console.log("ProfileSettings: Logout button pressed");
     try {
       setLoading(true);
-
-      // Use the auth context's signOut function
       console.log("ProfileSettings: Calling signOut from auth context");
       await signOut();
       console.log("ProfileSettings: signOut completed successfully");
-
-      // No need for additional navigation - auth context will handle it
-    } catch (error) {
-      console.error("ProfileSettings: Logout error:", error);
-      Alert.alert("Error", "Failed to log out. Please try again.");
+    } catch (err: any) {
+      console.error("ProfileSettings: Logout error:", err);
+      const errorResult = handleApiError(err);
+      Alert.alert("Logout Error", errorResult.error);
     } finally {
       setLoading(false);
     }
@@ -150,6 +151,11 @@ const ProfileSettings = ({
   return (
     <ScrollView className="flex-1 bg-white">
       <View className="p-4">
+        {error && (
+          <View className="p-3 mb-4 bg-red-100 border border-red-200 rounded-md">
+            <Text className="text-red-700">{error}</Text>
+          </View>
+        )}
         {/* Profile Header */}
         <View className="items-center mb-6 pt-4">
           <View className="w-24 h-24 rounded-full bg-gray-200 mb-2 items-center justify-center">
@@ -365,12 +371,12 @@ const ProfileSettings = ({
           <TouchableOpacity
             className="flex-row justify-between items-center p-3 bg-white rounded-md"
             onPress={handleLogout}
-            disabled={loadingState}
+            disabled={loading}
           >
             <View className="flex-row items-center">
               <LogOut size={16} color="#ef4444" />
               <Text className="ml-2 text-red-500">
-                {loadingState ? "Logging out..." : "Log Out"}
+                {loading ? "Logging out..." : "Log Out"}
               </Text>
             </View>
             <ChevronRight size={16} color="#9ca3af" />

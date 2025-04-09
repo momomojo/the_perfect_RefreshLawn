@@ -13,15 +13,17 @@ import {
 import { useRouter } from "expo-router";
 import { Eye, EyeOff, Lock, CheckCircle } from "lucide-react-native";
 import { useAuth } from "../../../lib/auth";
+import { handleApiError } from "../../../lib/errors";
 
 const NewPasswordForm = () => {
   const router = useRouter();
-  const { updatePassword, loading, error } = useAuth();
+  const { updatePassword, loading, error: authError } = useAuth();
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
 
   // Password validation states
   const [validations, setValidations] = useState({
@@ -52,12 +54,16 @@ const NewPasswordForm = () => {
   };
 
   const handleSubmit = async () => {
+    setLocalError(null);
+
     if (!password || !confirmPassword) {
+      setLocalError("Please fill in all fields");
       Alert.alert("Error", "Please fill in all fields");
       return;
     }
 
     if (password !== confirmPassword) {
+      setLocalError("Passwords do not match");
       Alert.alert("Error", "Passwords do not match");
       return;
     }
@@ -66,6 +72,7 @@ const NewPasswordForm = () => {
       (value) => value === true
     );
     if (!isPasswordValid) {
+      setLocalError("Password does not meet all requirements");
       Alert.alert("Error", "Password does not meet all requirements");
       return;
     }
@@ -73,8 +80,10 @@ const NewPasswordForm = () => {
     try {
       setIsSubmitting(true);
       await updatePassword(password);
-      // Navigation is handled in the auth context
-    } catch (err) {
+      Alert.alert("Success", "Your password has been updated successfully.");
+    } catch (err: any) {
+      const errorResult = handleApiError(err);
+      setLocalError(errorResult.error);
       console.error("Error updating password:", err);
     } finally {
       setIsSubmitting(false);
@@ -82,6 +91,7 @@ const NewPasswordForm = () => {
   };
 
   const isProcessing = isSubmitting || loading;
+  const displayError = localError || authError;
 
   return (
     <KeyboardAvoidingView
@@ -189,9 +199,9 @@ const NewPasswordForm = () => {
             </View>
           </View>
 
-          {error && (
+          {displayError && (
             <View className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-              <Text className="text-red-600">{error}</Text>
+              <Text className="text-red-600">{displayError}</Text>
             </View>
           )}
 

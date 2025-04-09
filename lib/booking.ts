@@ -4,6 +4,7 @@
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
 import { Profile, Service, RecurringPlan, Review } from "./data"; // Import dependent types from data.ts
+import { queryWithRetry } from "./queryWithRetry"; // Import retry utility
 
 // Helper function for validation
 function validateBookingData(data: Partial<Booking>, isUpdate = false) {
@@ -107,20 +108,23 @@ export async function getCustomerBookings(
   page = 1,
   pageSize = 10
 ) {
-  const { data, error, count } = await supabase
-    .from("bookings")
-    .select(
-      `*, 
-      service:service_id(*), 
-      recurring_plan:recurring_plan_id(*),
-      technician:technician_id(*),
-      review:reviews(*)
-      `,
-      { count: "exact" }
-    )
-    .eq("customer_id", customerId)
-    .order("scheduled_date", { ascending: false })
-    .range((page - 1) * pageSize, page * pageSize - 1);
+  // Wrap the Supabase query with retry logic
+  const { data, error, count } = await queryWithRetry(() =>
+    supabase
+      .from("bookings")
+      .select(
+        `*,
+        service:service_id(*),
+        recurring_plan:recurring_plan_id(*),
+        technician:technician_id(*),
+        review:reviews(*)
+        `,
+        { count: "exact" }
+      )
+      .eq("customer_id", customerId)
+      .order("scheduled_date", { ascending: false })
+      .range((page - 1) * pageSize, page * pageSize - 1)
+  );
 
   if (error) throw error;
   return { data, totalCount: count } as { data: Booking[]; totalCount: number };
@@ -137,8 +141,8 @@ export async function getCustomerBookingsCursor(
   let query = supabase
     .from("bookings")
     .select(
-      `*, 
-      service:service_id(*), 
+      `*,
+      service:service_id(*),
       recurring_plan:recurring_plan_id(*),
       technician:technician_id(*),
       review:reviews(*)
@@ -153,7 +157,8 @@ export async function getCustomerBookingsCursor(
     query = query.lt("scheduled_date", cursor);
   }
 
-  const { data, error } = await query;
+  // Wrap the Supabase query with retry logic
+  const { data, error } = await queryWithRetry(() => query);
 
   if (error) throw error;
 
@@ -179,36 +184,42 @@ export async function getCustomerBookingsCursor(
 export async function getUpcomingBookings(customerId: string) {
   const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
 
-  const { data, error } = await supabase
-    .from("bookings")
-    .select(
-      `*, 
-      service:service_id(*), 
-      recurring_plan:recurring_plan_id(*),
-      technician:technician_id(*),
-      review:reviews(*)`
-    )
-    .eq("customer_id", customerId)
-    .gte("scheduled_date", today)
-    .order("scheduled_date", { ascending: true });
+  // Wrap the Supabase query with retry logic
+  const { data, error } = await queryWithRetry(() =>
+    supabase
+      .from("bookings")
+      .select(
+        `*,
+        service:service_id(*),
+        recurring_plan:recurring_plan_id(*),
+        technician:technician_id(*),
+        review:reviews(*)`
+      )
+      .eq("customer_id", customerId)
+      .gte("scheduled_date", today)
+      .order("scheduled_date", { ascending: true })
+  );
 
   if (error) throw error;
   return data as Booking[];
 }
 
 export async function getTechnicianBookings(technicianId: string) {
-  const { data, error } = await supabase
-    .from("bookings")
-    .select(
-      `
+  // Wrap the Supabase query with retry logic
+  const { data, error } = await queryWithRetry(() =>
+    supabase
+      .from("bookings")
+      .select(
+        `
       *,
       service:services(*),
       customer:profiles!bookings_customer_id_fkey(*),
       recurring_plan:recurring_plans(*)
     `
-    )
-    .eq("technician_id", technicianId)
-    .order("scheduled_date", { ascending: true });
+      )
+      .eq("technician_id", technicianId)
+      .order("scheduled_date", { ascending: true })
+  );
 
   if (error) throw error;
   return data as Booking[];
@@ -239,19 +250,22 @@ export async function getAllBookings(filters?: {
     query = query.lte("scheduled_date", filters.endDate);
   }
 
-  const { data, error } = await query.order("scheduled_date", {
-    ascending: true,
-  });
+  // Wrap the Supabase query with retry logic
+  const { data, error } = await queryWithRetry(() =>
+    query.order("scheduled_date", { ascending: true })
+  );
 
   if (error) throw error;
   return data as Booking[];
 }
 
 export async function getBooking(bookingId: string) {
-  const { data, error } = await supabase
-    .from("bookings")
-    .select(
-      `
+  // Wrap the Supabase query with retry logic
+  const { data, error } = await queryWithRetry(() =>
+    supabase
+      .from("bookings")
+      .select(
+        `
       *,
       service:services(*),
       customer:profiles!bookings_customer_id_fkey(*),
@@ -259,9 +273,10 @@ export async function getBooking(bookingId: string) {
       recurring_plan:recurring_plans(*),
       review:reviews(*)
     `
-    )
-    .eq("id", bookingId)
-    .single();
+      )
+      .eq("id", bookingId)
+      .single()
+  );
 
   if (error) throw error;
   return data as Booking;
@@ -273,11 +288,10 @@ export async function createBooking(
   // Add validation before inserting
   validateBookingData(booking);
 
-  const { data, error } = await supabase
-    .from("bookings")
-    .insert(booking)
-    .select()
-    .single();
+  // Wrap the Supabase query with retry logic
+  const { data, error } = await queryWithRetry(() =>
+    supabase.from("bookings").insert(booking).select().single()
+  );
 
   if (error) throw error;
   return data as Booking;
@@ -302,22 +316,25 @@ export async function updateBooking(
   delete updates.customer_id; // Usually shouldn't change customer
   delete updates.created_at; // Cannot update created_at
 
-  const { data, error } = await supabase
-    .from("bookings")
-    .update({ ...updates, updated_at: new Date().toISOString() }) // Ensure updated_at is set
-    .eq("id", bookingId)
-    .select()
-    .single();
+  // Wrap the Supabase query with retry logic
+  const { data, error } = await queryWithRetry(() =>
+    supabase
+      .from("bookings")
+      .update({ ...updates, updated_at: new Date().toISOString() }) // Ensure updated_at is set
+      .eq("id", bookingId)
+      .select()
+      .single()
+  );
 
   if (error) throw error;
   return data as Booking;
 }
 
 export async function deleteBooking(bookingId: string) {
-  const { error } = await supabase
-    .from("bookings")
-    .delete()
-    .eq("id", bookingId);
+  // Wrap the Supabase query with retry logic
+  const { error } = await queryWithRetry(() =>
+    supabase.from("bookings").delete().eq("id", bookingId)
+  );
 
   if (error) throw error;
   return true;
@@ -329,55 +346,84 @@ export async function assignTechnician(
 ) {
   try {
     // First try to use the new RPC function
-    const { data, error } = await supabase.rpc("assign_booking_technician", {
-      p_booking_id: bookingId,
-      p_technician_id: technicianId,
-    });
+    // Wrap the Supabase query with retry logic
+    const { data, error } = await queryWithRetry(() =>
+      supabase.rpc("assign_booking_technician", {
+        p_booking_id: bookingId,
+        p_technician_id: technicianId,
+      })
+    );
 
     if (error) {
-      console.warn(
-        "RPC assign_booking_technician failed, falling back to direct update:",
-        error
+      console.error("Error assigning technician with RPC:", error);
+      // Fallback to direct update if RPC fails or doesn't exist
+      console.log("Falling back to direct update for assignTechnician");
+      // Wrap the fallback Supabase query with retry logic
+      const { data: updateData, error: updateError } = await queryWithRetry(
+        () =>
+          supabase
+            .from("bookings")
+            .update({
+              technician_id: technicianId,
+              status: "scheduled", // Assuming assigning means scheduling
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", bookingId)
+            .select()
+            .single()
       );
-      // Fall back to direct update if RPC isn't available yet
-      return updateBooking(bookingId, {
-        technician_id: technicianId,
-        status: "scheduled",
-      });
-    }
 
-    // If RPC was successful, fetch the updated booking
-    return getBooking(bookingId);
+      if (updateError) throw updateError;
+      return updateData as Booking;
+    }
+    // If RPC succeeded, we might need to refetch the booking if the RPC doesn't return it
+    // Since our RPC returns VOID, we refetch
+    return await getBooking(bookingId);
   } catch (err) {
-    console.error("Error assigning technician:", err);
+    console.error("Assign technician failed:", err);
     throw err;
   }
 }
 
 export async function updateBookingStatus(
   bookingId: string,
-  status: Booking["status"]
+  status: Booking["status"],
+  userId?: string // Pass the user ID performing the action for the RPC check
 ) {
   try {
     // First try to use the new RPC function
-    const { data, error } = await supabase.rpc("update_booking_status", {
-      p_booking_id: bookingId,
-      p_status: status,
-    });
+    // Wrap the Supabase query with retry logic
+    const { error } = await queryWithRetry(() =>
+      supabase.rpc("update_booking_status", {
+        p_booking_id: bookingId,
+        p_new_status: status,
+        p_user_id: userId, // Pass user ID to RPC
+      })
+    );
 
     if (error) {
-      console.warn(
-        "RPC update_booking_status failed, falling back to direct update:",
-        error
+      console.error("Error updating booking status with RPC:", error);
+      // Fallback to direct update if RPC fails
+      console.log("Falling back to direct update for updateBookingStatus");
+      // Wrap the fallback Supabase query with retry logic
+      const { data: updateData, error: updateError } = await queryWithRetry(
+        () =>
+          supabase
+            .from("bookings")
+            .update({ status: status, updated_at: new Date().toISOString() })
+            .eq("id", bookingId)
+            .select()
+            .single()
       );
-      // Fall back to direct update if RPC isn't available yet
-      return updateBooking(bookingId, { status });
-    }
 
-    // If RPC was successful, fetch the updated booking
-    return getBooking(bookingId);
+      if (updateError) throw updateError;
+      return updateData as Booking;
+    }
+    // If RPC succeeded, we might need to refetch the booking if the RPC doesn't return it
+    // Since our RPC returns VOID, we refetch
+    return await getBooking(bookingId);
   } catch (err) {
-    console.error("Error updating booking status:", err);
+    console.error("Update booking status failed:", err);
     throw err;
   }
 }

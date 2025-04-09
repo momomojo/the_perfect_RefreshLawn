@@ -20,6 +20,53 @@ const stripe = new Stripe(stripeSecretKey, {
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+// Add the new error formatting utility function
+function formatErrorResponse(
+  error: any,
+  operation: string,
+  defaultStatus: number = 400 // Default to 400 for webhook errors
+): Response {
+  console.error(`Error during ${operation}:`, error);
+
+  let statusCode = defaultStatus;
+  let message = "An unexpected error occurred";
+  let code = "unknown_error";
+
+  // Check for Stripe signature verification errors specifically
+  if (
+    error instanceof Stripe.errors.StripeSignatureVerificationError ||
+    (error instanceof Error && error.message.includes("signature"))
+  ) {
+    statusCode = 400;
+    message = "Webhook signature verification failed";
+    code = "stripe_signature_verification_error";
+  } else if (error instanceof Stripe.errors.StripeError) {
+    statusCode = error.statusCode || 500;
+    message = error.message;
+    code = error.code || "stripe_error";
+  } else if (error instanceof Error) {
+    message = error.message;
+  }
+
+  // Base headers
+  const headers = {
+    "Content-Type": "application/json",
+    Allow: "POST", // Indicate allowed method for 405
+  };
+
+  return new Response(
+    JSON.stringify({
+      error: message,
+      code: code,
+      operation,
+    }),
+    {
+      headers,
+      status: statusCode,
+    }
+  );
+}
+
 serve(async (req) => {
   // CORS for preflight requests
   if (req.method === "OPTIONS") {
@@ -45,10 +92,11 @@ serve(async (req) => {
     // Get the signature from the headers
     const signature = req.headers.get("stripe-signature");
     if (!signature) {
-      return new Response(JSON.stringify({ error: "No signature provided" }), {
-        headers: { "Content-Type": "application/json" },
-        status: 400,
-      });
+      // Use formatErrorResponse for missing signature
+      return formatErrorResponse(
+        new Error("No signature provided"),
+        "webhook_signature_check"
+      );
     }
 
     // Get the raw request body
@@ -107,11 +155,8 @@ serve(async (req) => {
       status: 200,
     });
   } catch (error) {
-    console.error("Error handling webhook:", error);
-    return new Response(JSON.stringify({ error: (error as Error).message }), {
-      headers: { "Content-Type": "application/json" },
-      status: 400,
-    });
+    // Use the new utility in the main catch block
+    return formatErrorResponse(error, "webhook_event_handling");
   }
 });
 

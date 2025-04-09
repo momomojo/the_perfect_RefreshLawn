@@ -78,6 +78,48 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 console.log("Hello from Functions!");
 
+// Add the new error formatting utility function
+function formatErrorResponse(
+  error: any,
+  operation: string,
+  defaultStatus: number = 500
+): Response {
+  console.error(`Error during ${operation}:`, error);
+
+  let statusCode = defaultStatus;
+  let message = "An unexpected error occurred";
+  let code = "unknown_error";
+
+  if (error instanceof Stripe.errors.StripeError) {
+    statusCode = error.statusCode || 500;
+    message = error.message;
+    code = error.code || "stripe_error";
+  } else if (error instanceof Error) {
+    message = error.message;
+  }
+
+  // Ensure headers are always defined
+  const headers: ResponseHeaders = {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers":
+      "authorization, x-client-info, apikey, content-type",
+  };
+
+  return new Response(
+    JSON.stringify({
+      error: message,
+      code: code,
+      operation,
+    }),
+    {
+      headers,
+      status: statusCode,
+    }
+  );
+}
+
 serve(async (req) => {
   // CORS headers
   const headers: ResponseHeaders = {
@@ -237,11 +279,8 @@ serve(async (req) => {
         });
     }
   } catch (error) {
-    console.error("Error processing request:", error);
-    return new Response(JSON.stringify({ error: (error as Error).message }), {
-      headers,
-      status: 500,
-    });
+    // Use the new utility in the main catch block
+    return formatErrorResponse(error, "main_request_processing");
   }
 });
 
@@ -250,7 +289,8 @@ async function handleCreatePaymentIntent(
   user: User,
   body: PaymentIntentRequest,
   headers: ResponseHeaders
-) {
+): Promise<Response> {
+  const operation = "create_payment_intent";
   const { amount, currency = "usd", payment_method_types = ["card"] } = body;
 
   try {
@@ -301,11 +341,7 @@ async function handleCreatePaymentIntent(
       { headers }
     );
   } catch (error) {
-    console.error("Error creating payment intent:", error);
-    return new Response(JSON.stringify({ error: (error as Error).message }), {
-      headers,
-      status: 400,
-    });
+    return formatErrorResponse(error, operation);
   }
 }
 
@@ -313,7 +349,8 @@ async function handleCreateCustomer(
   user: User,
   body: CustomerRequest,
   headers: ResponseHeaders
-) {
+): Promise<Response> {
+  const operation = "create_customer";
   try {
     // Check if customer already exists
     const { data: existingCustomer } = await supabase
@@ -358,11 +395,7 @@ async function handleCreateCustomer(
       { headers }
     );
   } catch (error) {
-    console.error("Error creating customer:", error);
-    return new Response(JSON.stringify({ error: (error as Error).message }), {
-      headers,
-      status: 400,
-    });
+    return formatErrorResponse(error, operation);
   }
 }
 
@@ -370,7 +403,8 @@ async function handleCreateSubscription(
   user: User,
   body: SubscriptionRequest,
   headers: ResponseHeaders
-) {
+): Promise<Response> {
+  const operation = "create_subscription";
   const { priceId, paymentMethodId } = body;
 
   try {
@@ -426,11 +460,7 @@ async function handleCreateSubscription(
       { headers }
     );
   } catch (error) {
-    console.error("Error creating subscription:", error);
-    return new Response(JSON.stringify({ error: (error as Error).message }), {
-      headers,
-      status: 400,
-    });
+    return formatErrorResponse(error, operation);
   }
 }
 
@@ -456,7 +486,11 @@ async function getStripeCustomerId(userId: string): Promise<string> {
 
 // --- Payment Method Handlers ---
 
-async function handleListPaymentMethods(user: User, headers: ResponseHeaders) {
+async function handleListPaymentMethods(
+  user: User,
+  headers: ResponseHeaders
+): Promise<Response> {
+  const operation = "list_payment_methods";
   try {
     const customerId = await getStripeCustomerId(user.id);
 
@@ -467,11 +501,7 @@ async function handleListPaymentMethods(user: User, headers: ResponseHeaders) {
 
     return new Response(JSON.stringify(paymentMethods.data), { headers });
   } catch (error) {
-    console.error("Error listing payment methods:", error);
-    return new Response(JSON.stringify({ error: (error as Error).message }), {
-      headers,
-      status: 400,
-    });
+    return formatErrorResponse(error, operation);
   }
 }
 
@@ -479,7 +509,8 @@ async function handleAttachPaymentMethod(
   user: User,
   body: PaymentMethodRequest,
   headers: ResponseHeaders
-) {
+): Promise<Response> {
+  const operation = "attach_payment_method";
   const { paymentMethodId } = body;
   try {
     const customerId = await getStripeCustomerId(user.id);
@@ -497,11 +528,7 @@ async function handleAttachPaymentMethod(
 
     return new Response(JSON.stringify({ success: true }), { headers });
   } catch (error) {
-    console.error("Error attaching payment method:", error);
-    return new Response(JSON.stringify({ error: (error as Error).message }), {
-      headers,
-      status: 400,
-    });
+    return formatErrorResponse(error, operation);
   }
 }
 
@@ -509,7 +536,8 @@ async function handleDetachPaymentMethod(
   user: User,
   body: PaymentMethodRequest,
   headers: ResponseHeaders
-) {
+): Promise<Response> {
+  const operation = "detach_payment_method";
   const { paymentMethodId } = body;
   try {
     // Optional: Check if it's the default payment method first
@@ -523,11 +551,7 @@ async function handleDetachPaymentMethod(
 
     return new Response(JSON.stringify({ success: true }), { headers });
   } catch (error) {
-    console.error("Error detaching payment method:", error);
-    return new Response(JSON.stringify({ error: (error as Error).message }), {
-      headers,
-      status: 400,
-    });
+    return formatErrorResponse(error, operation);
   }
 }
 
@@ -535,7 +559,8 @@ async function handleSetDefaultPayment(
   user: User,
   body: PaymentMethodRequest,
   headers: ResponseHeaders
-) {
+): Promise<Response> {
+  const operation = "set_default_payment";
   const { paymentMethodId } = body;
   try {
     const customerId = await getStripeCustomerId(user.id);
@@ -548,11 +573,7 @@ async function handleSetDefaultPayment(
 
     return new Response(JSON.stringify({ success: true }), { headers });
   } catch (error) {
-    console.error("Error setting default payment method:", error);
-    return new Response(JSON.stringify({ error: (error as Error).message }), {
-      headers,
-      status: 400,
-    });
+    return formatErrorResponse(error, operation);
   }
 }
 
@@ -562,7 +583,8 @@ async function handleCancelSubscription(
   user: User,
   body: CancelSubscriptionRequest,
   headers: ResponseHeaders
-) {
+): Promise<Response> {
+  const operation = "cancel_subscription";
   const { subscriptionId } = body;
   try {
     // Verify the subscription belongs to the user (optional but recommended)
@@ -584,11 +606,7 @@ async function handleCancelSubscription(
 
     return new Response(JSON.stringify(deletedSubscription), { headers });
   } catch (error) {
-    console.error("Error canceling subscription:", error);
-    return new Response(JSON.stringify({ error: (error as Error).message }), {
-      headers,
-      status: 400,
-    });
+    return formatErrorResponse(error, operation);
   }
 }
 
@@ -618,7 +636,8 @@ async function handleAdminListCustomers(
   user: User,
   body: AdminListRequest,
   headers: ResponseHeaders
-) {
+): Promise<Response> {
+  const operation = "admin_list_customers";
   // First, check if the user has admin privileges
   if (!(await isAdmin(user.id))) {
     return new Response(JSON.stringify({ error: "Forbidden" }), {
@@ -661,11 +680,7 @@ async function handleAdminListCustomers(
 
     return new Response(JSON.stringify(responseData), { headers });
   } catch (error) {
-    console.error("Error listing admin customers:", error);
-    return new Response(JSON.stringify({ error: (error as Error).message }), {
-      headers,
-      status: 500,
-    });
+    return formatErrorResponse(error, operation);
   }
 }
 
@@ -673,7 +688,8 @@ async function handleAdminListSubscriptions(
   user: User,
   body: AdminListRequest,
   headers: ResponseHeaders
-) {
+): Promise<Response> {
+  const operation = "admin_list_subscriptions";
   // First, check if the user has admin privileges
   if (!(await isAdmin(user.id))) {
     return new Response(JSON.stringify({ error: "Forbidden" }), {
@@ -704,11 +720,7 @@ async function handleAdminListSubscriptions(
 
     return new Response(JSON.stringify(responseData), { headers });
   } catch (error) {
-    console.error("Error listing admin subscriptions:", error);
-    return new Response(JSON.stringify({ error: (error as Error).message }), {
-      headers,
-      status: 500,
-    });
+    return formatErrorResponse(error, operation);
   }
 }
 
@@ -716,7 +728,8 @@ async function handleAdminListPayments(
   user: User,
   body: AdminListRequest,
   headers: ResponseHeaders
-) {
+): Promise<Response> {
+  const operation = "admin_list_payments";
   // First, check if the user has admin privileges
   if (!(await isAdmin(user.id))) {
     return new Response(JSON.stringify({ error: "Forbidden" }), {
@@ -746,11 +759,7 @@ async function handleAdminListPayments(
 
     return new Response(JSON.stringify(responseData), { headers });
   } catch (error) {
-    console.error("Error listing admin payments:", error);
-    return new Response(JSON.stringify({ error: (error as Error).message }), {
-      headers,
-      status: 500,
-    });
+    return formatErrorResponse(error, operation);
   }
 }
 
@@ -758,7 +767,8 @@ async function handleAdminListInvoices(
   user: User,
   body: AdminListRequest,
   headers: ResponseHeaders
-) {
+): Promise<Response> {
+  const operation = "admin_list_invoices";
   // First, check if the user has admin privileges
   if (!(await isAdmin(user.id))) {
     return new Response(JSON.stringify({ error: "Forbidden" }), {
@@ -789,11 +799,7 @@ async function handleAdminListInvoices(
 
     return new Response(JSON.stringify(responseData), { headers });
   } catch (error) {
-    console.error("Error listing admin invoices:", error);
-    return new Response(JSON.stringify({ error: (error as Error).message }), {
-      headers,
-      status: 500,
-    });
+    return formatErrorResponse(error, operation);
   }
 }
 
@@ -801,7 +807,8 @@ async function handleAdminGetStripeDashboardLink(
   user: User,
   body: AdminDashboardLinkRequest,
   headers: ResponseHeaders
-) {
+): Promise<Response> {
+  const operation = "admin_get_stripe_dashboard_link";
   // Admin check should happen in the main router
   // Re-added check here for robustness, although it's also in the router
   if (!(await isAdmin(user.id))) {
@@ -851,11 +858,7 @@ async function handleAdminGetStripeDashboardLink(
 
     return new Response(JSON.stringify({ link: dashboardUrl }), { headers });
   } catch (error) {
-    console.error("Error generating Stripe dashboard link:", error);
-    return new Response(JSON.stringify({ error: (error as Error).message }), {
-      headers,
-      status: 500,
-    });
+    return formatErrorResponse(error, operation);
   }
 }
 
@@ -864,7 +867,8 @@ async function handleAdminCancelSubscription(
   user: User,
   body: AdminCancelSubscriptionRequest,
   headers: ResponseHeaders
-) {
+): Promise<Response> {
+  const operation = "admin_cancel_subscription";
   // Admin check is done in the router
   const { subscriptionId } = body;
 
@@ -892,14 +896,7 @@ async function handleAdminCancelSubscription(
     console.log(`Admin ${user.email} canceled subscription: ${subscriptionId}`);
     return new Response(JSON.stringify(canceledSubscription), { headers });
   } catch (error) {
-    console.error(
-      `Error canceling subscription ${subscriptionId} by admin:`,
-      error
-    );
-    return new Response(JSON.stringify({ error: (error as Error).message }), {
-      headers,
-      status: 500,
-    });
+    return formatErrorResponse(error, operation);
   }
 }
 
@@ -908,7 +905,8 @@ async function handleListInvoices(
   user: User,
   body: ListInvoicesRequest,
   headers: ResponseHeaders
-) {
+): Promise<Response> {
+  const operation = "list_invoices";
   const { limit = 10, starting_after, customer } = body;
   try {
     const customerId = customer ?? (await getStripeCustomerId(user.id));
@@ -921,11 +919,7 @@ async function handleListInvoices(
 
     return new Response(JSON.stringify(invoices), { headers });
   } catch (error) {
-    console.error("Error listing invoices:", error);
-    return new Response(JSON.stringify({ error: (error as Error).message }), {
-      headers,
-      status: 400,
-    });
+    return formatErrorResponse(error, operation);
   }
 }
 

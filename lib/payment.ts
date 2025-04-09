@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { queryWithRetry } from "./queryWithRetry"; // Import retry utility
 
 // Dedicated module for payment-related operations
 // (e.g., interacting with Stripe API functions, managing local payment data)
@@ -27,11 +28,14 @@ export interface PaymentMethod {
  * @param customerId Supabase User ID
  */
 export async function getCustomerPaymentMethods(customerId: string) {
-  const { data, error } = await supabase
-    .from("payment_methods")
-    .select("*")
-    .eq("customer_id", customerId)
-    .order("is_default", { ascending: false });
+  // Apply retry logic
+  const { data, error } = await queryWithRetry(() =>
+    supabase
+      .from("payment_methods")
+      .select("*")
+      .eq("customer_id", customerId)
+      .order("is_default", { ascending: false })
+  );
 
   if (error) throw error;
   return data as PaymentMethod[];
@@ -44,11 +48,10 @@ export async function getCustomerPaymentMethods(customerId: string) {
 export async function addPaymentMethod(
   paymentMethod: Omit<PaymentMethod, "id" | "created_at">
 ) {
-  const { data, error } = await supabase
-    .from("payment_methods")
-    .insert(paymentMethod)
-    .select()
-    .single();
+  // Apply retry logic
+  const { data, error } = await queryWithRetry(() =>
+    supabase.from("payment_methods").insert(paymentMethod).select().single()
+  );
 
   if (error) throw error;
   return data as PaymentMethod;
@@ -63,22 +66,26 @@ export async function setDefaultPaymentMethod(
   paymentMethodId: string,
   customerId: string
 ) {
-  // First, unset default for all customer's payment methods
-  const { error: updateError } = await supabase
-    .from("payment_methods")
-    .update({ is_default: false })
-    .eq("customer_id", customerId);
+  // Apply retry logic to the first update (unset defaults)
+  const { error: updateError } = await queryWithRetry(() =>
+    supabase
+      .from("payment_methods")
+      .update({ is_default: false })
+      .eq("customer_id", customerId)
+  );
 
   if (updateError) throw updateError;
 
-  // Then, set default for the specified payment method
-  const { data, error } = await supabase
-    .from("payment_methods")
-    .update({ is_default: true })
-    .eq("id", paymentMethodId)
-    .eq("customer_id", customerId)
-    .select()
-    .single();
+  // Apply retry logic to the second update (set specific default)
+  const { data, error } = await queryWithRetry(() =>
+    supabase
+      .from("payment_methods")
+      .update({ is_default: true })
+      .eq("id", paymentMethodId)
+      .eq("customer_id", customerId)
+      .select()
+      .single()
+  );
 
   if (error) throw error;
   return data as PaymentMethod;
@@ -89,10 +96,10 @@ export async function setDefaultPaymentMethod(
  * @param paymentMethodId ID of the payment method to remove
  */
 export async function removePaymentMethod(paymentMethodId: string) {
-  const { error } = await supabase
-    .from("payment_methods")
-    .delete()
-    .eq("id", paymentMethodId);
+  // Apply retry logic
+  const { error } = await queryWithRetry(() =>
+    supabase.from("payment_methods").delete().eq("id", paymentMethodId)
+  );
 
   if (error) throw error;
   return true;

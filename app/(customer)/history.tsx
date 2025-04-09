@@ -4,6 +4,7 @@ import { Stack } from "expo-router";
 import ServiceHistory from "../components/customer/ServiceHistory";
 import { getCustomerBookings } from "../../lib/booking";
 import { supabase } from "../../lib/supabase";
+import { handleApiError } from "../../lib/errors";
 
 export default function HistoryScreen() {
   const [loading, setLoading] = useState(true);
@@ -15,14 +16,17 @@ export default function HistoryScreen() {
   }, []);
 
   const fetchBookingHistory = async () => {
+    setError(null); // Clear previous error
     try {
       setLoading(true);
 
       // Get current user
-      const { data: session } = await supabase.auth.getSession();
+      const { data: session, error: sessionError } =
+        await supabase.auth.getSession();
+      // Handle session error first
+      if (sessionError) throw sessionError;
       if (!session?.session?.user) {
-        setError("You must be logged in to view booking history");
-        return;
+        throw new Error("You must be logged in to view booking history");
       }
 
       const userId = session.session.user.id;
@@ -32,8 +36,14 @@ export default function HistoryScreen() {
 
       setBookings(data || []);
     } catch (err: any) {
-      setError(err.message || "An unexpected error occurred");
-      console.error("Error fetching booking history:", err);
+      // Use central handler
+      const errorResult = handleApiError(err);
+      setError(errorResult.error);
+      console.error(
+        "Error fetching booking history:",
+        err,
+        `(Code: ${errorResult.code})`
+      ); // Keep detailed log
     } finally {
       setLoading(false);
     }

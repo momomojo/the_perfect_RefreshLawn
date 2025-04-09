@@ -27,10 +27,12 @@ import {
   Database,
 } from "lucide-react-native";
 import { useAuth } from "../../lib/auth";
+import { handleApiError } from "../../lib/errors";
 
 const Settings = () => {
   const [loading, setLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const { signOut } = useAuth();
   const [notificationPrefs, setNotificationPrefs] = useState({
     emailNotifications: true,
@@ -55,6 +57,7 @@ const Settings = () => {
 
   // Handle user logout - Enhanced with more robust techniques
   const handleLogout = async () => {
+    setError(null);
     console.log("handleLogout function called - starting logout process");
     setLoading(true);
     try {
@@ -86,24 +89,19 @@ const Settings = () => {
       }
 
       console.log("Calling signOut from auth context");
-      // Use the auth context's signOut method which will handle navigation
       await signOut();
       console.log("signOut completed successfully");
-    } catch (error) {
-      console.error("Logout error:", error);
-      Alert.alert(
-        "Error",
-        "Failed to logout. Try using the Force Logout page."
-      );
+    } catch (err: any) {
+      console.error("Logout error during initial signOut:", err);
+      const errorResult = handleApiError(err);
+      setError(errorResult.error);
+      Alert.alert("Logout Error", `${errorResult.error}. Trying fallback...`);
 
       console.log("Attempting direct Supabase logout as fallback");
-      // If regular logout fails, try a direct Supabase logout with global scope
       try {
         console.log("Calling supabase.auth.signOut with global scope");
         await supabase.auth.signOut({ scope: "global" });
         console.log("Direct Supabase logout successful");
-
-        // Force navigation even if there was an initial error
         if (Platform.OS === "web") {
           console.log("Redirecting to home page (web)");
           window.location.href = "/";
@@ -111,10 +109,12 @@ const Settings = () => {
           console.log("Redirecting to home page (native)");
           router.replace("/");
         }
-      } catch (retryError) {
+      } catch (retryError: any) {
         console.error("Retry logout failed:", retryError);
+        const retryErrorResult = handleApiError(retryError);
+        setError(retryErrorResult.error);
+        Alert.alert("Logout Failed", retryErrorResult.error);
 
-        // As a last resort, forcibly redirect
         console.log("Force redirecting as last resort");
         if (Platform.OS === "web") {
           window.location.href = "/";
@@ -132,7 +132,6 @@ const Settings = () => {
   const confirmLogout = () => {
     console.log("Logout button pressed - showing confirmation dialog");
     if (Platform.OS === "web") {
-      // For web, we'll directly log out without confirmation as Alert may not work well
       console.log("Web platform detected, proceeding with logout");
       handleLogout();
       return;
@@ -146,6 +145,7 @@ const Settings = () => {
 
   // Delete test data function
   const deleteTestData = async () => {
+    setError(null);
     setDeleteLoading(true);
     const results: { [key: string]: number } = {
       reviews: 0,
@@ -238,11 +238,10 @@ const Settings = () => {
         `The following records were deleted:\n\n${message}`,
         [{ text: "OK" }]
       );
-    } catch (error: any) {
-      Alert.alert(
-        "Error Deleting Data",
-        error.message || "An error occurred while deleting test data"
-      );
+    } catch (err: any) {
+      const errorResult = handleApiError(err);
+      setError(errorResult.error);
+      Alert.alert("Error Deleting Data", errorResult.error);
     } finally {
       setDeleteLoading(false);
     }
@@ -261,8 +260,14 @@ const Settings = () => {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-white">
-      <ScrollView>
+    <SafeAreaView className="flex-1 bg-gray-100">
+      <ScrollView className="px-4 py-6">
+        {error && (
+          <View className="p-3 mb-4 bg-red-100 border border-red-200 rounded-md">
+            <Text className="text-red-700">Error: {error}</Text>
+          </View>
+        )}
+
         {/* Header */}
         <View className="px-4 py-6 bg-green-700">
           <Text className="text-2xl font-bold text-white">Settings</Text>
@@ -427,26 +432,19 @@ const Settings = () => {
         <View className="px-4 pb-8">
           <Text className="text-lg font-semibold mb-3">Account</Text>
 
-          <TouchableOpacity
-            className="bg-white rounded-lg border border-gray-200 p-4 flex-row items-center"
-            onPress={confirmLogout}
-            disabled={loading}
-          >
-            <View className="w-8 h-8 rounded-full bg-red-100 items-center justify-center mr-3">
-              <LogOut size={18} color="#ef4444" />
-            </View>
-            <View className="flex-1">
-              <Text className="font-medium text-gray-800">Logout</Text>
-              <Text className="text-gray-500 text-sm">
-                Sign out of your account
+          <View className="bg-white rounded-lg p-4 mb-4">
+            <TouchableOpacity
+              className="flex-row items-center"
+              onPress={confirmLogout}
+              disabled={loading}
+            >
+              <LogOut size={20} color="#ef4444" />
+              <Text className="flex-1 ml-3 text-red-500 font-medium">
+                {loading ? "Logging out..." : "Logout"}
               </Text>
-            </View>
-            {loading ? (
-              <ActivityIndicator size="small" color="#22c55e" />
-            ) : (
-              <Text className="text-red-500 font-medium">Sign Out</Text>
-            )}
-          </TouchableOpacity>
+              {loading && <ActivityIndicator size="small" color="#ef4444" />}
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
     </SafeAreaView>

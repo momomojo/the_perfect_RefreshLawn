@@ -13,6 +13,8 @@ import * as Linking from "expo-linking";
 import { router } from "expo-router";
 import * as Network from "expo-network";
 import NetInfo from "@react-native-community/netinfo";
+import { queryWithRetry } from "./queryWithRetry";
+import { handleApiError } from "./errors";
 
 // Add TypeScript declaration for window.__hasRefreshedToken
 declare global {
@@ -94,13 +96,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // If network reconnected and we have credentials, try to refresh session
       if (state.isConnected && user && !session) {
         console.log("Network reconnected, refreshing auth session");
-        supabase.auth.getSession().then(({ data, error }) => {
-          if (error) {
-            console.error("Error refreshing session after reconnect:", error);
-          } else if (data.session) {
-            setSession(data.session);
-          }
-        });
+        // Apply retry logic to getSession on reconnect
+        queryWithRetry(() => supabase.auth.getSession())
+          .then(({ data, error }) => {
+            if (error) {
+              console.error("Error refreshing session after reconnect:", error);
+            } else if (data.session) {
+              setSession(data.session);
+              // Potentially re-check role if needed
+              if (data.session.user) {
+                checkUserRole(data.session.user);
+              }
+            }
+          })
+          .catch((err) => {
+            console.error(
+              "Failed to refresh session after reconnect (with retry):",
+              err
+            );
+          });
       }
     });
 
@@ -153,15 +167,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     });
 
-    // Check for an existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        checkUserRole(session.user);
-      }
-      setLoading(false);
-    });
+    // Check for an existing session (apply retry)
+    queryWithRetry(() => supabase.auth.getSession())
+      .then(({ data: { session } }) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        if (session?.user) {
+          checkUserRole(session.user);
+        }
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error("Initial getSession failed:", err);
+        setLoading(false); // Ensure loading state is updated even on error
+        setError("Failed to initialize session. Check network connection.");
+      });
 
     // Subscribe to auth state changes
     const {
@@ -263,107 +283,57 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   // Check user role and update state
   const checkUserRole = async (user: User) => {
+    if (!user) {
+      setIsAdmin(false);
+      setIsTechnician(false);
+      setIsCustomer(false);
+      return;
+    }
+
+    console.log(`Checking role for user ${user.id}...`);
     try {
-      // First try to get the role from custom claims
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (!session) {
-        console.log("No active session found");
-        setIsAdmin(false);
-        setIsTechnician(false);
-        setIsCustomer(true); // Default to customer role
-        return;
-      }
-
-      // Decode the JWT to check for the user_role claim at the root level
-      let userRoleClaim = null;
-      if (session.access_token) {
-        try {
-          const parts = session.access_token.split(".");
-          if (parts.length === 3) {
-            const base64Url = parts[1];
-            const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-            const jsonPayload = decodeURIComponent(
-              atob(base64)
-                .split("")
-                .map(
-                  (c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2)
-                )
-                .join("")
-            );
-            const decodedToken = JSON.parse(jsonPayload);
-
-            // Check for user_role claim at root level (set by custom hook)
-            if (decodedToken.user_role) {
-              console.log(
-                "Found user_role claim in JWT:",
-                decodedToken.user_role
-              );
-              userRoleClaim = decodedToken.user_role;
-            }
-          }
-        } catch (error) {
-          console.error("Error decoding JWT:", error);
-        }
-      }
-
-      // Check for role in priority order:
-      // 1. user_role claim (from JWT root level)
-      // 2. app_metadata.role
-      // 3. user_metadata.role
-      const roleClaim =
-        userRoleClaim ||
-        session.user.app_metadata?.role ||
-        session.user.user_metadata?.role;
-
-      if (roleClaim) {
-        console.log("Role from claims:", roleClaim);
-        setIsAdmin(roleClaim === "admin");
-        setIsTechnician(roleClaim === "technician");
-        setIsCustomer(roleClaim === "customer" || !roleClaim);
-        return;
-      }
-
-      // Fallback to database query if not in claims
-      console.log("Role not found in claims, querying database...");
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .single();
+      // Use queryWithRetry for the RPC call
+      const { data, error } = await queryWithRetry(() =>
+        supabase.rpc("get_user_role", { p_user_id: user.id })
+      );
 
       if (error) {
-        console.error("Error fetching user role:", error.message);
+        // Check if the error indicates the function doesn't exist yet (common during setup)
+        if (error.message.includes('relation "get_user_role" does not exist')) {
+          console.warn(
+            "get_user_role function not found. Assuming default role 'customer'."
+          );
+          setError(
+            "User role check unavailable. Proceeding with default permissions."
+          );
+          setIsAdmin(false);
+          setIsTechnician(false);
+          setIsCustomer(true); // Default to customer if function missing
+          return; // Exit early
+        }
+        // Handle other errors
+        console.error("Error fetching user role:", error);
+        setError(`Failed to verify user role: ${error.message}`);
+        // Potentially default to customer or leave roles unset based on security policy
+        setIsAdmin(false);
+        setIsTechnician(false);
+        setIsCustomer(false); // Or true if defaulting
         return;
       }
 
-      if (data) {
-        console.log("Role from database:", data.role);
-        setIsAdmin(data.role === "admin");
-        setIsTechnician(data.role === "technician");
-        setIsCustomer(data.role === "customer" || !data.role);
+      const role = data as string; // Supabase returns role directly
+      console.log(`User ${user.id} has role: ${role}`);
 
-        // Only refresh the token on first login or when auth state changes to SIGNED_IN
-        // This prevents the refresh loop
-        const isWeb = typeof window !== "undefined";
-        if (
-          data.role &&
-          !hasRefreshedTokenRef.current &&
-          (!isWeb || !window.__hasRefreshedToken)
-        ) {
-          console.log("Refreshing session to update claims (one-time)...");
-          // Set the flag to prevent future refreshes
-          hasRefreshedTokenRef.current = true;
-          if (isWeb) {
-            window.__hasRefreshedToken = true;
-          }
-          await supabase.auth.refreshSession();
-        }
-      }
-    } catch (error) {
-      console.error("Error in checkUserRole:", error);
+      // Set state based on the fetched role
+      setIsAdmin(role === "admin");
+      setIsTechnician(role === "technician");
+      setIsCustomer(role === "customer");
+    } catch (err: any) {
+      console.error("Unexpected error in checkUserRole:", err);
+      setError(`Error checking role: ${err.message || "Unknown error"}`);
+      setIsAdmin(false);
+      setIsTechnician(false);
+      setIsCustomer(false);
     }
   };
 
@@ -382,135 +352,119 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       phone?: string;
     } = {}
   ) => {
+    setLoading(true);
+    setError(null);
     try {
-      setLoading(true);
-      setError(null);
-
-      // Include user role in metadata during signup
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            // Include role directly in the metadata for proper role assignment
-            role: role,
-            first_name: userData.firstName,
-            last_name: userData.lastName,
-            address: userData.address,
-            city: userData.city,
-            state: userData.state,
-            zip_code: userData.zipCode,
-            phone: userData.phone,
+      // Use queryWithRetry for signUp
+      const { data: authData, error: authError } = await queryWithRetry(() =>
+        supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            // We handle profile creation via RPC, so no user_metadata here
           },
-        },
-      });
+        })
+      );
 
-      if (error) {
-        setError(error.message);
-        Alert.alert("Error", error.message);
-        return;
+      if (authError) throw authError;
+      if (!authData.user)
+        throw new Error("Sign up successful but no user data returned.");
+
+      console.log(`User ${authData.user.id} signed up, creating profile...`);
+
+      // Now create the profile and assign role using RPC
+      // Wrap RPC call with retry
+      const { error: profileError } = await queryWithRetry(() =>
+        supabase.rpc("create_profile_and_assign_role", {
+          p_user_id: authData.user.id,
+          p_email: email, // Pass email for potential use in profile
+          p_role: role,
+          p_first_name: userData.firstName,
+          p_last_name: userData.lastName,
+          p_phone: userData.phone,
+          p_address: userData.address,
+          p_city: userData.city,
+          p_state: userData.state,
+          p_zip_code: userData.zipCode,
+        })
+      );
+
+      if (profileError) {
+        console.error("Error creating profile/assigning role:", profileError);
+        // Attempt to clean up the auth user if profile creation failed?
+        // Or alert user to contact support.
+        throw new Error(
+          `Account created, but failed to set up profile/role: ${profileError.message}`
+        );
       }
 
-      // If the user is created, update the profile with the role and additional data
-      if (data.user) {
-        const updateData = {
-          role,
-          ...(userData.firstName && { first_name: userData.firstName }),
-          ...(userData.lastName && { last_name: userData.lastName }),
-          ...(userData.address && { address: userData.address }),
-          ...(userData.city && { city: userData.city }),
-          ...(userData.state && { state: userData.state }),
-          ...(userData.zipCode && { zip_code: userData.zipCode }),
-          ...(userData.phone && { phone: userData.phone }),
-        };
-
-        const { error: profileError } = await supabase
-          .from("profiles")
-          .update(updateData)
-          .eq("id", data.user.id);
-
-        if (profileError) {
-          console.error("Error updating profile:", profileError.message);
-        }
-
-        // Force a session refresh to update JWT claims
-        await supabase.auth.refreshSession();
-      }
+      console.log(
+        `Profile created and role '${role}' assigned for user ${authData.user.id}`
+      );
 
       Alert.alert(
-        "Verification email sent",
-        "Please check your email to verify your account"
+        "Sign Up Successful",
+        "Please check your email to confirm your account."
       );
     } catch (error: any) {
-      setError(error.message);
-      Alert.alert("Error", error.message);
+      handleAuthError(error, "Sign Up");
     } finally {
       setLoading(false);
     }
   };
 
-  // Improved error handling for user authentication
+  // Centralized error handling for authentication operations within the provider
   const handleAuthError = (error: any, action: string) => {
     console.error(`Auth error during ${action}:`, error);
 
-    // Network related errors
+    // Network connectivity check (already part of AuthProvider state)
     if (!networkStatus) {
-      setError(
-        "Network connection unavailable. Please check your internet connection and try again."
-      );
-      return "Network connection unavailable. Please check your internet connection and try again.";
+      const networkError = {
+        error:
+          "Network connection unavailable. Please check your internet connection and try again.",
+        code: "network_unavailable",
+      };
+      setError(networkError.error);
+      return networkError.error; // Return the message for potential direct use
     }
 
-    // Handle specific error codes/messages
-    if (error.message?.includes("network")) {
-      setError(
-        "Network error. Please check your internet connection and try again."
-      );
-      return "Network error. Please check your internet connection and try again.";
-    }
+    // Use the centralized handleApiError for consistent formatting
+    const standardizedError = handleApiError(error);
 
-    if (error.message?.includes("timeout")) {
-      setError("Request timed out. Please try again.");
-      return "Request timed out. Please try again.";
-    }
-
-    if (error.status === 401 || error.message?.includes("expired")) {
-      // Token expired
+    // Handle specific auth scenarios like expired tokens
+    if (error.status === 401 || standardizedError.code === "session_expired") {
+      // Token expired or session invalid
       setError("Your session has expired. Please sign in again.");
-      signOut().catch(console.error);
+      // Attempt sign out but don't block on it or let its errors overwrite the primary one
+      signOut().catch((signOutError) =>
+        console.error(
+          "Error during sign out after session expiry:",
+          signOutError
+        )
+      );
       return "Your session has expired. Please sign in again.";
     }
 
-    // Default error message
-    setError(error.message || `An error occurred during ${action}`);
-    return error.message || `An error occurred during ${action}`;
+    // Set the standardized error message for the UI
+    setError(standardizedError.error);
+    return standardizedError.error; // Return the message
   };
 
   // Sign in with email and password
   const signIn = async (email: string, password: string) => {
+    setLoading(true);
+    setError(null);
     try {
-      setLoading(true);
-      setError(null);
-
-      // Check network connectivity first
-      if (networkStatus === false) {
-        throw new Error(
-          "Network connection unavailable. Please check your internet connection and try again."
-        );
-      }
-
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
+      // Use queryWithRetry for signInWithPassword
+      const { error } = await queryWithRetry(() =>
+        supabase.auth.signInWithPassword({ email, password })
+      );
       if (error) throw error;
 
-      setSession(data.session);
-      setUser(data.user);
-      checkUserRole(data.user);
+      // Role check and navigation will be handled by onAuthStateChange
+      Alert.alert("Sign In Successful");
     } catch (error: any) {
-      handleAuthError(error, "sign in");
+      handleAuthError(error, "Sign In");
     } finally {
       setLoading(false);
     }
@@ -518,79 +472,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   // Sign out
   const signOut = async () => {
+    setLoading(true);
+    setError(null);
     try {
-      setLoading(true);
-      setError(null);
+      // Use queryWithRetry for signOut
+      const { error } = await queryWithRetry(() => supabase.auth.signOut());
+      if (error) throw error;
 
-      // Clear any stored session first
-      await clearStoredSession();
-
-      // For web platform, clear localStorage
-      if (Platform.OS === "web" && typeof window !== "undefined") {
-        try {
-          // Clear all Supabase and auth related items from localStorage
-          for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key && (key.includes("supabase") || key.includes("auth"))) {
-              localStorage.removeItem(key);
-            }
-          }
-          
-          // Also clear session storage
-          for (let i = 0; i < sessionStorage.length; i++) {
-            const key = sessionStorage.key(i);
-            if (key && (key.includes("supabase") || key.includes("auth"))) {
-              sessionStorage.removeItem(key);
-            }
-          }
-        } catch (e) {
-          console.error("Error clearing storage:", e);
-        }
-      }
-
-      // Force clear session state first to update UI immediately
-      setSession(null);
+      // Clear local state immediately
       setUser(null);
+      setSession(null);
       setIsAdmin(false);
       setIsTechnician(false);
       setIsCustomer(false);
 
-      // Call signOut with global scope to sign out of all devices
-      const { error } = await supabase.auth.signOut({
-        scope: "global",
-      });
+      // Clear any potentially persisted session info (important if persistence was ever enabled)
+      await clearStoredSession();
 
-      if (error) {
-        throw error;
-      }
-
-      // Force navigation and cleanup
-      if (Platform.OS === "web") {
-        // For web, use a hard redirect to prevent any state issues
-        window.location.href = "/";
-      } else {
-        // For mobile, use router
-        router.replace("/");
-      }
+      Alert.alert("Signed Out");
+      router.replace("/"); // Ensure redirection after state clear
     } catch (error: any) {
-      console.error("Error in signOut:", error);
-      setError(error.message);
-      Alert.alert("Error", "Failed to logout: " + error.message);
-      
-      // Try one more time with a different approach if first attempt failed
-      try {
-        await supabase.auth.signOut();
-        
-        // Force navigation even if there was an initial error
-        if (Platform.OS === "web") {
-          window.location.href = "/";
-        } else {
-          router.replace("/");
-        }
-      } catch (retryError) {
-        // Just log the retry error, we've already shown an alert for the main error
-        console.error("Retry logout failed:", retryError);
-      }
+      handleAuthError(error, "Sign Out");
     } finally {
       setLoading(false);
     }
@@ -598,28 +500,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   // Reset password (send password reset email)
   const resetPassword = async (email: string) => {
+    setLoading(true);
+    setError(null);
     try {
-      setLoading(true);
-      setError(null);
+      // Prepare redirect URL for password reset confirmation
+      const redirectUrl = Linking.createURL("/"); // Or a specific password reset confirmation page
 
-      const redirectTo = Linking.createURL("/(auth)/reset-password");
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo,
-      });
-
-      if (error) {
-        setError(error.message);
-        Alert.alert("Error", error.message);
-        return;
-      }
-
-      Alert.alert(
-        "Password Reset Email Sent",
-        "Check your email for a password reset link"
+      // Use queryWithRetry for resetPasswordForEmail
+      const { error } = await queryWithRetry(() =>
+        supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: redirectUrl,
+        })
       );
+
+      if (error) throw error;
+      Alert.alert("Password Reset Email Sent", "Please check your email.");
     } catch (error: any) {
-      setError(error.message);
-      Alert.alert("Error", error.message);
+      handleAuthError(error, "Password Reset");
     } finally {
       setLoading(false);
     }
@@ -627,25 +524,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   // Update user's password
   const updatePassword = async (password: string) => {
+    if (!user) {
+      setError("You must be logged in to update your password.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
     try {
-      setLoading(true);
-      setError(null);
-
-      const { error } = await supabase.auth.updateUser({
-        password,
-      });
-
-      if (error) {
-        setError(error.message);
-        Alert.alert("Error", error.message);
-        return;
-      }
-
-      Alert.alert("Success", "Your password has been updated");
-      router.replace("/");
+      // Use queryWithRetry for updateUser
+      const { error } = await queryWithRetry(() =>
+        supabase.auth.updateUser({ password })
+      );
+      if (error) throw error;
+      Alert.alert("Password Updated Successfully");
     } catch (error: any) {
-      setError(error.message);
-      Alert.alert("Error", error.message);
+      handleAuthError(error, "Update Password");
     } finally {
       setLoading(false);
     }
