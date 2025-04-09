@@ -218,3 +218,47 @@ Join our community of developers creating universal apps.
 
 - [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
 - [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+
+## Database Optimizations
+
+The database has been optimized for improved performance and data integrity:
+
+### Indexes
+
+The following indexes have been added to improve query performance:
+
+- **Bookings Table**
+
+  - `idx_bookings_customer_id` - For faster lookup of bookings by customer
+  - `idx_bookings_technician_id` - For faster lookup of bookings by technician
+  - `idx_bookings_service_id` - For faster lookup of bookings by service
+  - `idx_bookings_status` - For faster filtering by booking status
+  - `idx_bookings_scheduled_date` - For faster date-based queries
+  - `idx_bookings_customer_status` (composite) - For faster lookup of bookings by customer and status
+  - `idx_bookings_tech_date` (composite) - For faster lookup of technician schedule by date
+
+- **Profiles Table**
+  - `idx_profiles_role` - For faster lookup of users by role
+
+### Constraints
+
+- `valid_status_values` - Ensures booking status values are valid
+- `unique_stripe_customer_id` - Prevents duplicate Stripe customer IDs
+
+### Database Functions
+
+- `get_dashboard_metrics()` - Retrieves all dashboard metrics in a single query
+
+### Pagination
+
+List views have been updated with:
+
+- Offset-based pagination for simple use cases
+- Cursor-based pagination for larger datasets and better performance
+
+### API Resilience
+
+Added retry logic for transient failures:
+
+- Automatic retries for network errors and server failures
+- Exponential backoff to prevent overwhelming the server

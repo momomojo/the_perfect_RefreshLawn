@@ -292,8 +292,39 @@ export async function deleteRecurringPlan(planId: string) {
 /**
  * Booking related functions
  */
-export async function getCustomerBookings(customerId: string) {
-  const { data, error } = await supabase
+export async function getCustomerBookings(
+  customerId: string,
+  page = 1,
+  pageSize = 10
+) {
+  const { data, error, count } = await supabase
+    .from("bookings")
+    .select(
+      `*, 
+      service:service_id(*), 
+      recurring_plan:recurring_plan_id(*),
+      technician:technician_id(*),
+      review:reviews(*)
+      `,
+      { count: "exact" }
+    )
+    .eq("customer_id", customerId)
+    .order("scheduled_date", { ascending: false })
+    .range((page - 1) * pageSize, page * pageSize - 1);
+
+  if (error) throw error;
+  return { data, totalCount: count } as { data: Booking[]; totalCount: number };
+}
+
+/**
+ * Cursor-based pagination alternative for larger datasets
+ */
+export async function getCustomerBookingsCursor(
+  customerId: string,
+  cursor: string | null = null,
+  pageSize = 10
+) {
+  let query = supabase
     .from("bookings")
     .select(
       `*, 
@@ -303,10 +334,33 @@ export async function getCustomerBookings(customerId: string) {
       review:reviews(*)
       `
     )
-    .eq("customer_id", customerId);
+    .eq("customer_id", customerId)
+    .order("scheduled_date", { ascending: false })
+    .limit(pageSize + 1); // request one extra to serve as next cursor
+
+  if (cursor) {
+    // Apply cursor filter
+    query = query.lt("scheduled_date", cursor);
+  }
+
+  const { data, error } = await query;
 
   if (error) throw error;
-  return data as Booking[];
+
+  let hasMore = false;
+  let nextCursor = null;
+
+  if (data && data.length > pageSize) {
+    hasMore = true;
+    data.pop(); // Remove the extra item
+    nextCursor = data[data.length - 1].scheduled_date;
+  }
+
+  return {
+    data: data as Booking[],
+    hasMore,
+    nextCursor,
+  };
 }
 
 /**
@@ -614,62 +668,11 @@ export async function removePaymentMethod(paymentMethodId: string) {
  * Dashboard and reporting functions
  */
 export async function getDashboardMetrics() {
-  // Get total bookings count
-  const { count: totalBookings, error: bookingsError } = await supabase
-    .from("bookings")
-    .select("*", { count: "exact", head: true });
+  // Optimized version: single batch query using stored procedure
+  const { data, error } = await supabase.rpc("get_dashboard_metrics");
 
-  if (bookingsError) throw bookingsError;
-
-  // Get completed bookings count
-  const { count: completedBookings, error: completedError } = await supabase
-    .from("bookings")
-    .select("*", { count: "exact", head: true })
-    .eq("status", "completed");
-
-  if (completedError) throw completedError;
-
-  // Get total revenue (sum of completed bookings)
-  const { data: revenueData, error: revenueError } = await supabase
-    .from("bookings")
-    .select("price")
-    .eq("status", "completed");
-
-  if (revenueError) throw revenueError;
-
-  const totalRevenue = revenueData.reduce(
-    (acc, booking) => acc + booking.price,
-    0
-  );
-
-  // Get customer count
-  const { count: customerCount, error: customerError } = await supabase
-    .from("profiles")
-    .select("*", { count: "exact", head: true })
-    .eq("role", "customer");
-
-  if (customerError) throw customerError;
-
-  // Get average rating
-  const { data: ratingData, error: ratingError } = await supabase
-    .from("reviews")
-    .select("rating");
-
-  if (ratingError) throw ratingError;
-
-  const averageRating =
-    ratingData.length > 0
-      ? ratingData.reduce((acc, review) => acc + review.rating, 0) /
-        ratingData.length
-      : 0;
-
-  return {
-    totalBookings,
-    completedBookings,
-    totalRevenue,
-    customerCount,
-    averageRating,
-  };
+  if (error) throw error;
+  return data;
 }
 
 export async function getBookingsByDateRange(
