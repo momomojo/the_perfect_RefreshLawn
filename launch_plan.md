@@ -103,7 +103,6 @@
    - Add consistent error handling across all data operations
    - Implement retry mechanisms for transient failures
 
-## Currently working on
 
 ## Priority 2: Stripe Integration Setup
 
@@ -122,61 +121,297 @@
    - In the Stripe Dashboard, go to Developers > API keys
    - Copy the Publishable key and Secret key for test mode
    - Store these securely for later use
+   - Set up Supabase secrets for the keys:
+     ```bash
+     # Set Stripe API keys as Supabase secrets
+     supabase secrets set STRIPE_SECRET_KEY=sk_test_your_test_key
+     supabase secrets set STRIPE_PUBLISHABLE_KEY=pk_test_your_test_key
+     supabase secrets set STRIPE_WEBHOOK_SECRET=whsec_your_webhook_signing_secret
+     ```
 
 3. **Configure webhook endpoints**
    - In the Stripe Dashboard, go to Developers > Webhooks
-   - Add a new endpoint for your development environment (e.g., using ngrok for local testing)
-   - Select events to listen for: `payment_intent.succeeded`, `payment_intent.payment_failed`, `invoice.paid`, `customer.subscription.created`, `customer.subscription.updated`
-   - Copy the webhook signing secret for later use
+   - Add your production webhook endpoint URL:
+     ```
+     https://sjgixmidwtwzbduakzkk.supabase.co/functions/v1/stripe-webhook
+     ```
+   - Configure webhook signing secret in Stripe dashboard
+   - Add these events to your webhook configuration:
+     - `payment_intent.succeeded`
+     - `payment_intent.payment_failed`
+     - `customer.subscription.created`
+     - `customer.subscription.updated`
+     - `customer.subscription.deleted`
+     - `customer.updated`
+     - `invoice.payment_succeeded`
+     - `invoice.payment_failed`
 
-### Task 2.2: Set Up Supabase Stripe Wrapper
+### Task 2.2: Set Up Streamlined Stripe Integration
 
 **Subtasks:**
 
-1. **Verify Supabase plan compatibility**
+1. **Implement a streamlined approach for Stripe integration**
 
-   - Check if your Supabase plan supports custom extensions
-   - Verify that you have the necessary permissions to create foreign data wrappers
-   - If not supported, consider using Edge Functions exclusively instead of the wrapper
+   - Use Edge Functions for all Stripe operations (customer-facing, admin, and webhook handling)
+   - Use React Native SDK for client-side payment processing
+   - Store Stripe data in local database tables for querying and reporting
+   - This approach simplifies the architecture and reduces potential points of failure
 
-2. **Enable the wrappers extension**
+2. **Create database schema for Stripe data**
 
    - Connect to your Supabase database using the SQL editor
-   - Run the following SQL:
+   - Run the following SQL to create the necessary tables:
 
      ```sql
-     CREATE EXTENSION IF NOT EXISTS wrappers WITH SCHEMA extensions;
-
-     CREATE FOREIGN DATA WRAPPER stripe_wrapper
-       HANDLER stripe_fdw_handler
-       VALIDATOR stripe_fdw_validator;
-     ```
-
-3. **Store Stripe API key in Vault**
-
-   ```sql
-   INSERT INTO vault.secrets (name, secret)
-   VALUES ('stripe', 'sk_test_your_stripe_key')
-   RETURNING key_id;
-   ```
-
-4. **Create server connection to Stripe**
-
-   ```sql
-   CREATE SERVER stripe_server
-     FOREIGN DATA WRAPPER stripe_wrapper
-     OPTIONS (
-       api_key_id '<key_ID_from_above>',
-       api_url 'https://api.stripe.com/v1/',
-       api_version '2024-06-20'  -- Specify a fixed API version for consistency
+     -- Create customers table to link Supabase users with Stripe customers
+     CREATE TABLE IF NOT EXISTS public.customers (
+       id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+       user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+       stripe_customer_id text NOT NULL UNIQUE,
+       email text,
+       name text,
+       phone text,
+       created_at timestamptz NOT NULL DEFAULT now(),
+       updated_at timestamptz
      );
 
-   CREATE SCHEMA stripe;
+     -- Create subscriptions table to track Stripe subscriptions
+     CREATE TABLE IF NOT EXISTS public.subscriptions (
+       id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+       user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+       stripe_subscription_id text NOT NULL UNIQUE,
+       stripe_customer_id text NOT NULL REFERENCES public.customers(stripe_customer_id) ON DELETE CASCADE,
+       status text NOT NULL,
+       price_id text NOT NULL,
+       current_period_start timestamptz,
+       current_period_end timestamptz,
+       canceled_at timestamptz,
+       created_at timestamptz NOT NULL DEFAULT now(),
+       updated_at timestamptz
+     );
 
-   IMPORT FOREIGN SCHEMA stripe
-     LIMIT TO ("customers", "products", "prices", "subscriptions", "payment_intents")
-     FROM SERVER stripe_server INTO stripe;
+     -- Create payments table to track one-time payments
+     CREATE TABLE IF NOT EXISTS public.payments (
+       id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+       user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+       stripe_payment_id text NOT NULL UNIQUE,
+       stripe_customer_id text NOT NULL REFERENCES public.customers(stripe_customer_id) ON DELETE CASCADE,
+       amount integer NOT NULL,
+       currency text NOT NULL,
+       status text NOT NULL,
+       payment_method text,
+       error_message text,
+       created_at timestamptz NOT NULL DEFAULT now()
+     );
+
+     -- Create invoices table to track Stripe invoices
+     CREATE TABLE IF NOT EXISTS public.invoices (
+       id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+       stripe_invoice_id text NOT NULL UNIQUE,
+       stripe_customer_id text NOT NULL REFERENCES public.customers(stripe_customer_id) ON DELETE CASCADE,
+       stripe_subscription_id text REFERENCES public.subscriptions(stripe_subscription_id) ON DELETE SET NULL,
+       amount_paid integer NOT NULL,
+       currency text NOT NULL,
+       status text NOT NULL,
+       invoice_pdf text,
+       created_at timestamptz NOT NULL DEFAULT now()
+     );
+
+     -- Enable RLS on all tables
+     ALTER TABLE public.customers ENABLE ROW LEVEL SECURITY;
+     ALTER TABLE public.subscriptions ENABLE ROW LEVEL SECURITY;
+     ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
+     ALTER TABLE public.invoices ENABLE ROW LEVEL SECURITY;
+
+     -- Add RLS policies
+     CREATE POLICY "Users can view their own customer data" ON public.customers
+       FOR SELECT USING (auth.uid() = user_id);
+
+     CREATE POLICY "Users can view their own subscriptions" ON public.subscriptions
+       FOR SELECT USING (auth.uid() = user_id);
+
+     CREATE POLICY "Users can view their own payments" ON public.payments
+       FOR SELECT USING (auth.uid() = user_id);
+
+     CREATE POLICY "Users can view their own invoices" ON public.invoices
+       FOR SELECT USING (auth.uid() = (SELECT c.user_id FROM public.customers c WHERE c.stripe_customer_id = public.invoices.stripe_customer_id));
+
+     -- Add service role policies for Edge Functions
+     CREATE POLICY "Service role can do all operations on customers" ON public.customers
+       FOR ALL USING (auth.role() = 'service_role');
+
+     CREATE POLICY "Service role can do all operations on subscriptions" ON public.subscriptions
+       FOR ALL USING (auth.role() = 'service_role');
+
+     CREATE POLICY "Service role can do all operations on payments" ON public.payments
+       FOR ALL USING (auth.role() = 'service_role');
+
+     CREATE POLICY "Service role can do all operations on invoices" ON public.invoices
+       FOR ALL USING (auth.role() = 'service_role');
+     ```
+
+3. **Create Edge Function for customer-facing and admin operations**
+
+   ```bash
+   # Create Edge Functions for Stripe operations
+   supabase functions new stripe-api
+   supabase functions new stripe-webhook
    ```
+
+   ```typescript
+   // In supabase/functions/stripe-api/index.ts
+   import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+   import {
+     createClient,
+     User,
+   } from "https://esm.sh/@supabase/supabase-js@2.7.1";
+   import Stripe from "https://esm.sh/stripe@12.4.0?dts";
+
+   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+   const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+   const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
+
+   const stripe = new Stripe(stripeSecretKey, {
+     apiVersion: "2023-10-16",
+   });
+
+   const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+   serve(async (req) => {
+     // CORS headers
+     const headers = {
+       "Content-Type": "application/json",
+       "Access-Control-Allow-Origin": "*",
+       "Access-Control-Allow-Methods": "POST, OPTIONS",
+       "Access-Control-Allow-Headers":
+         "authorization, x-client-info, apikey, content-type",
+     };
+
+     // Handle CORS preflight requests
+     if (req.method === "OPTIONS") {
+       return new Response(null, { headers, status: 204 });
+     }
+
+     // Only allow POST requests
+     if (req.method !== "POST") {
+       return new Response(JSON.stringify({ error: "Method not allowed" }), {
+         headers,
+         status: 405,
+       });
+     }
+
+     try {
+       const url = new URL(req.url);
+       const path = url.pathname.split("/").pop();
+
+       // Get the JWT token from the request
+       const authHeader = req.headers.get("Authorization") || "";
+       const token = authHeader.replace("Bearer ", "");
+
+       // Verify the JWT token
+       const {
+         data: { user },
+         error: authError,
+       } = await supabase.auth.getUser(token);
+
+       if (authError || !user) {
+         return new Response(JSON.stringify({ error: "Unauthorized" }), {
+           headers,
+           status: 401,
+         });
+       }
+
+       // Parse the request body
+       const body = await req.json();
+
+       // Route the request based on the path
+       switch (path) {
+         // Customer-facing endpoints
+         case "create-payment-intent":
+           return await handleCreatePaymentIntent(user, body, headers);
+         case "create-customer":
+           return await handleCreateCustomer(user, body, headers);
+         case "create-subscription":
+           return await handleCreateSubscription(user, body, headers);
+         case "list-payment-methods":
+           return await handleListPaymentMethods(user, headers);
+         case "attach-payment-method":
+           return await handleAttachPaymentMethod(user, body, headers);
+         case "detach-payment-method":
+           return await handleDetachPaymentMethod(user, body, headers);
+         case "set-default-payment":
+           return await handleSetDefaultPayment(user, body, headers);
+         case "cancel-subscription":
+           return await handleCancelSubscription(user, body, headers);
+         case "list-invoices":
+           return await handleListInvoices(user, body, headers);
+
+         // Admin endpoints (require admin role)
+         case "admin-list-customers":
+           return await handleAdminListCustomers(user, body, headers);
+         case "admin-list-subscriptions":
+           return await handleAdminListSubscriptions(user, body, headers);
+         case "admin-list-payments":
+           return await handleAdminListPayments(user, body, headers);
+         case "admin-list-invoices":
+           return await handleAdminListInvoices(user, body, headers);
+         case "admin-get-stripe-dashboard-link":
+           return await handleAdminGetStripeDashboardLink(user, body, headers);
+         default:
+           return new Response(JSON.stringify({ error: "Not found" }), {
+             headers,
+             status: 404,
+           });
+       }
+     } catch (error) {
+       console.error("Error processing request:", error);
+       return new Response(JSON.stringify({ error: error.message }), {
+         headers,
+         status: 500,
+       });
+     }
+   });
+
+   // Handler functions for customer-facing operations
+   async function handleCreatePaymentIntent(user: User, body, headers) {
+     // Implementation details
+   }
+
+   async function handleCreateCustomer(user: User, body, headers) {
+     // Implementation details
+   }
+
+   async function handleCreateSubscription(user: User, body, headers) {
+     // Implementation details
+   }
+
+   // Additional handler functions for payment methods, subscriptions, and invoices
+
+   // Admin handler functions
+   async function handleAdminListCustomers(user: User, body, headers) {
+     // Implementation details with admin role check
+   }
+
+   // Additional admin handler functions
+
+   // In supabase/functions/stripe-webhook/index.ts
+   import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+   import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
+   import Stripe from "https://esm.sh/stripe@12.4.0?dts";
+
+   // Webhook handler to process Stripe events and update the database
+   serve(async (req) => {
+     try {
+       // Verify webhook signature
+       // Process events like payment_intent.succeeded, subscription.created, etc.
+       // Update local database tables with Stripe data
+     } catch (error) {
+       // Error handling
+     }
+   });
+   ```
+
+## Currently working on
 
 ## Priority 3: Code Structure Improvements
 
@@ -1053,13 +1288,17 @@
    ```
 
 3. **Update app configuration**
+
    - Add Stripe configuration to your `.env` file:
-     ```
+
+     ```env
      EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_your_key
      STRIPE_SECRET_KEY=sk_test_your_key
      STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret
      ```
+
    - Update `app.config.js` to include Stripe keys:
+
      ```javascript
      extra: {
        supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
@@ -1144,27 +1383,28 @@
 
 ## Priority 5: Server-Side Stripe Integration
 
-### Task 5.1: Create Supabase Edge Function for Stripe Operations
+### Task 5.1: Deploy Supabase Edge Functions for Stripe Operations
 
 **Subtasks:**
 
-1. **Create a new Edge Function**
+1. **Complete the implementation of the Edge Functions**
+
+   - Finish implementing all handler functions in `supabase/functions/stripe-api/index.ts`
+   - Implement webhook event processing in `supabase/functions/stripe-webhook/index.ts`
+   - Add proper error handling and logging
+
+2. **Test the Edge Functions locally**
 
    ```bash
-   supabase functions new stripe-functions
+   supabase start
+   supabase functions serve
    ```
 
-2. **Implement the Edge Function**
+3. **Deploy the Edge Functions**
 
-   - Create `supabase/functions/stripe-functions/index.ts` with secure payment processing functions
-   - Implement customer creation/retrieval
-   - Implement payment intent creation
-   - Implement subscription creation
-   - Implement webhook handling
-
-3. **Deploy the Edge Function**
    ```bash
-   supabase functions deploy stripe-functions --no-verify-jwt
+   supabase functions deploy stripe-api --use-api
+   supabase functions deploy stripe-webhook --use-api
    ```
 
 ### Task 5.2: Create Stripe Products and Prices
@@ -1189,9 +1429,9 @@
 
 **Subtasks:**
 
-1. **Set up webhook endpoints**
+1. **Enhance the webhook handler**
 
-   - Create a dedicated Edge Function specifically for handling Stripe webhooks at `supabase/functions/stripe-webhooks/index.ts`
+   - Improve the existing webhook handler in `supabase/functions/stripe-webhook/index.ts`
    - Implement the following structure for the webhook handler:
 
      ```typescript
@@ -1551,7 +1791,7 @@
 
 3. **Configure webhook events in Stripe Dashboard**
    - In the Stripe Dashboard, go to Developers > Webhooks
-   - Add your production webhook endpoint URL: `https://[YOUR_PROJECT_REF].supabase.co/functions/v1/stripe-webhooks`
+   - Add your production webhook endpoint URL: `https://[YOUR_PROJECT_REF].supabase.co/functions/v1/stripe-webhook`
    - Select the following events to listen for:
      - `payment_intent.succeeded`
      - `payment_intent.payment_failed`
@@ -1843,6 +2083,7 @@
      ```
 
    - Implement comprehensive error logging for payment failures:
+
      ```typescript
      // Add this to your component
      const logPaymentError = async (error, bookingId, userId) => {
@@ -2033,6 +2274,7 @@
      ```
 
    - Add support for Apple Pay and Google Pay by configuring the PaymentSheet options:
+
      ```typescript
      // In your payment initialization function
      const { error } = await initPaymentSheet({
