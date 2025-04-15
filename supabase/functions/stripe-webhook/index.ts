@@ -15,7 +15,7 @@ const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY") || "";
 const stripeWebhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET") || "";
 
 const stripe = new Stripe(stripeSecretKey, {
-  apiVersion: "2023-10-16",
+  apiVersion: "2024-06-20",
 });
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -51,8 +51,15 @@ serve(async (req) => {
       });
     }
 
+    // Log webhook details for debugging
+    console.log("Webhook signature:", signature);
+    console.log("Webhook secret (first few chars):", stripeWebhookSecret.substring(0, 5) + "...");
+
     // Get the raw request body
     const body = await req.text();
+    
+    // Log body length for debugging
+    console.log("Request body length:", body.length);
 
     // Use the async version of the webhook signature verification
     let event;
@@ -63,10 +70,11 @@ serve(async (req) => {
         signature,
         stripeWebhookSecret
       );
-    } catch (err: any) {
-      console.error(`Webhook signature verification failed: ${err.message}`);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      console.error(`Webhook signature verification failed: ${errorMessage}`);
       return new Response(
-        JSON.stringify({ error: `Webhook Error: ${err.message}` }),
+        JSON.stringify({ error: `Webhook Error: ${errorMessage}` }),
         {
           headers: { "Content-Type": "application/json" },
           status: 400,
@@ -80,6 +88,11 @@ serve(async (req) => {
     switch (event.type) {
       case "payment_intent.succeeded":
         await handlePaymentIntentSucceeded(event.data.object);
+        break;
+
+      case "charge.succeeded":
+        console.log(`Charge succeeded: ${event.data.object.id}, for payment intent: ${event.data.object.payment_intent}`);
+        // No need to process as we handle payment_intent.succeeded
         break;
 
       case "payment_intent.payment_failed":
@@ -119,9 +132,10 @@ serve(async (req) => {
       headers: { "Content-Type": "application/json" },
       status: 200,
     });
-  } catch (error: any) {
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
     console.error("Error handling webhook:", error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error: errorMessage }), {
       headers: { "Content-Type": "application/json" },
       status: 400,
     });
@@ -271,21 +285,62 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
 }
 
 async function handleCustomerUpdated(customer: Stripe.Customer) {
-  console.log("Customer updated:", customer.id);
+  console.log("Handling Customer Updated:", customer.id);
 
-  // Update customer info in database
-  const { error } = await supabase
-    .from("customers")
-    .update({
-      email: customer.email,
-      name: customer.name,
-      phone: customer.phone,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("stripe_customer_id", customer.id);
+  // We need the Stripe Customer ID to find the record in our DB.
+  const stripeCustomerId = customer.id;
 
-  if (error) {
-    console.error("Error updating customer:", error);
+  try {
+    const { data, error } = await supabase
+      .from("customers")
+      .update({
+        // Update fields based on the webhook payload
+        name: customer.name,
+        email: customer.email,
+        phone: customer.phone,
+        updated_at: new Date().toISOString(), // Use current time for update timestamp
+      })
+      .eq("stripe_customer_id", stripeCustomerId) // Match using Stripe ID
+      .select(); // Select the updated record(s) to confirm
+
+    if (error) {
+      console.error(
+        `Error updating customer record for Stripe ID ${stripeCustomerId}:`,
+        error
+      );
+      throw error;
+    }
+
+    if (!data || data.length === 0) {
+      console.warn(
+        `No customer record found in DB to update for Stripe ID ${stripeCustomerId}. Maybe created directly in Stripe without metadata?`
+      );
+      // Optionally: Could attempt to insert here if user_id is available in metadata,
+      // but be cautious about creating potentially unwanted records.
+    } else {
+      console.log(
+        `Successfully updated customer record(s) for Stripe ID ${stripeCustomerId}. Count: ${data.length}`
+      );
+    }
+
+    // **Optional**: Sync back to profiles table?
+    // const supabaseUserId = customer.metadata?.supabase_user_id;
+    // if (supabaseUserId) {
+    //   console.log(`Also updating profile for user ${supabaseUserId}`);
+    //   const { error: profileUpdateError } = await supabaseAdmin
+    //     .from('profiles')
+    //     .update({ email: customer.email, phone: customer.phone /* map name if needed */ })
+    //     .eq('id', supabaseUserId);
+    //   if (profileUpdateError) {
+    //     console.error(`Error updating profile ${supabaseUserId}:`, profileUpdateError);
+    //   }
+    // }
+
+  } catch (error) {
+    console.error(
+      "Database error handling customer.updated:",
+      (error as Error).message
+    );
   }
 }
 

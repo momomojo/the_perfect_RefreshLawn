@@ -10,24 +10,12 @@ interface StripePaymentWebProps {
   onPaymentSuccess: (paymentIntentId: string) => void;
   onError?: (error: string) => void;
   onBack?: () => void; // Added for navigation
-  billingDetails?: {
-    name?: string;
-    email?: string;
-    address?: {
-      line1?: string;
-      city?: string;
-      state?: string;
-      postal_code?: string;
-      country?: string;
-    };
-    phone?: string;
-  };
 }
 
 // Load Stripe outside of component render to avoid recreating on every render
 const stripePromise = loadStripe(process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || "");
 
-const CheckoutForm: React.FC<StripePaymentWebProps> = ({ amount, currency = "usd", onPaymentSuccess, onError, onBack, billingDetails }) => {
+const CheckoutForm: React.FC<StripePaymentWebProps> = ({ amount, currency = "usd", onPaymentSuccess, onError, onBack }) => {
   const stripe = useStripe();
   const elements = useElements();
   const [loading, setLoading] = useState(false);
@@ -100,7 +88,7 @@ const CheckoutForm: React.FC<StripePaymentWebProps> = ({ amount, currency = "usd
       const result = await stripe.confirmCardPayment(data.clientSecret, {
         payment_method: {
           card: elements.getElement(CardElement)!,
-          billing_details: billingDetails,
+          // billing_details are no longer passed from here; backend manages customer details
         },
       });
 

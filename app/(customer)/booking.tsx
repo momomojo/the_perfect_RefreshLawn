@@ -195,14 +195,6 @@ export default function BookingScreen() {
             onPaymentSuccess={handlePaymentSuccess}
             onError={handlePaymentError}
             onBack={() => setShowPayment(false)}
-            billingDetails={{
-              name: userProfile ? `${userProfile.first_name} ${userProfile.last_name}`.trim() : undefined,
-              email: user?.email || undefined,
-              address: {
-                line1: pendingBooking.address,
-                // Optionally add city, state, postal_code, country if available
-              },
-            }}
           />
         ) : (
           <BookingForm

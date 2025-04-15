@@ -242,36 +242,86 @@ async function handleCreatePaymentIntent(
   const { amount, currency = "usd", payment_method_types = ["card"] } = body;
 
   try {
-    // Get or create customer
+    // 1. Fetch user profile data from Supabase
+    const { data: profileData, error: profileError } = await supabase
+      .from("profiles")
+      .select("first_name, last_name, phone")
+      .eq("id", user.id)
+      .single(); // Use single() assuming one profile per user
+
+    if (profileError && profileError.code !== "PGRST116") {
+      // PGRST116 means no rows found, which might be okay if profile is optional
+      // Handle other errors (like database connection issues)
+      console.error("Error fetching profile:", profileError);
+      throw new Error("Could not fetch user profile.");
+    }
+
+    // Construct customer details from profile or fallbacks
+    const customerName = profileData?.first_name && profileData?.last_name
+      ? `${profileData.first_name} ${profileData.last_name}`
+      : null; // Fallback to null if names missing
+    const customerEmail = user.email;
+    const customerPhone = profileData?.phone || null; // Use profile phone or null
+
+    // 2. Get or create Stripe customer ID from our database
     let customerId: string;
-    const { data: customers, error: customerError } = await supabase
+    const { data: customerRecord, error: customerDbError } = await supabase
       .from("customers")
       .select("stripe_customer_id")
       .eq("user_id", user.id)
       .maybeSingle();
 
-    if (customerError) throw customerError;
+    if (customerDbError) throw customerDbError;
 
-    if (customers?.stripe_customer_id) {
-      customerId = customers.stripe_customer_id;
+    if (customerRecord?.stripe_customer_id) {
+      // 3a. Customer exists - Update Stripe and local DB
+      customerId = customerRecord.stripe_customer_id;
+      console.log(`Existing Stripe customer found: ${customerId}`);
+
+      // Update Stripe customer with latest profile data
+      await stripe.customers.update(customerId, {
+        name: customerName,
+        email: customerEmail,
+        phone: customerPhone,
+      });
+
+      // Update local 'customers' table (ensure consistency)
+      await supabase
+        .from("customers")
+        .update({
+          name: customerName,
+          email: customerEmail,
+          phone: customerPhone,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", user.id);
+
     } else {
-      // Create a new customer in Stripe
-      const customer = await stripe.customers.create({
-        email: user.email,
+      // 3b. Customer doesn't exist - Create in Stripe and save to local DB
+      console.log(`Creating new Stripe customer for user: ${user.id}`);
+      const stripeCustomer = await stripe.customers.create({
+        email: customerEmail,
+        name: customerName,
+        phone: customerPhone,
         metadata: {
           supabase_user_id: user.id,
         },
       });
-      customerId = customer.id;
+      customerId = stripeCustomer.id;
+      console.log(`New Stripe customer created: ${customerId}`);
 
-      // Save the customer ID to your database
+      // Save the *complete* customer info to your 'customers' database
       await supabase.from("customers").insert({
         user_id: user.id,
         stripe_customer_id: customerId,
+        name: customerName, // Store the name used in Stripe
+        email: customerEmail, // Store the email used in Stripe
+        phone: customerPhone, // Store the phone used in Stripe
+        created_at: new Date().toISOString(),
       });
     }
 
-    // Create a PaymentIntent
+    // 4. Create a PaymentIntent
     const paymentIntent = await stripe.paymentIntents.create({
       amount,
       currency,
@@ -282,6 +332,8 @@ async function handleCreatePaymentIntent(
       },
     });
 
+    console.log(`Payment intent created: ${paymentIntent.id} for customer ${customerId}`);
+
     return new Response(
       JSON.stringify({
         clientSecret: paymentIntent.client_secret,
@@ -289,7 +341,7 @@ async function handleCreatePaymentIntent(
       { headers }
     );
   } catch (error) {
-    console.error("Error creating payment intent:", error);
+    console.error("Error in handleCreatePaymentIntent:", error);
     return new Response(JSON.stringify({ error: (error as Error).message }), {
       headers,
       status: 400,
@@ -299,54 +351,83 @@ async function handleCreatePaymentIntent(
 
 async function handleCreateCustomer(
   user: User,
-  body: CustomerRequest,
+  body: CustomerRequest, // Body might contain fallbacks if profile incomplete
   headers: ResponseHeaders
 ) {
   try {
-    // Check if customer already exists
-    const { data: existingCustomer } = await supabase
+    // 1. Check if customer already exists in our database
+    const { data: existingCustomerRecord, error: customerDbError } = await supabase
       .from("customers")
       .select("stripe_customer_id")
       .eq("user_id", user.id)
       .maybeSingle();
 
-    if (existingCustomer?.stripe_customer_id) {
-      // Customer already exists, return existing ID
+    if (customerDbError) throw customerDbError;
+
+    if (existingCustomerRecord?.stripe_customer_id) {
+      // Customer already exists, maybe update?
+      // For now, just return existing ID as per original logic.
+      // Consider adding update logic similar to handleCreatePaymentIntent if needed.
+      console.log(`Customer already exists (handleCreateCustomer): ${existingCustomerRecord.stripe_customer_id}`);
       return new Response(
         JSON.stringify({
-          customerId: existingCustomer.stripe_customer_id,
+          customerId: existingCustomerRecord.stripe_customer_id,
           message: "Customer already exists",
         }),
         { headers }
       );
     }
 
-    // Create a new customer in Stripe
-    const customer = await stripe.customers.create({
-      email: user.email,
-      name: body.name,
-      phone: body.phone,
+    // 2. Fetch profile data as primary source
+    const { data: profileData, error: profileError } = await supabase
+      .from("profiles")
+      .select("first_name, last_name, phone")
+      .eq("id", user.id)
+      .single();
+
+    if (profileError && profileError.code !== "PGRST116") {
+      console.error("Error fetching profile:", profileError);
+      throw new Error("Could not fetch user profile.");
+    }
+
+    // 3. Construct customer details using profile first, then body/auth fallbacks
+    const customerName = profileData?.first_name && profileData?.last_name
+      ? `${profileData.first_name} ${profileData.last_name}`
+      : body.name || null; // Fallback to body.name if profile names missing
+    const customerEmail = user.email;
+    const customerPhone = profileData?.phone || body.phone || null; // Use profile phone or body.phone
+
+    // 4. Create a new customer in Stripe
+    const stripeCustomer = await stripe.customers.create({
+      email: customerEmail,
+      name: customerName,
+      phone: customerPhone,
       metadata: {
         supabase_user_id: user.id,
       },
     });
+    const customerId = stripeCustomer.id;
+    console.log(`New Stripe customer created (handleCreateCustomer): ${customerId}`);
 
-    // Save the customer ID to your database
+    // 5. Save the *complete* customer info to your 'customers' database
     await supabase.from("customers").insert({
       user_id: user.id,
-      stripe_customer_id: customer.id,
+      stripe_customer_id: customerId,
+      name: customerName, // Store the name used in Stripe
+      email: customerEmail, // Store the email used in Stripe
+      phone: customerPhone, // Store the phone used in Stripe
       created_at: new Date().toISOString(),
     });
 
     return new Response(
       JSON.stringify({
-        customerId: customer.id,
+        customerId: customerId,
         message: "Customer created successfully",
       }),
       { headers }
     );
   } catch (error) {
-    console.error("Error creating customer:", error);
+    console.error("Error in handleCreateCustomer:", error);
     return new Response(JSON.stringify({ error: (error as Error).message }), {
       headers,
       status: 400,
