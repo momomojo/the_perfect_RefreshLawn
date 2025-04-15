@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { View, Text, SafeAreaView, ActivityIndicator } from "react-native";
 import { Stack } from "expo-router";
-import ServiceHistory from "../components/customer/ServiceHistory";
 import { getCustomerBookings } from "../../lib/data";
 import { supabase } from "../../lib/supabase";
 
@@ -30,7 +29,7 @@ export default function HistoryScreen() {
       // Fetch booking history
       const data = await getCustomerBookings(userId);
 
-      setBookings(data || []);
+      setBookings(data.data || []);
     } catch (err: any) {
       setError(err.message || "An unexpected error occurred");
       console.error("Error fetching booking history:", err);
@@ -72,8 +71,32 @@ export default function HistoryScreen() {
         }}
       />
 
-      <View className="flex-1">
-        <ServiceHistory services={bookings} onRefresh={fetchBookingHistory} />
+      <View className="flex-1 p-4">
+        {bookings.length === 0 ? (
+          <Text className="text-gray-500 text-center mt-8">No booking history found.</Text>
+        ) : (
+          bookings.map((item, idx) => (
+            <View key={item.id || idx} className="bg-white border border-gray-200 rounded-lg mb-3 p-4 shadow-sm">
+              <Text className="text-lg font-semibold text-gray-800 mb-1">
+                {item.service?.name || "Unknown Service"}
+              </Text>
+              <Text className="text-gray-600 mb-1">
+                {item.scheduled_date} {item.scheduled_time}
+              </Text>
+              <Text className="text-gray-500 mb-1">Status: <Text style={{fontWeight:'bold'}}>{item.status}</Text></Text>
+              {item.status === "paid" && item.stripe_payment_intent_id && (
+                <View className="mb-2">
+                  <Text className="text-xs text-teal-700 font-semibold">Paid via Stripe</Text>
+                  <Text className="text-xs text-gray-500">Payment Ref: {item.stripe_payment_intent_id}</Text>
+                </View>
+              )}
+              <Text className="text-gray-500 text-sm">Price: ${parseFloat(item.price?.toString() || '0').toFixed(2)}</Text>
+              {item.address && (
+                <Text className="text-gray-400 text-xs mt-1">{item.address}</Text>
+              )}
+            </View>
+          ))
+        )}
       </View>
     </SafeAreaView>
   );

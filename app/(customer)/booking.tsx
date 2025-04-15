@@ -8,6 +8,7 @@ import {
 } from "react-native";
 import { Stack, useRouter, useLocalSearchParams } from "expo-router";
 import BookingForm from "../components/customer/BookingForm";
+import StripePaymentWeb from "../../components/payment/StripePaymentWeb";
 import {
   getService,
   createBooking,
@@ -41,6 +42,8 @@ export default function BookingScreen() {
   const [error, setError] = useState<string | null>(null);
   const [service, setService] = useState<Service | null>(null);
   const [userProfile, setUserProfile] = useState<Profile | null>(null);
+  const [pendingBooking, setPendingBooking] = useState<BookingFormData | null>(null);
+  const [showPayment, setShowPayment] = useState(false);
 
   useEffect(() => {
     if (serviceId) {
@@ -89,39 +92,40 @@ export default function BookingScreen() {
     }
   };
 
-  const handleBookingComplete = async (bookingData: BookingFormData) => {
+  // Step 1: User submits booking form, trigger payment UI
+  const handleBookingComplete = (bookingData: BookingFormData) => {
+    setPendingBooking(bookingData);
+    setShowPayment(true);
+  };
+
+  // Step 2: On successful payment, create booking in Supabase
+  const handlePaymentSuccess = async (paymentIntentId: string) => {
+    if (!pendingBooking || !user) return;
+    setSubmitting(true);
+    setError(null);
     try {
-      setSubmitting(true);
-      setError(null);
-
-      if (!user) {
-        throw new Error("User not authenticated");
-      }
-
-      // Create a new booking
       const newBooking: Omit<Booking, "id" | "created_at" | "updated_at"> = {
         customer_id: user.id,
-        service_id: bookingData.serviceId,
-        status: "pending", // All new bookings start as pending
-        price: bookingData.price,
-        scheduled_date: bookingData.date,
-        scheduled_time: bookingData.time,
-        address: bookingData.address,
-        recurring_plan_id: bookingData.isRecurring
-          ? bookingData.recurringPlan
+        service_id: pendingBooking.serviceId,
+        status: "paid", // Mark as paid
+        price: pendingBooking.price,
+        scheduled_date: pendingBooking.date,
+        scheduled_time: pendingBooking.time,
+        address: pendingBooking.address,
+        recurring_plan_id: pendingBooking.isRecurring
+          ? pendingBooking.recurringPlan
           : undefined,
-        notes: "Customer booking from app",
+        notes: `Customer booking from app. Stripe PaymentIntent: ${paymentIntentId}`,
+        // Optionally add payment_intent_id if your Booking table supports it
       };
-
-      console.log("Creating booking with data:", newBooking);
-
       // Submit to Supabase
-      const booking = await createBooking(newBooking);
-
+      await createBooking(newBooking);
+      setShowPayment(false);
+      setPendingBooking(null);
       // Show success message
       Alert.alert(
         "Booking Successful!",
-        "Your service has been booked. You will receive a confirmation soon.",
+        "Your service has been booked and payment received. You will receive a confirmation soon.",
         [
           {
             text: "OK",
@@ -136,6 +140,14 @@ export default function BookingScreen() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  // Step 3: If payment fails/cancelled
+  const handlePaymentError = (errMsg: string) => {
+    setShowPayment(false);
+    setPendingBooking(null);
+    setError(errMsg || "Payment failed. Please try again.");
+    Alert.alert("Payment Error", errMsg || "Payment failed. Please try again.");
   };
 
   if (loading && serviceId) {
@@ -176,12 +188,30 @@ export default function BookingScreen() {
       />
 
       <View className="flex-1">
-        <BookingForm
-          service={service}
-          userProfile={userProfile}
-          onComplete={handleBookingComplete}
-          isSubmitting={submitting}
-        />
+        {showPayment && pendingBooking ? (
+          <StripePaymentWeb
+            amount={Math.round(pendingBooking.price * 100)} // Convert dollars to cents for Stripe
+            currency="usd"
+            onPaymentSuccess={handlePaymentSuccess}
+            onError={handlePaymentError}
+            onBack={() => setShowPayment(false)}
+            billingDetails={{
+              name: userProfile ? `${userProfile.first_name} ${userProfile.last_name}`.trim() : undefined,
+              email: user?.email || undefined,
+              address: {
+                line1: pendingBooking.address,
+                // Optionally add city, state, postal_code, country if available
+              },
+            }}
+          />
+        ) : (
+          <BookingForm
+            service={service}
+            userProfile={userProfile}
+            onComplete={handleBookingComplete}
+            isSubmitting={submitting}
+          />
+        )}
       </View>
     </SafeAreaView>
   );

@@ -94,6 +94,8 @@ export default function BookingsScreen() {
         return "bg-green-100 text-green-800 border-green-200";
       case "cancelled":
         return "bg-red-100 text-red-800 border-red-200";
+      case "paid":
+        return "bg-teal-100 text-teal-800 border-teal-200";
       default:
         return "bg-gray-100 text-gray-800 border-gray-200";
     }
@@ -146,6 +148,14 @@ export default function BookingsScreen() {
         {item.address && (
           <View className="mb-3 pb-3 border-b border-gray-100">
             <Text className="text-gray-500 text-sm">{item.address}</Text>
+          </View>
+        )}
+
+        {/* Stripe Payment Info */}
+        {item.status === "paid" && item.stripe_payment_intent_id && (
+          <View className="mb-2">
+            <Text className="text-xs text-teal-700 font-semibold">Paid via Stripe</Text>
+            <Text className="text-xs text-gray-500">Payment Ref: {item.stripe_payment_intent_id}</Text>
           </View>
         )}
 
@@ -253,6 +263,7 @@ function ScrollableStatusFilter({
     "in_progress",
     "completed",
     "cancelled",
+    "paid",
   ];
 
   const getStatusColor = (status: string) => {
@@ -267,6 +278,8 @@ function ScrollableStatusFilter({
         return "bg-green-100 text-green-800 border-green-200";
       case "cancelled":
         return "bg-red-100 text-red-800 border-red-200";
+      case "paid":
+        return "bg-teal-100 text-teal-800 border-teal-200";
       default:
         return "bg-gray-100 text-gray-800 border-gray-200";
     }

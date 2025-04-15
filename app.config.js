@@ -36,6 +36,7 @@ export default {
       // These are available at build time, but we also rely on process.env at runtime
       supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
       supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
+      stripePublishableKey: process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY,
       eas: {
         projectId: "c51e72ec-cce4-4a50-a891-dd01bd8d9e8a", // Confirmed EAS project ID
       },

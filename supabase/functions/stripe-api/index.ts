@@ -102,8 +102,10 @@ serve(async (req) => {
   }
 
   try {
-    const url = new URL(req.url);
-    const path = url.pathname.split("/").pop();
+    // Parse the request body FIRST to get the routing path and payload
+    const body = await req.json();
+    const routePath = body.path; // Get path from body
+    const payload = body.payload; // Get payload from body
 
     // Get the JWT token from the request
     const authHeader = req.headers.get("Authorization") || "";
@@ -122,116 +124,102 @@ serve(async (req) => {
       });
     }
 
-    // Parse the request body
-    const body = await req.json();
-
-    // Route the request based on the path
-    switch (path) {
+    // Route the request based on the path from the body
+    switch (routePath) {
       // Customer-facing endpoints
       case "create-payment-intent":
         return await handleCreatePaymentIntent(
           user,
-          body as PaymentIntentRequest,
+          payload as PaymentIntentRequest, // Pass the PAYLOAD
           headers
         );
       case "create-customer":
         return await handleCreateCustomer(
           user,
-          body as CustomerRequest,
+          payload as CustomerRequest, // Pass the PAYLOAD
           headers
         );
       case "create-subscription":
         return await handleCreateSubscription(
           user,
-          body as SubscriptionRequest,
+          payload as SubscriptionRequest, // Pass the PAYLOAD
           headers
         );
       case "list-payment-methods":
+        // This endpoint might not need a payload, adjust if necessary
         return await handleListPaymentMethods(user, headers);
       case "attach-payment-method":
         return await handleAttachPaymentMethod(
           user,
-          body as PaymentMethodRequest,
+          payload as PaymentMethodRequest, // Pass the PAYLOAD
           headers
         );
       case "detach-payment-method":
         return await handleDetachPaymentMethod(
           user,
-          body as PaymentMethodRequest,
+          payload as PaymentMethodRequest, // Pass the PAYLOAD
           headers
         );
       case "set-default-payment":
         return await handleSetDefaultPayment(
           user,
-          body as PaymentMethodRequest,
+          payload as PaymentMethodRequest, // Pass the PAYLOAD
           headers
         );
       case "cancel-subscription":
         return await handleCancelSubscription(
           user,
-          body as CancelSubscriptionRequest,
+          payload as CancelSubscriptionRequest, // Pass the PAYLOAD
           headers
         );
       case "list-invoices":
         return await handleListInvoices(
           user,
-          body as ListInvoicesRequest,
+          payload as ListInvoicesRequest, // Pass the PAYLOAD
           headers
         );
 
       // Admin endpoints (require admin role)
+      // Ensure these also expect payload if needed
       case "admin-list-customers":
         return await handleAdminListCustomers(
           user,
-          body as AdminListRequest,
+          payload as AdminListRequest, // Pass the PAYLOAD
           headers
         );
       case "admin-list-subscriptions":
         return await handleAdminListSubscriptions(
           user,
-          body as AdminListRequest,
+          payload as AdminListRequest, // Pass the PAYLOAD
           headers
         );
       case "admin-list-payments":
         return await handleAdminListPayments(
           user,
-          body as AdminListRequest,
+          payload as AdminListRequest, // Pass the PAYLOAD
           headers
         );
       case "admin-list-invoices":
         return await handleAdminListInvoices(
           user,
-          body as AdminListRequest,
+          payload as AdminListRequest, // Pass the PAYLOAD
           headers
         );
-      case "admin-get-stripe-dashboard-link":
-        // Ensure user is admin before proceeding
-        if (!(await isAdmin(user.id))) {
-          return new Response(JSON.stringify({ error: "Forbidden" }), {
-            headers,
-            status: 403,
-          });
-        }
+      case "admin-get-dashboard-link":
         return await handleAdminGetStripeDashboardLink(
           user,
-          body as AdminDashboardLinkRequest,
+          payload as AdminDashboardLinkRequest, // Pass the PAYLOAD
           headers
         );
       case "admin-cancel-subscription":
-        // Ensure user is admin before proceeding
-        if (!(await isAdmin(user.id))) {
-          return new Response(JSON.stringify({ error: "Forbidden" }), {
-            headers,
-            status: 403,
-          });
-        }
         return await handleAdminCancelSubscription(
           user,
-          body as AdminCancelSubscriptionRequest,
+          payload as AdminCancelSubscriptionRequest, // Pass the PAYLOAD
           headers
         );
+
       default:
-        return new Response(JSON.stringify({ error: "Not found" }), {
+        return new Response(JSON.stringify({ error: "Invalid route" }), {
           headers,
           status: 404,
         });

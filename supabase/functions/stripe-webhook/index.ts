@@ -54,12 +54,25 @@ serve(async (req) => {
     // Get the raw request body
     const body = await req.text();
 
-    // Verify the webhook signature
-    const event = stripe.webhooks.constructEvent(
-      body,
-      signature,
-      stripeWebhookSecret
-    );
+    // Use the async version of the webhook signature verification
+    let event;
+    try {
+      // This approach uses the built-in Web Crypto API in Deno
+      event = await stripe.webhooks.constructEventAsync(
+        body,
+        signature,
+        stripeWebhookSecret
+      );
+    } catch (err: any) {
+      console.error(`Webhook signature verification failed: ${err.message}`);
+      return new Response(
+        JSON.stringify({ error: `Webhook Error: ${err.message}` }),
+        {
+          headers: { "Content-Type": "application/json" },
+          status: 400,
+        }
+      );
+    }
 
     // Handle the event
     console.log(`Event type: ${event.type}`);
@@ -106,9 +119,9 @@ serve(async (req) => {
       headers: { "Content-Type": "application/json" },
       status: 200,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error handling webhook:", error);
-    return new Response(JSON.stringify({ error: (error as Error).message }), {
+    return new Response(JSON.stringify({ error: error.message }), {
       headers: { "Content-Type": "application/json" },
       status: 400,
     });

@@ -50,7 +50,7 @@ export interface Booking {
   technician_id?: string;
   service_id: string;
   recurring_plan_id?: string;
-  status: "pending" | "scheduled" | "in_progress" | "completed" | "cancelled";
+  status: "pending" | "scheduled" | "in_progress" | "completed" | "cancelled" | "paid";
   price: number;
   scheduled_date: string;
   scheduled_time: string;
