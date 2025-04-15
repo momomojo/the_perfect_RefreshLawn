@@ -6,7 +6,7 @@ config();
 export default {
   expo: {
     name: process.env.EXPO_PUBLIC_APP_NAME || "LawnRefresh",
-    slug: "lawnrefresh",
+    slug: "the-perfect-lawn-refresh", // Updated to match EAS project slug
     version: "1.0.0",
     orientation: "portrait",
     icon: "./assets/images/icon.png",
@@ -37,7 +37,7 @@ export default {
       supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
       supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
       eas: {
-        projectId: "your-project-id", // Replace with actual EAS project ID if deploying
+        projectId: "c51e72ec-cce4-4a50-a891-dd01bd8d9e8a", // Confirmed EAS project ID
       },
     },
     plugins: [["expo-secure-store"]],
