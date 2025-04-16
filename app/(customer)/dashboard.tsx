@@ -221,7 +221,7 @@ const CustomerDashboard = () => {
   }, [fetchData]);
 
   const handleViewAppointment = (id: string) => {
-    router.push(`/customer/booking?id=${id}`);
+    router.push(`/(customer)/booking-details?id=${id}`);
   };
 
   const handleBookService = (serviceId: string) => {
@@ -244,8 +244,8 @@ const CustomerDashboard = () => {
       }
 
       // Get the original booking data using the ID
-      const bookings = await getCustomerBookings(user.id);
-      const originalBooking = bookings.find((b) => b.id === id);
+      const { data: bookings } = await getCustomerBookings(user.id);
+      const originalBooking = bookings.find((b: Booking) => b.id === id);
 
       if (!originalBooking || !originalBooking.technician_id) {
         console.error("Cannot find booking or technician info");
@@ -270,7 +270,7 @@ const CustomerDashboard = () => {
 
   const handleViewServiceDetails = (id: string) => {
     console.log(`View service details for ID: ${id}`);
-    router.push(`/customer/booking?id=${id}`);
+    router.push(`/(customer)/booking-details?id=${id}`);
   };
 
   // Extract services data for quick booking

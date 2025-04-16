@@ -30,6 +30,7 @@ interface BookingFormData {
   recurringPlan?: string;
   paymentMethod: string;
   price: number;
+  paymentMethodDetails?: any;
 }
 
 export default function BookingScreen() {
@@ -49,7 +50,6 @@ export default function BookingScreen() {
     if (serviceId) {
       fetchServiceAndUserData();
     } else {
-      // Redirect to services page instead of showing an error
       Alert.alert(
         "Service Selection Required",
         "Please select a service from the services page.",
@@ -68,16 +68,13 @@ export default function BookingScreen() {
       setLoading(true);
       setError(null);
 
-      // Get current user's session
       if (!user?.id) {
         throw new Error("User not authenticated");
       }
 
-      // Fetch service details
       const serviceData = await getService(serviceId as string);
       setService(serviceData);
 
-      // Fetch user profile
       const profileData = await getProfile(user.id);
       setUserProfile(profileData);
     } catch (err: any) {
@@ -92,13 +89,88 @@ export default function BookingScreen() {
     }
   };
 
-  // Step 1: User submits booking form, trigger payment UI
-  const handleBookingComplete = (bookingData: BookingFormData) => {
+  const handleBookingComplete = async (bookingData: BookingFormData) => {
+    if (!user) {
+      Alert.alert("Error", "You must be logged in to book a service");
+      return;
+    }
+
     setPendingBooking(bookingData);
-    setShowPayment(true);
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      if (bookingData.paymentMethod === 'cash' || bookingData.paymentMethod.startsWith('pm_')) {
+        console.log("Invoking stripe-payment-api with data:", {
+          serviceId: bookingData.serviceId,
+          paymentMethod: bookingData.paymentMethod,
+          price: bookingData.price
+        });
+
+        // Get the current session token
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+        if (sessionError || !session) {
+          throw new Error("Authentication session not found: " + (sessionError?.message || "No session"));
+        }
+
+        const { data, error } = await supabase.functions.invoke(
+          "stripe-payment-api",
+          {
+            body: {
+              path: "create-booking-and-charge",
+              payload: {
+                serviceId: bookingData.serviceId,
+                date: bookingData.date,
+                time: bookingData.time,
+                address: bookingData.address,
+                isRecurring: bookingData.isRecurring,
+                recurringPlanId: bookingData.recurringPlan,
+                paymentMethodId: bookingData.paymentMethod,
+                price: bookingData.price
+              }
+            },
+            // Explicitly set the Authorization header with the access token
+            headers: {
+              Authorization: `Bearer ${session.access_token}`
+            }
+          }
+        );
+
+        if (error) {
+          console.error("Edge function error details:", error);
+          throw new Error(error.message || "Failed to process booking");
+        }
+
+        console.log("Edge function response:", data);
+
+        setShowPayment(false);
+        setPendingBooking(null);
+
+        Alert.alert(
+          "Booking Successful!",
+          bookingData.paymentMethod === 'cash'
+            ? "Your service has been booked. Please have cash ready for the service provider."
+            : "Your service has been booked and payment processed. You will receive a confirmation soon.",
+          [
+            {
+              text: "OK",
+              onPress: () => router.replace("/(customer)/dashboard"),
+            },
+          ]
+        );
+      } else {
+        setShowPayment(true);
+      }
+    } catch (err: any) {
+      console.error("Error creating booking:", err);
+      setError(err.message || "Failed to create booking. Please try again.");
+      Alert.alert("Error", err.message || "Failed to create booking");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  // Step 2: On successful payment, create booking in Supabase
   const handlePaymentSuccess = async (paymentIntentId: string) => {
     if (!pendingBooking || !user) return;
     setSubmitting(true);
@@ -116,13 +188,11 @@ export default function BookingScreen() {
           ? pendingBooking.recurringPlan
           : undefined,
         notes: `Customer booking from app. Stripe PaymentIntent: ${paymentIntentId}`,
-        // Optionally add payment_intent_id if your Booking table supports it
       };
-      // Submit to Supabase
       await createBooking(newBooking);
       setShowPayment(false);
       setPendingBooking(null);
-      // Show success message
+
       Alert.alert(
         "Booking Successful!",
         "Your service has been booked and payment received. You will receive a confirmation soon.",
@@ -142,7 +212,6 @@ export default function BookingScreen() {
     }
   };
 
-  // Step 3: If payment fails/cancelled
   const handlePaymentError = (errMsg: string) => {
     setShowPayment(false);
     setPendingBooking(null);
@@ -150,7 +219,7 @@ export default function BookingScreen() {
     Alert.alert("Payment Error", errMsg || "Payment failed. Please try again.");
   };
 
-  if (loading && serviceId) {
+  if (loading) {
     return (
       <SafeAreaView className="flex-1 bg-gray-50 justify-center items-center">
         <ActivityIndicator size="large" color="#16a34a" />
@@ -174,7 +243,7 @@ export default function BookingScreen() {
   }
 
   if (!serviceId) {
-    return null; // Return null since we're redirecting
+    return null;
   }
 
   return (

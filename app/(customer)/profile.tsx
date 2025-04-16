@@ -1,172 +1,199 @@
-import React, { useEffect, useState } from "react";
-import {
-  View,
-  Text,
-  SafeAreaView,
-  ActivityIndicator,
-  Alert,
-} from "react-native";
-import { Stack } from "expo-router";
-import ProfileSettings from "../components/common/ProfileSettings";
+import React, { useState, useEffect } from "react";
+import { View, Text, ActivityIndicator, Alert } from "react-native";
 import { useAuth } from "../../lib/auth";
-import { getProfile, Profile, updateProfile } from "../../lib/data";
+import ProfileSettings from "../components/common/ProfileSettings";
+import { supabase } from "../../lib/supabase";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-interface UserData {
+interface ProfileData {
   name: string;
   email: string;
   phone: string;
   address: string;
+  city: string;
+  state: string;
+  zip_code: string;
+  billing_address_line1: string;
+  billing_address_line2: string;
+  billing_city: string;
+  billing_state: string;
+  billing_postal_code: string;
+  billing_country: string;
+  use_service_address_for_billing: boolean;
   notificationPreferences: {
     email: boolean;
     push: boolean;
     sms: boolean;
   };
-  paymentMethods: any[];
 }
 
-export default function CustomerProfileScreen() {
-  const { user } = useAuth();
+const CustomerProfileScreen = () => {
+  const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { user } = useAuth();
 
   useEffect(() => {
-    loadProfile();
+    if (user) {
+      fetchUserProfile();
+    }
   }, [user]);
 
-  const loadProfile = async () => {
+  const fetchUserProfile = async () => {
     try {
       setLoading(true);
-
+      
       if (!user) {
-        setError("User not authenticated");
-        setLoading(false);
+        console.error("No authenticated user found");
+        return;
+      }
+      
+      // Fetch the user profile data from Supabase
+      const { data, error } = await supabase
+        .from("profiles")
+        .select(`
+          id, 
+          first_name, 
+          last_name, 
+          phone, 
+          address, 
+          city, 
+          state, 
+          zip_code,
+          billing_address_line1,
+          billing_address_line2,
+          billing_city,
+          billing_state,
+          billing_postal_code,
+          billing_country,
+          use_service_address_for_billing,
+          notification_preferences
+        `)
+        .eq("id", user.id)
+        .single();
+
+      if (error) {
+        console.error("Error fetching profile:", error);
+        Alert.alert("Error", "Failed to load profile data");
         return;
       }
 
-      // Fetch profile data from Supabase using the data helper
-      const profileData = await getProfile(user.id);
-      setProfile(profileData);
-      setError(null);
-    } catch (err: any) {
-      console.error("Profile loading error:", err);
-      setError(err.message || "Failed to load profile");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleUpdateProfile = async (updatedData: Partial<UserData>) => {
-    if (!user || !profile) return;
-
-    try {
-      setLoading(true);
-
-      // Extract name parts
-      const nameParts = updatedData.name?.split(" ") || [];
-      const firstName = nameParts[0] || "";
-      const lastName = nameParts.slice(1).join(" ") || "";
-
-      // Extract address parts (address might be in format "123 Main St, City, State, Zip")
-      const addressParts =
-        updatedData.address?.split(",").map((part) => part.trim()) || [];
-      const address = addressParts[0] || "";
-      const city = addressParts[1] || "";
-      let state = "";
-      let zipCode = "";
-
-      if (addressParts.length > 2) {
-        const stateZipParts = addressParts[2]?.split(" ");
-        if (stateZipParts?.length >= 2) {
-          state = stateZipParts[0] || "";
-          zipCode = stateZipParts.slice(1).join(" ") || "";
-        }
-      }
-
-      // Create profile update object
-      const profileUpdates = {
-        first_name: firstName,
-        last_name: lastName,
-        phone: updatedData.phone,
-        address,
-        city,
-        state,
-        zip_code: zipCode,
-      };
-
-      // Update profile in Supabase
-      const updatedProfile = await updateProfile(user.id, profileUpdates);
-      setProfile(updatedProfile);
-
-      Alert.alert("Success", "Profile updated successfully");
-    } catch (err: any) {
-      console.error("Profile update error:", err);
-      Alert.alert("Error", err.message || "Failed to update profile");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Transform profile data to format expected by ProfileSettings
-  const customerData = profile
-    ? {
-        name:
-          `${profile.first_name || ""} ${profile.last_name || ""}`.trim() ||
-          "User",
-        email: user?.email || "Not set",
-        phone: profile.phone || "Not set",
-        address:
-          [profile.address, profile.city, profile.state, profile.zip_code]
-            .filter(Boolean)
-            .join(", ") || "Not set",
-        notificationPreferences: {
+      // Format the data for the ProfileSettings component
+      const formattedData: ProfileData = {
+        name: data.first_name && data.last_name ? `${data.first_name} ${data.last_name}` : "Not set",
+        email: user.email || "",
+        phone: data.phone || "",
+        address: data.address || "",
+        city: data.city || "",
+        state: data.state || "",
+        zip_code: data.zip_code || "",
+        billing_address_line1: data.billing_address_line1 || "",
+        billing_address_line2: data.billing_address_line2 || "",
+        billing_city: data.billing_city || "",
+        billing_state: data.billing_state || "",
+        billing_postal_code: data.billing_postal_code || "",
+        billing_country: data.billing_country || "US",
+        use_service_address_for_billing: data.use_service_address_for_billing !== false, // Default to true if null
+        notificationPreferences: data.notification_preferences || {
           email: true,
           push: true,
           sms: false,
         },
-        paymentMethods: [],
+      };
+
+      setProfileData(formattedData);
+    } catch (error) {
+      console.error("Unexpected error fetching profile:", error);
+      Alert.alert("Error", "An unexpected error occurred");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpdateProfile = async (updatedData: ProfileData) => {
+    try {
+      setLoading(true);
+
+      if (!user) {
+        console.error("No authenticated user found");
+        return;
       }
-    : null;
 
-  if (loading) {
-    return (
-      <SafeAreaView className="flex-1 bg-white justify-center items-center">
-        <ActivityIndicator size="large" color="#16a34a" />
-      </SafeAreaView>
-    );
-  }
+      // Parse name into first and last name
+      let firstName = "";
+      let lastName = "";
+      if (updatedData.name) {
+        const nameParts = updatedData.name.trim().split(" ");
+        firstName = nameParts[0] || "";
+        lastName = nameParts.slice(1).join(" ") || "";
+      }
 
-  if (error) {
+      // Prepare data for the profile update
+      const profileUpdateData = {
+        first_name: firstName,
+        last_name: lastName,
+        phone: updatedData.phone || null,
+        address: updatedData.address || null,
+        city: updatedData.city || null,
+        state: updatedData.state || null,
+        zip_code: updatedData.zip_code || null,
+        billing_address_line1: updatedData.billing_address_line1 || null,
+        billing_address_line2: updatedData.billing_address_line2 || null,
+        billing_city: updatedData.billing_city || null,
+        billing_state: updatedData.billing_state || null,
+        billing_postal_code: updatedData.billing_postal_code || null,
+        billing_country: updatedData.billing_country || "US",
+        use_service_address_for_billing: updatedData.use_service_address_for_billing,
+        notification_preferences: updatedData.notificationPreferences,
+        updated_at: new Date().toISOString(),
+      };
+
+      // Update the profile in Supabase
+      const { error } = await supabase
+        .from("profiles")
+        .update(profileUpdateData)
+        .eq("id", user.id);
+
+      if (error) {
+        console.error("Error updating profile:", error);
+        Alert.alert("Error", "Failed to update profile. Please try again.");
+        return;
+      }
+
+      // Refresh profile data
+      fetchUserProfile();
+      
+      Alert.alert("Success", "Profile updated successfully");
+    } catch (error) {
+      console.error("Unexpected error updating profile:", error);
+      Alert.alert("Error", "An unexpected error occurred");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading && !profileData) {
     return (
-      <SafeAreaView className="flex-1 bg-white justify-center items-center p-4">
-        <Text className="text-red-500">Error: {error}</Text>
+      <SafeAreaView className="flex-1 bg-white">
+        <View className="flex-1 justify-center items-center">
+          <ActivityIndicator size="large" color="#10b981" />
+          <Text className="mt-4 text-gray-600">Loading profile...</Text>
+        </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-white">
-      <Stack.Screen
-        options={{
-          title: "My Profile",
-          headerShadowVisible: false,
-          headerStyle: { backgroundColor: "white" },
-        }}
-      />
-
-      <View className="flex-1">
-        {customerData ? (
-          <ProfileSettings
-            userType="customer"
-            userData={customerData}
-            onUpdateProfile={handleUpdateProfile}
-          />
-        ) : (
-          <View className="flex-1 justify-center items-center p-4">
-            <Text>Profile data not available</Text>
-          </View>
-        )}
-      </View>
+    <SafeAreaView className="flex-1 bg-white" edges={["top"]}>
+      {/* Removed duplicate header */}
+      {profileData && (
+        <ProfileSettings
+          userType="customer"
+          userData={profileData}
+          onUpdateProfile={handleUpdateProfile}
+        />
+      )}
     </SafeAreaView>
   );
-}
+};
+
+export default CustomerProfileScreen;
