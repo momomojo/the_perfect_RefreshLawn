@@ -6,6 +6,8 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
+  Alert,
+  NetInfo,
 } from "react-native";
 import {
   ChevronRight,
@@ -71,6 +73,7 @@ const BookingForm = ({
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [paymentMethodsLoading, setPaymentMethodsLoading] = useState(false);
+  const [isConnected, setIsConnected] = useState(true);
   const [services, setServices] = useState<Service[]>([]);
   const [recurringPlans, setRecurringPlans] = useState<RecurringPlan[]>([]);
   const [availableDates, setAvailableDates] = useState<string[]>([]);
@@ -92,6 +95,39 @@ const BookingForm = ({
     price: service?.base_price || 0,
     paymentMethodDetails: undefined,
   });
+
+  // Check network connectivity
+  useEffect(() => {
+    // Initial check
+    const checkConnection = async () => {
+      try {
+        const state = await NetInfo.fetch();
+        setIsConnected(state.isConnected === true);
+      } catch (error) {
+        console.error("Error checking network connection:", error);
+        setIsConnected(false);
+      }
+    };
+
+    checkConnection();
+
+    // Subscribe to network state updates
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      setIsConnected(state.isConnected === true);
+
+      // Alert user when connection is lost
+      if (state.isConnected === false) {
+        Alert.alert(
+          "No Internet Connection",
+          "You appear to be offline. Some features may be limited until you reconnect.",
+          [{ text: "OK" }]
+        );
+      }
+    });
+
+    // Clean up subscription
+    return () => unsubscribe();
+  }, []);
 
   // Get real data on component mount
   useEffect(() => {
@@ -137,7 +173,11 @@ const BookingForm = ({
   // Load payment methods when needed
   useEffect(() => {
     // Only load payment methods when on payment step or approaching it (step 5)
-    if (currentStep >= 5 && !paymentMethodsLoading && fetchedPaymentMethods.length === 0) {
+    if (
+      currentStep >= 5 &&
+      !paymentMethodsLoading &&
+      fetchedPaymentMethods.length === 0
+    ) {
       loadPaymentMethods();
     }
   }, [currentStep, user, paymentMethodsLoading, fetchedPaymentMethods]);
@@ -161,24 +201,41 @@ const BookingForm = ({
 
   const loadPaymentMethods = async () => {
     if (!user) return;
+
+    // Check network connectivity before making API calls
+    if (!isConnected) {
+      Alert.alert(
+        "No Internet Connection",
+        "You need an internet connection to load payment methods. Please check your connection and try again.",
+        [{ text: "OK" }]
+      );
+      return;
+    }
+
     setPaymentMethodsLoading(true);
     try {
       console.log("Fetching payment methods for user:", user.id);
-      
+
       // Get the current session token
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
       if (sessionError || !session) {
         throw new Error("Authentication session not found");
       }
-      
-      const { data, error } = await supabase.functions.invoke("stripe-customer-api", {
-        body: { path: "list-payment-methods" },
-        // Explicitly set the Authorization header with the access token
-        headers: {
-          Authorization: `Bearer ${session.access_token}`
+
+      const { data, error } = await supabase.functions.invoke(
+        "stripe-customer-api",
+        {
+          body: { path: "list-payment-methods" },
+          // Explicitly set the Authorization header with the access token
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
         }
-      });
+      );
 
       if (error) {
         console.error("Supabase function error:", error);
@@ -215,7 +272,12 @@ const BookingForm = ({
 
   // Make sure cash is always an option, and add card option is always last
   const paymentOptions = [
-    { id: "cash", name: "Cash on Delivery", type: "static", details: { id: "cash", name: "Cash" } },
+    {
+      id: "cash",
+      name: "Cash on Delivery",
+      type: "static",
+      details: { id: "cash", name: "Cash" },
+    },
     ...fetchedPaymentMethods.map((pm) => ({
       id: pm.id,
       name: `${pm.card?.brand || "Card"} ending in ${pm.card?.last4 || "????"}`,
@@ -604,7 +666,9 @@ const BookingForm = ({
                 onPress={() =>
                   handlePaymentMethodSelect(
                     method.id,
-                    method.details as StripePaymentMethod | { id: "cash"; name: "Cash" }
+                    method.details as
+                      | StripePaymentMethod
+                      | { id: "cash"; name: "Cash" }
                   )
                 }
               >
@@ -650,10 +714,28 @@ const BookingForm = ({
           visible={showAddCardModal}
           onClose={() => setShowAddCardModal(false)}
           onSaveSuccess={handleCardAdded} // Changed from onSuccess to onSaveSuccess
-          stripePublishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || ''} // Added required prop
+          stripePublishableKey={
+            process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || ""
+          } // Added required prop
         />
       </View>
     );
+  };
+
+  const renderNetworkWarning = () => {
+    if (!isConnected) {
+      return (
+        <View className="bg-yellow-100 p-3 rounded-lg mb-4 mx-4">
+          <Text className="text-yellow-800 font-medium">
+            You are currently offline
+          </Text>
+          <Text className="text-yellow-700 text-sm">
+            Some features may be limited until you reconnect to the internet.
+          </Text>
+        </View>
+      );
+    }
+    return null;
   };
 
   const renderConfirmationStep = () => {
@@ -663,10 +745,11 @@ const BookingForm = ({
     const paymentDisplay =
       bookingData.paymentMethodDetails?.id === "cash"
         ? "Cash on Delivery"
-        : bookingData.paymentMethodDetails && "card" in bookingData.paymentMethodDetails
-        ? `${bookingData.paymentMethodDetails.card?.brand || "Card"} ending in ${
-            bookingData.paymentMethodDetails.card?.last4 || "????"
-          }`
+        : bookingData.paymentMethodDetails &&
+          "card" in bookingData.paymentMethodDetails
+        ? `${
+            bookingData.paymentMethodDetails.card?.brand || "Card"
+          } ending in ${bookingData.paymentMethodDetails.card?.last4 || "????"}`
         : "N/A"; // Fallback
 
     return (
@@ -686,7 +769,9 @@ const BookingForm = ({
             <Text className="text-lg font-semibold mb-3">Service Details:</Text>
             <View className="flex-row mb-2">
               <Text className="text-gray-600 w-1/3">Service:</Text>
-              <Text className="font-medium flex-1">{bookingData.serviceName}</Text>
+              <Text className="font-medium flex-1">
+                {bookingData.serviceName}
+              </Text>
             </View>
             <View className="flex-row mb-2">
               <Text className="text-gray-600 w-1/3">Date:</Text>
@@ -731,9 +816,21 @@ const BookingForm = ({
         </View>
 
         <TouchableOpacity
-          className="bg-green-500 rounded-lg py-4 items-center"
-          onPress={() => onComplete(bookingData)}
-          disabled={isSubmitting}
+          className={`${
+            isConnected ? "bg-green-500" : "bg-gray-400"
+          } rounded-lg py-4 items-center`}
+          onPress={() => {
+            if (!isConnected) {
+              Alert.alert(
+                "No Internet Connection",
+                "You need an internet connection to complete your booking. Please check your connection and try again.",
+                [{ text: "OK" }]
+              );
+              return;
+            }
+            onComplete(bookingData);
+          }}
+          disabled={isSubmitting || !isConnected}
         >
           {isSubmitting ? (
             <ActivityIndicator color="#ffffff" />
@@ -776,6 +873,7 @@ const BookingForm = ({
 
   return (
     <View className="flex-1 bg-gray-50">
+      {renderNetworkWarning()}
       {renderStepIndicator()}
       {renderCurrentStep()}
 
