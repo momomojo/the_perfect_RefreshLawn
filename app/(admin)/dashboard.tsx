@@ -16,6 +16,7 @@ import { router } from "expo-router";
 import { supabase } from "../../lib/supabase";
 import { getAllBookings, Booking, Profile } from "../../lib/data";
 import { format } from "date-fns";
+import { handleApiError } from "../../lib/errors";
 
 const AdminDashboard = () => {
   const { refreshRole } = useUserRole();
@@ -58,100 +59,104 @@ const AdminDashboard = () => {
     }));
   };
 
-  // Fetch metrics and bookings data on component mount
+  const fetchDashboardData = async () => {
+    setError(null); // Clear previous errors
+    try {
+      setLoading(true);
+
+      // Get today's date in ISO format (YYYY-MM-DD)
+      const today = format(new Date(), "yyyy-MM-dd");
+
+      // Fetch all bookings
+      const allBookings = await getAllBookings();
+
+      // Filter bookings for today
+      const todaysBookings = allBookings.filter(
+        (booking) => booking.scheduled_date === today
+      );
+
+      // Calculate metrics
+      const totalRevenue = allBookings.reduce(
+        (sum, booking) => sum + Number(booking.price),
+        0
+      );
+
+      const completedBookings = allBookings.filter(
+        (booking) => booking.status === "completed"
+      );
+
+      const completedTodayCount = todaysBookings.filter(
+        (booking) => booking.status === "completed"
+      ).length;
+
+      const inProgressTodayCount = todaysBookings.filter(
+        (booking) => booking.status === "in_progress"
+      ).length;
+
+      const issuesCount = todaysBookings.filter(
+        (booking) => booking.status === "cancelled"
+      ).length;
+
+      // Get scheduled bookings for today
+      const scheduledToday = todaysBookings.filter(
+        (booking) =>
+          booking.status === "scheduled" || booking.status === "pending"
+      );
+
+      // Calculate customer satisfaction from reviews
+      const { data: reviews } = await supabase.from("reviews").select("rating");
+
+      const averageRating =
+        reviews && reviews.length > 0
+          ? (
+              reviews.reduce((sum, review) => sum + review.rating, 0) /
+              reviews.length
+            ).toFixed(1)
+          : "0.0";
+
+      // Get customer count
+      const { data: customers } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("role", "customer");
+
+      const customerCount = customers ? customers.length : 0;
+
+      // Update state with real data
+      setMetricsData({
+        revenue: `$${totalRevenue.toFixed(2)}`,
+        revenueChange: "+12.5%", // Would need historical data for real calculation
+        revenueIsPositive: true,
+        jobsCompleted: completedBookings.length.toString(),
+        jobsChange: "+8.2%", // Would need historical data for real calculation
+        jobsIsPositive: true,
+        customerSatisfaction: `${averageRating}/5`,
+        satisfactionChange: "+0.3", // Would need historical data for real calculation
+        satisfactionIsPositive: true,
+        activeCustomers: customerCount.toString(),
+        customersChange: "+5.7%", // Would need historical data for real calculation
+        customersIsPositive: true,
+      });
+
+      setUpcomingJobs(scheduledToday);
+      setCompletedCount(completedTodayCount);
+      setInProgressCount(inProgressTodayCount);
+      setIssuesCount(issuesCount);
+    } catch (err: any) {
+      // Use central handler
+      const errorResult = handleApiError(err);
+      setError(errorResult.error);
+      console.error(
+        "Error fetching dashboard data:",
+        err,
+        `(Code: ${errorResult.code})`
+      ); // Keep detailed log
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchDashboardData = async () => {
-      try {
-        setLoading(true);
-
-        // Get today's date in ISO format (YYYY-MM-DD)
-        const today = format(new Date(), "yyyy-MM-dd");
-
-        // Fetch all bookings
-        const allBookings = await getAllBookings();
-
-        // Filter bookings for today
-        const todaysBookings = allBookings.filter(
-          (booking) => booking.scheduled_date === today
-        );
-
-        // Calculate metrics
-        const totalRevenue = allBookings.reduce(
-          (sum, booking) => sum + Number(booking.price),
-          0
-        );
-
-        const completedBookings = allBookings.filter(
-          (booking) => booking.status === "completed"
-        );
-
-        const completedTodayCount = todaysBookings.filter(
-          (booking) => booking.status === "completed"
-        ).length;
-
-        const inProgressTodayCount = todaysBookings.filter(
-          (booking) => booking.status === "in_progress"
-        ).length;
-
-        const issuesCount = todaysBookings.filter(
-          (booking) => booking.status === "cancelled"
-        ).length;
-
-        // Get scheduled bookings for today
-        const scheduledToday = todaysBookings.filter(
-          (booking) =>
-            booking.status === "scheduled" || booking.status === "pending"
-        );
-
-        // Calculate customer satisfaction from reviews
-        const { data: reviews } = await supabase
-          .from("reviews")
-          .select("rating");
-
-        const averageRating =
-          reviews && reviews.length > 0
-            ? (
-                reviews.reduce((sum, review) => sum + review.rating, 0) /
-                reviews.length
-              ).toFixed(1)
-            : "0.0";
-
-        // Get customer count
-        const { data: customers } = await supabase
-          .from("profiles")
-          .select("id")
-          .eq("role", "customer");
-
-        const customerCount = customers ? customers.length : 0;
-
-        // Update state with real data
-        setMetricsData({
-          revenue: `$${totalRevenue.toFixed(2)}`,
-          revenueChange: "+12.5%", // Would need historical data for real calculation
-          revenueIsPositive: true,
-          jobsCompleted: completedBookings.length.toString(),
-          jobsChange: "+8.2%", // Would need historical data for real calculation
-          jobsIsPositive: true,
-          customerSatisfaction: `${averageRating}/5`,
-          satisfactionChange: "+0.3", // Would need historical data for real calculation
-          satisfactionIsPositive: true,
-          activeCustomers: customerCount.toString(),
-          customersChange: "+5.7%", // Would need historical data for real calculation
-          customersIsPositive: true,
-        });
-
-        setUpcomingJobs(scheduledToday);
-        setCompletedCount(completedTodayCount);
-        setInProgressCount(inProgressTodayCount);
-        setIssuesCount(issuesCount);
-      } catch (err: any) {
-        console.error("Error fetching dashboard data:", err);
-        setError(err.message || "Failed to load dashboard data");
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchDashboardData();
   }, []);
 
@@ -184,10 +189,13 @@ const AdminDashboard = () => {
   if (error) {
     return (
       <SafeAreaView className="flex-1 bg-gray-100 justify-center items-center p-4">
-        <Text className="text-red-500 text-lg mb-4">{error}</Text>
+        <Text className="text-red-500 text-lg mb-4">
+          Error Loading Dashboard
+        </Text>
+        <Text className="text-gray-600 text-center mb-6">{error}</Text>
         <TouchableOpacity
           className="bg-green-600 py-2 px-4 rounded-lg"
-          onPress={() => window.location.reload()}
+          onPress={fetchDashboardData} // Changed to call fetchDashboardData on retry
         >
           <Text className="text-white font-semibold">Retry</Text>
         </TouchableOpacity>
