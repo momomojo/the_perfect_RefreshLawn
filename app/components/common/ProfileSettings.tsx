@@ -30,8 +30,8 @@ import Constants from "expo-constants";
 import AddPaymentMethodModal from "./AddPaymentMethodModal";
 
 // Access Stripe publishable key from environment variables
-const STRIPE_PUBLISHABLE_KEY = 
-  process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || 
+const STRIPE_PUBLISHABLE_KEY =
+  process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ||
   Constants.expoConfig?.extra?.stripePublishableKey;
 
 interface ProfileSettingsProps {
@@ -114,9 +114,11 @@ const ProfileSettings = ({
   const [isBillingEditing, setIsBillingEditing] = useState(false);
   const [loadingState, setLoading] = useState(false);
   const [stripeUpdateError, setStripeUpdateError] = useState<string | null>(
-    null,
+    null
   );
-  const [validationErrors, setValidationErrors] = useState<ValidationErrors>({});
+  const [validationErrors, setValidationErrors] = useState<ValidationErrors>(
+    {}
+  );
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [loadingPaymentMethods, setLoadingPaymentMethods] = useState(true);
   const [isAddCardModalVisible, setIsAddCardModalVisible] = useState(false);
@@ -137,10 +139,9 @@ const ProfileSettings = ({
   const fetchPaymentMethods = async () => {
     try {
       setLoadingPaymentMethods(true);
-      const { data, error } = await supabase.functions.invoke("stripe-customer-api", {
+      const { data, error } = await supabase.functions.invoke("stripe-api", {
         body: {
-          path: "list-payment-methods",
-          payload: {},
+          action: "list-payment-methods",
         },
       });
 
@@ -235,10 +236,10 @@ const ProfileSettings = ({
   const handleSetDefaultPaymentMethod = async (paymentMethodId: string) => {
     try {
       setLoading(true);
-      const { data, error } = await supabase.functions.invoke("stripe-customer-api", {
+      const { data, error } = await supabase.functions.invoke("stripe-api", {
         body: {
-          path: "set-default-payment",
-          payload: { paymentMethodId },
+          action: "set-default-payment",
+          paymentMethodId,
         },
       });
 
@@ -248,7 +249,7 @@ const ProfileSettings = ({
         prev.map((pm) => ({
           ...pm,
           isDefault: pm.id === paymentMethodId,
-        })),
+        }))
       );
 
       Alert.alert("Success", "Default payment method updated");
@@ -278,25 +279,25 @@ const ProfileSettings = ({
             style: "destructive",
             onPress: async () => {
               const { data, error } = await supabase.functions.invoke(
-                "stripe-customer-api",
+                "stripe-api",
                 {
                   body: {
-                    path: "detach-payment-method",
-                    payload: { paymentMethodId },
+                    action: "detach-payment-method",
+                    paymentMethodId,
                   },
-                },
+                }
               );
 
               if (error) throw error;
 
               setPaymentMethods((prev) =>
-                prev.filter((pm) => pm.id !== paymentMethodId),
+                prev.filter((pm) => pm.id !== paymentMethodId)
               );
               Alert.alert("Success", "Payment method removed");
               setLoading(false);
             },
           },
-        ],
+        ]
       );
     } catch (error) {
       console.error("Error removing payment method:", error);
@@ -331,13 +332,17 @@ const ProfileSettings = ({
         }
 
         if (!formData.zip_code || !/^\d{5}(-\d{4})?$/.test(formData.zip_code)) {
-          errors.zip_code = "Valid ZIP code is required (e.g., 12345 or 12345-6789)";
+          errors.zip_code =
+            "Valid ZIP code is required (e.g., 12345 or 12345-6789)";
         }
       }
     }
 
     if (isBillingEditing && !formData.use_service_address_for_billing) {
-      if (!formData.billing_address_line1 || formData.billing_address_line1.trim().length < 5) {
+      if (
+        !formData.billing_address_line1 ||
+        formData.billing_address_line1.trim().length < 5
+      ) {
         errors.billing_address_line1 = "Street address is required";
       }
 
@@ -345,12 +350,19 @@ const ProfileSettings = ({
         errors.billing_city = "City is required";
       }
 
-      if (!formData.billing_state || !/^[A-Za-z]{2}$/.test(formData.billing_state)) {
+      if (
+        !formData.billing_state ||
+        !/^[A-Za-z]{2}$/.test(formData.billing_state)
+      ) {
         errors.billing_state = "2-letter state code is required";
       }
 
-      if (!formData.billing_postal_code || !/^\d{5}(-\d{4})?$/.test(formData.billing_postal_code)) {
-        errors.billing_postal_code = "Valid ZIP code is required (e.g., 12345 or 12345-6789)";
+      if (
+        !formData.billing_postal_code ||
+        !/^\d{5}(-\d{4})?$/.test(formData.billing_postal_code)
+      ) {
+        errors.billing_postal_code =
+          "Valid ZIP code is required (e.g., 12345 or 12345-6789)";
       }
     }
 
@@ -372,10 +384,10 @@ const ProfileSettings = ({
 
       if (isBillingEditing && !formData.use_service_address_for_billing) {
         try {
-          const { data: stripeData, error: billingError } = await supabase.functions.invoke("stripe-customer-api", {
-            body: {
-              path: "update-billing-address",
-              payload: {
+          const { data: stripeData, error: billingError } =
+            await supabase.functions.invoke("stripe-api", {
+              body: {
+                action: "update-billing-address",
                 address: {
                   line1: formData.billing_address_line1,
                   line2: formData.billing_address_line2,
@@ -384,20 +396,27 @@ const ProfileSettings = ({
                   postal_code: formData.billing_postal_code,
                   country: formData.billing_country || "US",
                 },
-                use_service_address_for_billing: formData.use_service_address_for_billing
-              }
-            }
-          });
+                use_service_address_for_billing:
+                  formData.use_service_address_for_billing,
+              },
+            });
 
           if (billingError) {
-            console.error("Error updating billing address in Stripe:", billingError);
-            setStripeUpdateError("Failed to update billing information in Stripe. Your profile changes will not be saved.");
+            console.error(
+              "Error updating billing address in Stripe:",
+              billingError
+            );
+            setStripeUpdateError(
+              "Failed to update billing information in Stripe. Your profile changes will not be saved."
+            );
             setLoading(false);
             return;
           }
         } catch (error) {
           console.error("Error updating billing address in Stripe:", error);
-          setStripeUpdateError("Failed to update billing information in Stripe. Your profile changes will not be saved.");
+          setStripeUpdateError(
+            "Failed to update billing information in Stripe. Your profile changes will not be saved."
+          );
           stripeUpdateSuccessful = false;
 
           const confirmContinue = await new Promise((resolve) => {
@@ -414,7 +433,7 @@ const ProfileSettings = ({
                   text: "Continue",
                   onPress: () => resolve(true),
                 },
-              ],
+              ]
             );
           });
 
@@ -431,7 +450,7 @@ const ProfileSettings = ({
         if (!stripeUpdateSuccessful) {
           Alert.alert(
             "Partial Update",
-            "Your profile information was saved, but there was a problem with your billing address update in our payment system. You may need to update your billing information again later.",
+            "Your profile information was saved, but there was a problem with your billing address update in our payment system. You may need to update your billing information again later."
           );
         } else {
           Alert.alert("Success", "Profile updated successfully");
@@ -497,7 +516,11 @@ const ProfileSettings = ({
               {isEditing ? (
                 <>
                   <TextInput
-                    className={`border ${validationErrors.name ? 'border-red-500' : 'border-gray-300'} rounded-md p-2 bg-white`}
+                    className={`border ${
+                      validationErrors.name
+                        ? "border-red-500"
+                        : "border-gray-300"
+                    } rounded-md p-2 bg-white`}
                     value={formData.name}
                     onChangeText={(value) => handleInputChange("name", value)}
                   />
@@ -538,7 +561,11 @@ const ProfileSettings = ({
               {isEditing ? (
                 <>
                   <TextInput
-                    className={`border ${validationErrors.phone ? 'border-red-500' : 'border-gray-300'} rounded-md p-2 bg-white`}
+                    className={`border ${
+                      validationErrors.phone
+                        ? "border-red-500"
+                        : "border-gray-300"
+                    } rounded-md p-2 bg-white`}
                     value={formData.phone}
                     onChangeText={(value) => handleInputChange("phone", value)}
                     keyboardType="phone-pad"
@@ -563,7 +590,11 @@ const ProfileSettings = ({
                 {isEditing ? (
                   <View className="space-y-2">
                     <TextInput
-                      className={`border ${validationErrors.address ? 'border-red-500' : 'border-gray-300'} rounded-md p-2 bg-white`}
+                      className={`border ${
+                        validationErrors.address
+                          ? "border-red-500"
+                          : "border-gray-300"
+                      } rounded-md p-2 bg-white`}
                       value={formData.address}
                       onChangeText={(value) =>
                         handleInputChange("address", value)
@@ -575,11 +606,15 @@ const ProfileSettings = ({
                         {validationErrors.address}
                       </Text>
                     )}
-                    
+
                     <View className="flex-row space-x-2">
                       <View className="flex-1">
                         <TextInput
-                          className={`border ${validationErrors.city ? 'border-red-500' : 'border-gray-300'} rounded-md p-2 bg-white`}
+                          className={`border ${
+                            validationErrors.city
+                              ? "border-red-500"
+                              : "border-gray-300"
+                          } rounded-md p-2 bg-white`}
                           value={formData.city}
                           onChangeText={(value) =>
                             handleInputChange("city", value)
@@ -592,10 +627,14 @@ const ProfileSettings = ({
                           </Text>
                         )}
                       </View>
-                      
+
                       <View>
                         <TextInput
-                          className={`border ${validationErrors.state ? 'border-red-500' : 'border-gray-300'} rounded-md p-2 bg-white w-16`}
+                          className={`border ${
+                            validationErrors.state
+                              ? "border-red-500"
+                              : "border-gray-300"
+                          } rounded-md p-2 bg-white w-16`}
                           value={formData.state}
                           onChangeText={(value) =>
                             handleInputChange("state", value)
@@ -611,10 +650,14 @@ const ProfileSettings = ({
                         )}
                       </View>
                     </View>
-                    
+
                     <View>
                       <TextInput
-                        className={`border ${validationErrors.zip_code ? 'border-red-500' : 'border-gray-300'} rounded-md p-2 bg-white w-32`}
+                        className={`border ${
+                          validationErrors.zip_code
+                            ? "border-red-500"
+                            : "border-gray-300"
+                        } rounded-md p-2 bg-white w-32`}
                         value={formData.zip_code}
                         onChangeText={(value) =>
                           handleInputChange("zip_code", value)
@@ -633,7 +676,9 @@ const ProfileSettings = ({
                   <View className="flex-row items-center">
                     <MapPin size={16} color="#6b7280" />
                     <Text className="ml-2">
-                      {formData.address} {formData.city && `, ${formData.city}`} {formData.state && `, ${formData.state}`} {formData.zip_code && formData.zip_code}
+                      {formData.address} {formData.city && `, ${formData.city}`}{" "}
+                      {formData.state && `, ${formData.state}`}{" "}
+                      {formData.zip_code && formData.zip_code}
                     </Text>
                   </View>
                 )}
@@ -662,326 +707,354 @@ const ProfileSettings = ({
           <View className="mb-6 bg-gray-50 rounded-xl p-4">
             <View className="flex-row justify-between items-center mb-4">
               <Text className="text-lg font-semibold">Billing Address</Text>
-              <TouchableOpacity onPress={() => setIsBillingEditing(!isBillingEditing)}>
+              <TouchableOpacity
+                onPress={() => setIsBillingEditing(!isBillingEditing)}
+              >
                 <Text className="text-blue-500">
                   {isBillingEditing ? "Cancel" : "Edit"}
                 </Text>
-            </TouchableOpacity>
-          </View>
+              </TouchableOpacity>
+            </View>
 
-          {/* Toggle for using service address */}
-          <View className="flex-row justify-between items-center mb-4">
-            <Text>Use service address for billing</Text>
-            <Switch
-              value={formData.use_service_address_for_billing}
-              onValueChange={handleUseSameAddressToggle}
-              trackColor={{ false: "#d1d5db", true: "#10b981" }}
-            />
-          </View>
+            {/* Toggle for using service address */}
+            <View className="flex-row justify-between items-center mb-4">
+              <Text>Use service address for billing</Text>
+              <Switch
+                value={formData.use_service_address_for_billing}
+                onValueChange={handleUseSameAddressToggle}
+                trackColor={{ false: "#d1d5db", true: "#10b981" }}
+              />
+            </View>
 
-          {/* Billing address fields (shown if not using service address) */}
-          {!formData.use_service_address_for_billing && (
-            <View className="space-y-3">
-              {isBillingEditing && (
-                <TouchableOpacity
-                  className="bg-gray-200 p-2 rounded-md mb-2"
-                  onPress={handleCopyServiceAddressToBilling}
-                >
-                  <Text className="text-center text-gray-700">Copy service address</Text>
-                </TouchableOpacity>
-              )}
-
-              <View className="space-y-1">
-                <Text className="text-gray-500 text-sm">Street Address</Text>
-                {isBillingEditing ? (
-                  <>
-                    <TextInput
-                      className={`border ${validationErrors.billing_address_line1 ? 'border-red-500' : 'border-gray-300'} rounded-md p-2 bg-white`}
-                      value={formData.billing_address_line1}
-                      onChangeText={(value) =>
-                        handleInputChange("billing_address_line1", value)
-                      }
-                      placeholder="Street Address"
-                    />
-                    {validationErrors.billing_address_line1 && (
-                      <Text className="text-red-500 text-xs mt-1">
-                        {validationErrors.billing_address_line1}
-                      </Text>
-                    )}
-                  </>
-                ) : (
-                  <Text>{formData.billing_address_line1 || "Not set"}</Text>
+            {/* Billing address fields (shown if not using service address) */}
+            {!formData.use_service_address_for_billing && (
+              <View className="space-y-3">
+                {isBillingEditing && (
+                  <TouchableOpacity
+                    className="bg-gray-200 p-2 rounded-md mb-2"
+                    onPress={handleCopyServiceAddressToBilling}
+                  >
+                    <Text className="text-center text-gray-700">
+                      Copy service address
+                    </Text>
+                  </TouchableOpacity>
                 )}
-              </View>
 
-              <View className="space-y-1">
-                <Text className="text-gray-500 text-sm">Apartment/Suite (Optional)</Text>
-                {isBillingEditing ? (
-                  <TextInput
-                    className="border border-gray-300 rounded-md p-2 bg-white"
-                    value={formData.billing_address_line2}
-                    onChangeText={(value) =>
-                      handleInputChange("billing_address_line2", value)
-                    }
-                    placeholder="Apt, Suite, etc. (optional)"
-                  />
-                ) : (
-                  <Text>{formData.billing_address_line2 || "Not set"}</Text>
-                )}
-              </View>
-
-              <View className="space-y-1">
-                <Text className="text-gray-500 text-sm">City</Text>
-                {isBillingEditing ? (
-                  <>
-                    <TextInput
-                      className={`border ${validationErrors.billing_city ? 'border-red-500' : 'border-gray-300'} rounded-md p-2 bg-white`}
-                      value={formData.billing_city}
-                      onChangeText={(value) =>
-                        handleInputChange("billing_city", value)
-                      }
-                      placeholder="City"
-                    />
-                    {validationErrors.billing_city && (
-                      <Text className="text-red-500 text-xs mt-1">
-                        {validationErrors.billing_city}
-                      </Text>
-                    )}
-                  </>
-                ) : (
-                  <Text>{formData.billing_city || "Not set"}</Text>
-                )}
-              </View>
-
-              <View className="flex-row space-x-2">
-                <View className="flex-1">
-                  <Text className="text-gray-500 text-sm">State</Text>
+                <View className="space-y-1">
+                  <Text className="text-gray-500 text-sm">Street Address</Text>
                   {isBillingEditing ? (
                     <>
                       <TextInput
-                        className={`border ${validationErrors.billing_state ? 'border-red-500' : 'border-gray-300'} rounded-md p-2 bg-white`}
-                        value={formData.billing_state}
+                        className={`border ${
+                          validationErrors.billing_address_line1
+                            ? "border-red-500"
+                            : "border-gray-300"
+                        } rounded-md p-2 bg-white`}
+                        value={formData.billing_address_line1}
                         onChangeText={(value) =>
-                          handleInputChange("billing_state", value)
+                          handleInputChange("billing_address_line1", value)
                         }
-                        placeholder="State"
-                        maxLength={2}
-                        autoCapitalize="characters"
+                        placeholder="Street Address"
                       />
-                      {validationErrors.billing_state && (
+                      {validationErrors.billing_address_line1 && (
                         <Text className="text-red-500 text-xs mt-1">
-                          {validationErrors.billing_state}
+                          {validationErrors.billing_address_line1}
                         </Text>
                       )}
                     </>
                   ) : (
-                    <Text>{formData.billing_state || "Not set"}</Text>
+                    <Text>{formData.billing_address_line1 || "Not set"}</Text>
                   )}
                 </View>
 
-                <View>
-                  <Text className="text-gray-500 text-sm">ZIP Code</Text>
+                <View className="space-y-1">
+                  <Text className="text-gray-500 text-sm">
+                    Apartment/Suite (Optional)
+                  </Text>
+                  {isBillingEditing ? (
+                    <TextInput
+                      className="border border-gray-300 rounded-md p-2 bg-white"
+                      value={formData.billing_address_line2}
+                      onChangeText={(value) =>
+                        handleInputChange("billing_address_line2", value)
+                      }
+                      placeholder="Apt, Suite, etc. (optional)"
+                    />
+                  ) : (
+                    <Text>{formData.billing_address_line2 || "Not set"}</Text>
+                  )}
+                </View>
+
+                <View className="space-y-1">
+                  <Text className="text-gray-500 text-sm">City</Text>
                   {isBillingEditing ? (
                     <>
                       <TextInput
-                        className={`border ${validationErrors.billing_postal_code ? 'border-red-500' : 'border-gray-300'} rounded-md p-2 bg-white`}
-                        value={formData.billing_postal_code}
+                        className={`border ${
+                          validationErrors.billing_city
+                            ? "border-red-500"
+                            : "border-gray-300"
+                        } rounded-md p-2 bg-white`}
+                        value={formData.billing_city}
                         onChangeText={(value) =>
-                          handleInputChange("billing_postal_code", value)
+                          handleInputChange("billing_city", value)
                         }
-                        placeholder="ZIP Code"
-                        keyboardType="numeric"
+                        placeholder="City"
                       />
-                      {validationErrors.billing_postal_code && (
+                      {validationErrors.billing_city && (
                         <Text className="text-red-500 text-xs mt-1">
-                          {validationErrors.billing_postal_code}
+                          {validationErrors.billing_city}
                         </Text>
                       )}
                     </>
                   ) : (
-                    <Text>{formData.billing_postal_code || "Not set"}</Text>
+                    <Text>{formData.billing_city || "Not set"}</Text>
                   )}
                 </View>
-              </View>
 
-              {stripeUpdateError && (
-                <View className="mt-3 p-3 bg-red-50 rounded-md flex-row items-center">
-                  <AlertCircle size={16} color="#ef4444" />
-                  <Text className="ml-2 text-red-600">{stripeUpdateError}</Text>
+                <View className="flex-row space-x-2">
+                  <View className="flex-1">
+                    <Text className="text-gray-500 text-sm">State</Text>
+                    {isBillingEditing ? (
+                      <>
+                        <TextInput
+                          className={`border ${
+                            validationErrors.billing_state
+                              ? "border-red-500"
+                              : "border-gray-300"
+                          } rounded-md p-2 bg-white`}
+                          value={formData.billing_state}
+                          onChangeText={(value) =>
+                            handleInputChange("billing_state", value)
+                          }
+                          placeholder="State"
+                          maxLength={2}
+                          autoCapitalize="characters"
+                        />
+                        {validationErrors.billing_state && (
+                          <Text className="text-red-500 text-xs mt-1">
+                            {validationErrors.billing_state}
+                          </Text>
+                        )}
+                      </>
+                    ) : (
+                      <Text>{formData.billing_state || "Not set"}</Text>
+                    )}
+                  </View>
+
+                  <View>
+                    <Text className="text-gray-500 text-sm">ZIP Code</Text>
+                    {isBillingEditing ? (
+                      <>
+                        <TextInput
+                          className={`border ${
+                            validationErrors.billing_postal_code
+                              ? "border-red-500"
+                              : "border-gray-300"
+                          } rounded-md p-2 bg-white`}
+                          value={formData.billing_postal_code}
+                          onChangeText={(value) =>
+                            handleInputChange("billing_postal_code", value)
+                          }
+                          placeholder="ZIP Code"
+                          keyboardType="numeric"
+                        />
+                        {validationErrors.billing_postal_code && (
+                          <Text className="text-red-500 text-xs mt-1">
+                            {validationErrors.billing_postal_code}
+                          </Text>
+                        )}
+                      </>
+                    ) : (
+                      <Text>{formData.billing_postal_code || "Not set"}</Text>
+                    )}
+                  </View>
                 </View>
-              )}
 
-              {isBillingEditing && (
-                <TouchableOpacity
-                  className="bg-green-500 p-3 rounded-md items-center mt-4"
-                  onPress={handleSaveProfile}
-                  disabled={loadingState}
-                >
-                  <View className="flex-row items-center">
-                    <Save size={16} color="#ffffff" />
-                    <Text className="text-white font-semibold ml-2">
-                      {loadingState ? "Saving..." : "Save Billing Address"}
+                {stripeUpdateError && (
+                  <View className="mt-3 p-3 bg-red-50 rounded-md flex-row items-center">
+                    <AlertCircle size={16} color="#ef4444" />
+                    <Text className="ml-2 text-red-600">
+                      {stripeUpdateError}
                     </Text>
                   </View>
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
-        </View>
-      )}
+                )}
 
-      {/* Notification Preferences */}
-      <View className="mb-6 bg-gray-50 rounded-xl p-4">
-        <Text className="text-lg font-semibold mb-4">
-          Notification Preferences
-        </Text>
-
-        <View className="space-y-3">
-          <View className="flex-row justify-between items-center">
-            <View className="flex-row items-center">
-              <Bell size={16} color="#6b7280" />
-              <Text className="ml-2">Email Notifications</Text>
-            </View>
-            <Switch
-              value={formData.notificationPreferences?.email}
-              onValueChange={() => handleNotificationToggle("email")}
-              trackColor={{ false: "#d1d5db", true: "#10b981" }}
-            />
-          </View>
-
-          <View className="flex-row justify-between items-center">
-            <View className="flex-row items-center">
-              <Bell size={16} color="#6b7280" />
-              <Text className="ml-2">Push Notifications</Text>
-            </View>
-            <Switch
-              value={formData.notificationPreferences?.push}
-              onValueChange={() => handleNotificationToggle("push")}
-              trackColor={{ false: "#d1d5db", true: "#10b981" }}
-            />
-          </View>
-
-          <View className="flex-row justify-between items-center">
-            <View className="flex-row items-center">
-              <Bell size={16} color="#6b7280" />
-              <Text className="ml-2">SMS Notifications</Text>
-            </View>
-            <Switch
-              value={formData.notificationPreferences?.sms}
-              onValueChange={() => handleNotificationToggle("sms")}
-              trackColor={{ false: "#d1d5db", true: "#10b981" }}
-            />
-          </View>
-        </View>
-      </View>
-
-      {/* Payment Methods (Customer only) */}
-      {userType === "customer" && (
-        <View className="mb-6 bg-gray-50 rounded-xl p-4">
-          <Text className="text-lg font-semibold mb-4">
-            Payment Methods
-          </Text>
-
-          {loadingPaymentMethods ? (
-            <ActivityIndicator size="small" color="#10b981" />
-          ) : paymentMethods.length > 0 ? (
-            <View>
-              {paymentMethods.map((method) => (
-                <View
-                  key={method.id}
-                  className="flex-row justify-between items-center p-3 bg-white rounded-md mb-2 border border-gray-100"
-                >
-                  <View className="flex-row items-center flex-1">
-                    <CreditCard size={20} color="#6b7280" />
-                    <View className="ml-3">
-                      <Text>
-                        {method.card.brand.charAt(0).toUpperCase() + method.card.brand.slice(1)} •••• {method.card.last4}
-                      </Text>
-                      <Text className="text-xs text-gray-500">
-                        Expires {method.card.expiryMonth}/{String(method.card.expiryYear).slice(-2)}
+                {isBillingEditing && (
+                  <TouchableOpacity
+                    className="bg-green-500 p-3 rounded-md items-center mt-4"
+                    onPress={handleSaveProfile}
+                    disabled={loadingState}
+                  >
+                    <View className="flex-row items-center">
+                      <Save size={16} color="#ffffff" />
+                      <Text className="text-white font-semibold ml-2">
+                        {loadingState ? "Saving..." : "Save Billing Address"}
                       </Text>
                     </View>
-                  </View>
-                  <View className="flex-row items-center">
-                    {method.isDefault ? (
-                      <View className="bg-blue-100 px-2 py-1 rounded mr-2">
-                        <Text className="text-xs text-blue-700">Default</Text>
-                      </View>
-                    ) : (
-                      <TouchableOpacity 
-                        className="mr-2 p-2"
-                        onPress={() => handleSetDefaultPaymentMethod(method.id)}
-                      >
-                        <Check size={16} color="#10b981" />
-                      </TouchableOpacity>
-                    )}
-                    <TouchableOpacity 
-                      className="p-2"
-                      onPress={() => handleRemovePaymentMethod(method.id)}
-                    >
-                      <Trash size={16} color="#ef4444" />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ))}
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Notification Preferences */}
+        <View className="mb-6 bg-gray-50 rounded-xl p-4">
+          <Text className="text-lg font-semibold mb-4">
+            Notification Preferences
+          </Text>
+
+          <View className="space-y-3">
+            <View className="flex-row justify-between items-center">
+              <View className="flex-row items-center">
+                <Bell size={16} color="#6b7280" />
+                <Text className="ml-2">Email Notifications</Text>
+              </View>
+              <Switch
+                value={formData.notificationPreferences?.email}
+                onValueChange={() => handleNotificationToggle("email")}
+                trackColor={{ false: "#d1d5db", true: "#10b981" }}
+              />
             </View>
-          ) : (
-            <Text className="text-gray-500 italic py-2">No payment methods saved</Text>
-          )}
+
+            <View className="flex-row justify-between items-center">
+              <View className="flex-row items-center">
+                <Bell size={16} color="#6b7280" />
+                <Text className="ml-2">Push Notifications</Text>
+              </View>
+              <Switch
+                value={formData.notificationPreferences?.push}
+                onValueChange={() => handleNotificationToggle("push")}
+                trackColor={{ false: "#d1d5db", true: "#10b981" }}
+              />
+            </View>
+
+            <View className="flex-row justify-between items-center">
+              <View className="flex-row items-center">
+                <Bell size={16} color="#6b7280" />
+                <Text className="ml-2">SMS Notifications</Text>
+              </View>
+              <Switch
+                value={formData.notificationPreferences?.sms}
+                onValueChange={() => handleNotificationToggle("sms")}
+                trackColor={{ false: "#d1d5db", true: "#10b981" }}
+              />
+            </View>
+          </View>
+        </View>
+
+        {/* Payment Methods (Customer only) */}
+        {userType === "customer" && (
+          <View className="mb-6 bg-gray-50 rounded-xl p-4">
+            <Text className="text-lg font-semibold mb-4">Payment Methods</Text>
+
+            {loadingPaymentMethods ? (
+              <ActivityIndicator size="small" color="#10b981" />
+            ) : paymentMethods.length > 0 ? (
+              <View>
+                {paymentMethods.map((method) => (
+                  <View
+                    key={method.id}
+                    className="flex-row justify-between items-center p-3 bg-white rounded-md mb-2 border border-gray-100"
+                  >
+                    <View className="flex-row items-center flex-1">
+                      <CreditCard size={20} color="#6b7280" />
+                      <View className="ml-3">
+                        <Text>
+                          {method.card.brand.charAt(0).toUpperCase() +
+                            method.card.brand.slice(1)}{" "}
+                          •••• {method.card.last4}
+                        </Text>
+                        <Text className="text-xs text-gray-500">
+                          Expires {method.card.expiryMonth}/
+                          {String(method.card.expiryYear).slice(-2)}
+                        </Text>
+                      </View>
+                    </View>
+                    <View className="flex-row items-center">
+                      {method.isDefault ? (
+                        <View className="bg-blue-100 px-2 py-1 rounded mr-2">
+                          <Text className="text-xs text-blue-700">Default</Text>
+                        </View>
+                      ) : (
+                        <TouchableOpacity
+                          className="mr-2 p-2"
+                          onPress={() =>
+                            handleSetDefaultPaymentMethod(method.id)
+                          }
+                        >
+                          <Check size={16} color="#10b981" />
+                        </TouchableOpacity>
+                      )}
+                      <TouchableOpacity
+                        className="p-2"
+                        onPress={() => handleRemovePaymentMethod(method.id)}
+                      >
+                        <Trash size={16} color="#ef4444" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <Text className="text-gray-500 italic py-2">
+                No payment methods saved
+              </Text>
+            )}
+
+            <TouchableOpacity
+              className="flex-row items-center justify-center p-3 bg-gray-100 rounded-md mt-2"
+              onPress={() => setIsAddCardModalVisible(true)}
+            >
+              <Plus size={16} color="#6b7280" />
+              <Text className="ml-2 text-gray-700">Add Payment Method</Text>
+            </TouchableOpacity>
+
+            {/* Add Payment Method Modal */}
+            <AddPaymentMethodModal
+              visible={isAddCardModalVisible}
+              onClose={() => setIsAddCardModalVisible(false)}
+              onSaveSuccess={() => {
+                setIsAddCardModalVisible(false);
+                fetchPaymentMethods(); // Refresh payment methods list
+              }}
+              stripePublishableKey={STRIPE_PUBLISHABLE_KEY}
+            />
+          </View>
+        )}
+
+        {/* Account Settings */}
+        <View className="mb-6 bg-gray-50 rounded-xl p-4">
+          <Text className="text-lg font-semibold mb-4">Account Settings</Text>
+
+          <TouchableOpacity className="flex-row justify-between items-center p-3 bg-white rounded-md mb-2">
+            <Text>Change Password</Text>
+            <ChevronRight size={16} color="#9ca3af" />
+          </TouchableOpacity>
+
+          <TouchableOpacity className="flex-row justify-between items-center p-3 bg-white rounded-md mb-2">
+            <Text>Privacy Settings</Text>
+            <ChevronRight size={16} color="#9ca3af" />
+          </TouchableOpacity>
 
           <TouchableOpacity
-            className="flex-row items-center justify-center p-3 bg-gray-100 rounded-md mt-2"
-            onPress={() => setIsAddCardModalVisible(true)}
+            className="flex-row justify-between items-center p-3 bg-white rounded-md"
+            onPress={handleLogout}
+            disabled={loadingState}
           >
-            <Plus size={16} color="#6b7280" />
-            <Text className="ml-2 text-gray-700">Add Payment Method</Text>
+            <View className="flex-row items-center">
+              <LogOut size={16} color="#ef4444" />
+              <Text className="ml-2 text-red-500">
+                {loadingState ? "Logging out..." : "Log Out"}
+              </Text>
+            </View>
+            <ChevronRight size={16} color="#9ca3af" />
           </TouchableOpacity>
-          
-          {/* Add Payment Method Modal */}
-          <AddPaymentMethodModal 
-            visible={isAddCardModalVisible}
-            onClose={() => setIsAddCardModalVisible(false)}
-            onSaveSuccess={() => {
-              setIsAddCardModalVisible(false);
-              fetchPaymentMethods(); // Refresh payment methods list
-            }}
-            stripePublishableKey={STRIPE_PUBLISHABLE_KEY}
-          />
         </View>
-      )}
-
-      {/* Account Settings */}
-      <View className="mb-6 bg-gray-50 rounded-xl p-4">
-        <Text className="text-lg font-semibold mb-4">Account Settings</Text>
-
-        <TouchableOpacity className="flex-row justify-between items-center p-3 bg-white rounded-md mb-2">
-          <Text>Change Password</Text>
-          <ChevronRight size={16} color="#9ca3af" />
-        </TouchableOpacity>
-
-        <TouchableOpacity className="flex-row justify-between items-center p-3 bg-white rounded-md mb-2">
-          <Text>Privacy Settings</Text>
-          <ChevronRight size={16} color="#9ca3af" />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          className="flex-row justify-between items-center p-3 bg-white rounded-md"
-          onPress={handleLogout}
-          disabled={loadingState}
-        >
-          <View className="flex-row items-center">
-            <LogOut size={16} color="#ef4444" />
-            <Text className="ml-2 text-red-500">
-              {loadingState ? "Logging out..." : "Log Out"}
-            </Text>
-          </View>
-          <ChevronRight size={16} color="#9ca3af" />
-        </TouchableOpacity>
       </View>
-    </View>
-  </ScrollView>
-);
-
+    </ScrollView>
+  );
 };
 
 export default ProfileSettings;
