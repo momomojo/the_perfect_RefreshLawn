@@ -1,0 +1,75 @@
+# Augment Guidelines for the_perfect_RefreshLawn Project
+
+## Repository Information
+- Repository: the_perfect_RefreshLawn
+- Default Branch: supabase-auth
+- Working Branch Strategy: Create from stripe-integration-setup, cherry-pick from supabase-auth
+
+## Supabase Integration
+- Supabase Project Reference: sjgixmidwtwzbduakzkk
+- Webhook URL Format: https://sjgixmidwtwzbduakzkk.supabase.co/functions/v1/stripe-webhook
+- Using Supabase Edge Functions for Stripe operations
+
+## Stripe Integration Approach
+- Use React Native SDK only (no Foreign Data Wrapper)
+- The FDW approach was abandoned in favor of streamlined Edge Function-only approach
+- Consolidate multiple Stripe-related Edge Functions into stripe-api and stripe-webhook
+- Use production URLs for webhooks (no local development with ngrok)
+- Address Stripe API filtering limitations with client-side filtering
+- Database schema partially supports Stripe integration:
+  - recurring_plans has stripe_price_id
+  - services missing stripe_product_id and stripe_price_id fields
+
+## Development Guidelines
+- Preserve all package.json dependencies from stripe-integration-setup branch
+- Only add new dependencies after confirming compatibility with current Expo version
+- Never modify the original stripe-integration-setup branch
+- Carefully compare file versions to maintain Stripe functionality
+- Analyze all database migrations for proper sequencing and compatibility
+- Test integration points to ensure seamless functionality
+- When writing terminal commands for Windows, avoid using '&&' operator
+
+## User Preferences
+- Detailed, prioritized task lists with step-by-step instructions
+- Thorough validation of implementation plans against existing codebase
+- Implement one task/subtask at a time with verification and commits after each section
+- Include 'augment' in commit messages to track AI contributions
+- Strict adherence to the launch plan created after meticulous research
+- Receive commit messages from the assistant but execute commits manually
+- Implement improvements as extensions of existing tasks rather than creating new tasks
+- Cherry-picking changes for cleaner integration rather than merging or rebasing
+- Structured approach to task management with explicit tracking
+
+## Task Management System
+- After completing each task, update memory with "TASK COMPLETED: [task description]" and results
+- When identifying new issues, create new tasks with "NEW TASK: [task description]"
+- Break down complex tasks into subtasks with "SUBTASK: [subtask description]"
+- Upon task completion, move to memory log with "LOGGED: [completed task]"
+- Review memory log after each task or every 2 subtasks, noting "MEMORY LOG REVIEWED"
+- When uncertain, reference memory log with "REFERENCING MEMORY LOG: [specific question]"
+- Maintain running list of active tasks and completed tasks
+- After significant milestones, summarize with "MILESTONE REACHED: [description]"
+
+## Current Project Status
+- The stripe-integration-setup branch contains working Stripe integration
+- The supabase-auth branch has improved code structure but dependency conflicts
+- Need to create a new branch that combines the working Stripe integration with improved code structure
+- Junior developer has not been manually testing code despite claims
+- Require thorough verification of all code
+
+## Implementation Strategy
+1. Create new branch from stripe-integration-setup
+2. Selectively cherry-pick improvements from supabase-auth
+3. Carefully integrate while maintaining working Stripe functionality
+4. Preserve all valuable functionality from stripe-integration-setup
+5. Test thoroughly at each integration point
+6. Document all changes and decisions
+
+## Specific Technical Details
+- The database schema needs to be updated to fully support Stripe integration
+- Edge Functions need to be consolidated and optimized
+- UI components need to be integrated with the Stripe functionality
+- Error handling needs to be improved throughout the application
+- Testing needs to be thorough and comprehensive
+
+This document serves as the central reference for all development work on the project and should be consulted regularly to ensure adherence to the established guidelines and preferences.
