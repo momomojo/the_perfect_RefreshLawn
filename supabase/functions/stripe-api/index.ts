@@ -78,6 +78,48 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 console.log("Hello from Functions!");
 
+// Add the new error formatting utility function
+function formatErrorResponse(
+  error: Error | Stripe.errors.StripeError | unknown,
+  operation: string,
+  defaultStatus: number = 500
+): Response {
+  console.error(`Error during ${operation}:`, error);
+
+  let statusCode = defaultStatus;
+  let message = "An unexpected error occurred";
+  let code = "unknown_error";
+
+  if (error instanceof Stripe.errors.StripeError) {
+    statusCode = error.statusCode || 500;
+    message = error.message;
+    code = error.code || "stripe_error";
+  } else if (error instanceof Error) {
+    message = error.message;
+  }
+
+  // Ensure headers are always defined
+  const headers: ResponseHeaders = {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers":
+      "authorization, x-client-info, apikey, content-type",
+  };
+
+  return new Response(
+    JSON.stringify({
+      error: message,
+      code: code,
+      operation,
+    }),
+    {
+      headers,
+      status: statusCode,
+    }
+  );
+}
+
 serve(async (req) => {
   // CORS headers
   const headers: ResponseHeaders = {
@@ -225,11 +267,7 @@ serve(async (req) => {
         });
     }
   } catch (error) {
-    console.error("Error processing request:", error);
-    return new Response(JSON.stringify({ error: (error as Error).message }), {
-      headers,
-      status: 500,
-    });
+    return formatErrorResponse(error, "processing request");
   }
 });
 
@@ -257,9 +295,10 @@ async function handleCreatePaymentIntent(
     }
 
     // Construct customer details from profile or fallbacks
-    const customerName = profileData?.first_name && profileData?.last_name
-      ? `${profileData.first_name} ${profileData.last_name}`
-      : null; // Fallback to null if names missing
+    const customerName =
+      profileData?.first_name && profileData?.last_name
+        ? `${profileData.first_name} ${profileData.last_name}`
+        : null; // Fallback to null if names missing
     const customerEmail = user.email;
     const customerPhone = profileData?.phone || null; // Use profile phone or null
 
@@ -295,7 +334,6 @@ async function handleCreatePaymentIntent(
           updated_at: new Date().toISOString(),
         })
         .eq("user_id", user.id);
-
     } else {
       // 3b. Customer doesn't exist - Create in Stripe and save to local DB
       console.log(`Creating new Stripe customer for user: ${user.id}`);
@@ -332,7 +370,9 @@ async function handleCreatePaymentIntent(
       },
     });
 
-    console.log(`Payment intent created: ${paymentIntent.id} for customer ${customerId}`);
+    console.log(
+      `Payment intent created: ${paymentIntent.id} for customer ${customerId}`
+    );
 
     return new Response(
       JSON.stringify({
@@ -341,11 +381,7 @@ async function handleCreatePaymentIntent(
       { headers }
     );
   } catch (error) {
-    console.error("Error in handleCreatePaymentIntent:", error);
-    return new Response(JSON.stringify({ error: (error as Error).message }), {
-      headers,
-      status: 400,
-    });
+    return formatErrorResponse(error, "creating payment intent", 400);
   }
 }
 
@@ -356,11 +392,12 @@ async function handleCreateCustomer(
 ) {
   try {
     // 1. Check if customer already exists in our database
-    const { data: existingCustomerRecord, error: customerDbError } = await supabase
-      .from("customers")
-      .select("stripe_customer_id")
-      .eq("user_id", user.id)
-      .maybeSingle();
+    const { data: existingCustomerRecord, error: customerDbError } =
+      await supabase
+        .from("customers")
+        .select("stripe_customer_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
 
     if (customerDbError) throw customerDbError;
 
@@ -368,7 +405,9 @@ async function handleCreateCustomer(
       // Customer already exists, maybe update?
       // For now, just return existing ID as per original logic.
       // Consider adding update logic similar to handleCreatePaymentIntent if needed.
-      console.log(`Customer already exists (handleCreateCustomer): ${existingCustomerRecord.stripe_customer_id}`);
+      console.log(
+        `Customer already exists (handleCreateCustomer): ${existingCustomerRecord.stripe_customer_id}`
+      );
       return new Response(
         JSON.stringify({
           customerId: existingCustomerRecord.stripe_customer_id,
@@ -391,9 +430,10 @@ async function handleCreateCustomer(
     }
 
     // 3. Construct customer details using profile first, then body/auth fallbacks
-    const customerName = profileData?.first_name && profileData?.last_name
-      ? `${profileData.first_name} ${profileData.last_name}`
-      : body.name || null; // Fallback to body.name if profile names missing
+    const customerName =
+      profileData?.first_name && profileData?.last_name
+        ? `${profileData.first_name} ${profileData.last_name}`
+        : body.name || null; // Fallback to body.name if profile names missing
     const customerEmail = user.email;
     const customerPhone = profileData?.phone || body.phone || null; // Use profile phone or body.phone
 
@@ -407,7 +447,9 @@ async function handleCreateCustomer(
       },
     });
     const customerId = stripeCustomer.id;
-    console.log(`New Stripe customer created (handleCreateCustomer): ${customerId}`);
+    console.log(
+      `New Stripe customer created (handleCreateCustomer): ${customerId}`
+    );
 
     // 5. Save the *complete* customer info to your 'customers' database
     await supabase.from("customers").insert({
@@ -427,11 +469,7 @@ async function handleCreateCustomer(
       { headers }
     );
   } catch (error) {
-    console.error("Error in handleCreateCustomer:", error);
-    return new Response(JSON.stringify({ error: (error as Error).message }), {
-      headers,
-      status: 400,
-    });
+    return formatErrorResponse(error, "creating customer", 400);
   }
 }
 

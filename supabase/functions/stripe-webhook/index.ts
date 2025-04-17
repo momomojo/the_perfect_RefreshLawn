@@ -20,6 +20,53 @@ const stripe = new Stripe(stripeSecretKey, {
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+// Add the new error formatting utility function
+function formatErrorResponse(
+  error: Error | Stripe.errors.StripeError | unknown,
+  operation: string,
+  defaultStatus: number = 400 // Default to 400 for webhook errors
+): Response {
+  console.error(`Error during ${operation}:`, error);
+
+  let statusCode = defaultStatus;
+  let message = "An unexpected error occurred";
+  let code = "unknown_error";
+
+  // Check for Stripe signature verification errors specifically
+  if (
+    error instanceof Stripe.errors.StripeSignatureVerificationError ||
+    (error instanceof Error && error.message.includes("signature"))
+  ) {
+    statusCode = 400;
+    message = "Webhook signature verification failed";
+    code = "stripe_signature_verification_error";
+  } else if (error instanceof Stripe.errors.StripeError) {
+    statusCode = error.statusCode || 500;
+    message = error.message;
+    code = error.code || "stripe_error";
+  } else if (error instanceof Error) {
+    message = error.message;
+  }
+
+  // Base headers
+  const headers = {
+    "Content-Type": "application/json",
+    Allow: "POST", // Indicate allowed method for 405
+  };
+
+  return new Response(
+    JSON.stringify({
+      error: message,
+      code: code,
+      operation,
+    }),
+    {
+      headers,
+      status: statusCode,
+    }
+  );
+}
+
 serve(async (req) => {
   // CORS for preflight requests
   if (req.method === "OPTIONS") {
@@ -45,19 +92,24 @@ serve(async (req) => {
     // Get the signature from the headers
     const signature = req.headers.get("stripe-signature");
     if (!signature) {
-      return new Response(JSON.stringify({ error: "No signature provided" }), {
-        headers: { "Content-Type": "application/json" },
-        status: 400,
-      });
+      // Use formatErrorResponse for missing signature
+      return formatErrorResponse(
+        new Error("No signature provided"),
+        "webhook signature verification",
+        400
+      );
     }
 
     // Log webhook details for debugging
     console.log("Webhook signature:", signature);
-    console.log("Webhook secret (first few chars):", stripeWebhookSecret.substring(0, 5) + "...");
+    console.log(
+      "Webhook secret (first few chars):",
+      stripeWebhookSecret.substring(0, 5) + "..."
+    );
 
     // Get the raw request body
     const body = await req.text();
-    
+
     // Log body length for debugging
     console.log("Request body length:", body.length);
 
@@ -73,13 +125,7 @@ serve(async (req) => {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       console.error(`Webhook signature verification failed: ${errorMessage}`);
-      return new Response(
-        JSON.stringify({ error: `Webhook Error: ${errorMessage}` }),
-        {
-          headers: { "Content-Type": "application/json" },
-          status: 400,
-        }
-      );
+      return formatErrorResponse(err, "webhook signature verification", 400);
     }
 
     // Handle the event
@@ -91,7 +137,9 @@ serve(async (req) => {
         break;
 
       case "charge.succeeded":
-        console.log(`Charge succeeded: ${event.data.object.id}, for payment intent: ${event.data.object.payment_intent}`);
+        console.log(
+          `Charge succeeded: ${event.data.object.id}, for payment intent: ${event.data.object.payment_intent}`
+        );
         // No need to process as we handle payment_intent.succeeded
         break;
 
@@ -133,12 +181,7 @@ serve(async (req) => {
       status: 200,
     });
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error("Error handling webhook:", error);
-    return new Response(JSON.stringify({ error: errorMessage }), {
-      headers: { "Content-Type": "application/json" },
-      status: 400,
-    });
+    return formatErrorResponse(error, "processing webhook", 400);
   }
 });
 
@@ -335,7 +378,6 @@ async function handleCustomerUpdated(customer: Stripe.Customer) {
     //     console.error(`Error updating profile ${supabaseUserId}:`, profileUpdateError);
     //   }
     // }
-
   } catch (error) {
     console.error(
       "Database error handling customer.updated:",
