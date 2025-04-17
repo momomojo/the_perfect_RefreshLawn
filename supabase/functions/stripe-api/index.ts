@@ -533,11 +533,7 @@ async function handleCreateSubscription(
       { headers }
     );
   } catch (error) {
-    console.error("Error creating subscription:", error);
-    return new Response(JSON.stringify({ error: (error as Error).message }), {
-      headers,
-      status: 400,
-    });
+    return formatErrorResponse(error, "creating subscription", 400);
   }
 }
 

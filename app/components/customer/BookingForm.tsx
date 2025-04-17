@@ -226,16 +226,13 @@ const BookingForm = ({
         throw new Error("Authentication session not found");
       }
 
-      const { data, error } = await supabase.functions.invoke(
-        "stripe-customer-api",
-        {
-          body: { path: "list-payment-methods" },
-          // Explicitly set the Authorization header with the access token
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-          },
-        }
-      );
+      const { data, error } = await supabase.functions.invoke("stripe-api", {
+        body: { action: "list-payment-methods" },
+        // Explicitly set the Authorization header with the access token
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
 
       if (error) {
         console.error("Supabase function error:", error);
