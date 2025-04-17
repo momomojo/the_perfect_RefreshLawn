@@ -1,0 +1,18 @@
+{
+  "data": {
+    "id": "test-user-id",
+    "name": "Test User",
+    "email": "test@example.com",
+    "phone": "555-123-4567",
+    "address": "123 Test Street",
+    "city": "Test City",
+    "state": "TS",
+    "zip_code": "12345",
+    "user_type": "customer",
+    "notificationPreferences": {
+      "email": true,
+      "push": true,
+      "sms": false
+    }
+  }
+}

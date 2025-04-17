@@ -1,0 +1,64 @@
+{
+  "data": [
+    {
+      "id": "py_12345",
+      "booking_id": "BK-12345",
+      "customer_id": "cus_1",
+      "customer_name": "John Doe",
+      "amount": 5000,
+      "currency": "usd",
+      "status": "succeeded",
+      "payment_method": "card_visa_4242",
+      "payment_method_details": "Visa ending in 4242",
+      "created_at": "2025-04-10T12:30:00Z"
+    },
+    {
+      "id": "py_12346",
+      "booking_id": "BK-12346",
+      "customer_id": "cus_2",
+      "customer_name": "Jane Smith",
+      "amount": 7500,
+      "currency": "usd",
+      "status": "succeeded",
+      "payment_method": "card_mastercard_5555",
+      "payment_method_details": "Mastercard ending in 5555",
+      "created_at": "2025-04-11T12:30:00Z"
+    },
+    {
+      "id": "py_12347",
+      "booking_id": "BK-12347",
+      "customer_id": "cus_3",
+      "customer_name": "Bob Johnson",
+      "amount": 6000,
+      "currency": "usd",
+      "status": "succeeded",
+      "payment_method": "card_amex_0005",
+      "payment_method_details": "Amex ending in 0005",
+      "created_at": "2025-04-12T12:30:00Z"
+    },
+    {
+      "id": "py_12348",
+      "booking_id": "BK-12348",
+      "customer_id": "cus_1",
+      "customer_name": "John Doe",
+      "amount": 5000,
+      "currency": "usd",
+      "status": "pending",
+      "payment_method": "card_visa_4242",
+      "payment_method_details": "Visa ending in 4242",
+      "created_at": "2025-04-13T12:30:00Z"
+    },
+    {
+      "id": "py_12349",
+      "booking_id": "BK-12349",
+      "customer_id": "cus_2",
+      "customer_name": "Jane Smith",
+      "amount": 7500,
+      "currency": "usd",
+      "status": "failed",
+      "payment_method": "card_mastercard_5555",
+      "payment_method_details": "Mastercard ending in 5555",
+      "created_at": "2025-03-10T12:30:00Z"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "data": [
+    {
+      "id": "1",
+      "name": "Lawn Mowing",
+      "description": "Regular lawn mowing service",
+      "base_price": 50,
+      "image_url": "https://images.unsplash.com/photo-1589428473816-b2b7632082df?w=400&q=80"
+    },
+    {
+      "id": "2",
+      "name": "Lawn Fertilization",
+      "description": "Fertilize your lawn for healthier grass",
+      "base_price": 75,
+      "image_url": "https://images.unsplash.com/photo-1589428473816-b2b7632082df?w=400&q=80"
+    },
+    {
+      "id": "3",
+      "name": "Weed Control",
+      "description": "Control weeds in your lawn",
+      "base_price": 60,
+      "image_url": "https://images.unsplash.com/photo-1589428473816-b2b7632082df?w=400&q=80"
+    }
+  ]
+}

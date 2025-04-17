@@ -1,0 +1,24 @@
+{
+  "paymentMethods": [
+    {
+      "id": "pm_test_123456789",
+      "card": {
+        "brand": "visa",
+        "last4": "4242",
+        "expiryMonth": 12,
+        "expiryYear": 2025
+      },
+      "isDefault": true
+    },
+    {
+      "id": "pm_test_987654321",
+      "card": {
+        "brand": "mastercard",
+        "last4": "5555",
+        "expiryMonth": 10,
+        "expiryYear": 2024
+      },
+      "isDefault": false
+    }
+  ]
+}
