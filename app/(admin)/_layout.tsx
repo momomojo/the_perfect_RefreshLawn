@@ -4,11 +4,12 @@ import { View, Text } from "react-native";
 import {
   Home,
   Users,
-  Settings,
+  Settings as SettingsIcon,
   BarChart3,
   CreditCard,
   Cog,
   Calendar,
+  DollarSign,
 } from "lucide-react-native";
 import ProtectedRoute from "../components/common/ProtectedRoute";
 
@@ -80,7 +81,9 @@ export default function AdminLayout() {
             name="services"
             options={{
               title: "Services",
-              tabBarIcon: ({ color }) => <Settings size={24} color={color} />,
+              tabBarIcon: ({ color }) => (
+                <SettingsIcon size={24} color={color} />
+              ),
               tabBarLabel: ({ color }) => (
                 <Text style={{ color, fontSize: 12, marginBottom: 5 }}>
                   Services
@@ -101,13 +104,13 @@ export default function AdminLayout() {
             }}
           />
           <Tabs.Screen
-            name="payments"
+            name="billing"
             options={{
-              title: "Payments",
-              tabBarIcon: ({ color }) => <CreditCard size={24} color={color} />,
+              title: "Billing",
+              tabBarIcon: ({ color }) => <DollarSign size={24} color={color} />,
               tabBarLabel: ({ color }) => (
                 <Text style={{ color, fontSize: 12, marginBottom: 5 }}>
-                  Payments
+                  Billing
                 </Text>
               ),
             }}
@@ -124,6 +127,9 @@ export default function AdminLayout() {
               ),
             }}
           />
+          <Tabs.Screen name="payments" options={{ href: null }} />
+          <Tabs.Screen name="customers" options={{ href: null }} />
+          <Tabs.Screen name="invoices" options={{ href: null }} />
         </Tabs>
       </View>
     </ProtectedRoute>
