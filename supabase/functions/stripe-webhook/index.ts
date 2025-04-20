@@ -53,11 +53,10 @@ serve(async (req) => {
 
     // Log webhook details for debugging
     console.log("Webhook signature:", signature);
-    console.log("Webhook secret (first few chars):", stripeWebhookSecret.substring(0, 5) + "...");
 
     // Get the raw request body
     const body = await req.text();
-    
+
     // Log body length for debugging
     console.log("Request body length:", body.length);
 
@@ -87,40 +86,58 @@ serve(async (req) => {
 
     switch (event.type) {
       case "payment_intent.succeeded":
-        await handlePaymentIntentSucceeded(event.data.object);
+        await handlePaymentIntentSucceeded(
+          event.data.object as Stripe.PaymentIntent
+        );
         break;
 
       case "charge.succeeded":
-        console.log(`Charge succeeded: ${event.data.object.id}, for payment intent: ${event.data.object.payment_intent}`);
+        console.log(
+          `Charge succeeded: ${event.data.object.id}, for payment intent: ${event.data.object.payment_intent}`
+        );
         // No need to process as we handle payment_intent.succeeded
         break;
 
       case "payment_intent.payment_failed":
-        await handlePaymentIntentFailed(event.data.object);
+        await handlePaymentIntentFailed(
+          event.data.object as Stripe.PaymentIntent
+        );
         break;
 
       case "customer.subscription.created":
-        await handleSubscriptionCreated(event.data.object);
+        await handleSubscriptionCreated(
+          event.data.object as Stripe.Subscription
+        );
         break;
 
       case "customer.subscription.updated":
-        await handleSubscriptionUpdated(event.data.object);
+        await handleSubscriptionUpdated(
+          event.data.object as Stripe.Subscription
+        );
         break;
 
       case "customer.subscription.deleted":
-        await handleSubscriptionDeleted(event.data.object);
+        await handleSubscriptionDeleted(
+          event.data.object as Stripe.Subscription
+        );
         break;
 
       case "customer.updated":
-        await handleCustomerUpdated(event.data.object);
+        await handleCustomerUpdated(event.data.object as Stripe.Customer);
         break;
 
       case "invoice.payment_succeeded":
-        await handleInvoicePaymentSucceeded(event.data.object);
+        await handleInvoicePaymentSucceeded(
+          event.data.object as Stripe.Invoice
+        );
         break;
 
       case "invoice.payment_failed":
-        await handleInvoicePaymentFailed(event.data.object);
+        await handleInvoicePaymentFailed(event.data.object as Stripe.Invoice);
+        break;
+
+      case "charge.refunded":
+        await handleChargeRefunded(event.data.object as Stripe.Charge);
         break;
 
       default:
@@ -156,16 +173,50 @@ async function handlePaymentIntentSucceeded(
   }
 
   // Update payment records in database
-  await supabase.from("payments").insert({
-    user_id: supabaseUserId,
-    stripe_payment_id: paymentIntent.id,
-    stripe_customer_id: paymentIntent.customer as string,
-    amount: paymentIntent.amount,
-    currency: paymentIntent.currency,
-    status: paymentIntent.status,
-    payment_method: paymentIntent.payment_method as string,
-    created_at: new Date().toISOString(),
-  });
+  await supabase.from("payments").upsert(
+    {
+      user_id: supabaseUserId,
+      booking_id: paymentIntent.metadata?.booking_id,
+      stripe_payment_id: paymentIntent.id,
+      stripe_customer_id: paymentIntent.customer as string,
+      amount: paymentIntent.amount,
+      currency: paymentIntent.currency,
+      status: paymentIntent.status,
+      payment_method: paymentIntent.payment_method_types?.join(","),
+      created_at: new Date().toISOString(),
+    },
+    { onConflict: "stripe_payment_id" }
+  );
+
+  // Update booking status to payment_confirmed if booking_id is in metadata
+  if (paymentIntent.metadata?.booking_id) {
+    console.log("Updating booking status to payment_confirmed");
+
+    // Option 1: Use the new database function
+    const { data, error } = await supabase.rpc(
+      "update_booking_status_for_payment",
+      {
+        payment_intent_id: paymentIntent.id,
+        new_status: "payment_confirmed",
+      }
+    );
+
+    if (error) {
+      console.error("Error updating booking status with RPC:", error);
+
+      // Option 2: Fall back to direct update via bookings table
+      const { error: directError } = await supabase
+        .from("bookings")
+        .update({ status: "payment_confirmed" })
+        .eq("stripe_payment_intent_id", paymentIntent.id);
+
+      if (directError) {
+        console.error("Error directly updating booking status:", directError);
+      }
+    } else {
+      console.log("Successfully updated booking status to payment_confirmed");
+    }
+  }
 }
 
 async function handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent) {
@@ -178,17 +229,51 @@ async function handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent) {
   }
 
   // Log the failed payment
-  await supabase.from("payments").insert({
-    user_id: supabaseUserId,
-    stripe_payment_id: paymentIntent.id,
-    stripe_customer_id: paymentIntent.customer as string,
-    amount: paymentIntent.amount,
-    currency: paymentIntent.currency,
-    status: paymentIntent.status,
-    payment_method: paymentIntent.payment_method as string,
-    error_message: paymentIntent.last_payment_error?.message,
-    created_at: new Date().toISOString(),
-  });
+  await supabase.from("payments").upsert(
+    {
+      user_id: supabaseUserId,
+      booking_id: paymentIntent.metadata?.booking_id,
+      stripe_payment_id: paymentIntent.id,
+      stripe_customer_id: paymentIntent.customer as string,
+      amount: paymentIntent.amount,
+      currency: paymentIntent.currency,
+      status: paymentIntent.status,
+      payment_method: paymentIntent.payment_method_types?.join(","),
+      error_message: paymentIntent.last_payment_error?.message,
+      created_at: new Date().toISOString(),
+    },
+    { onConflict: "stripe_payment_id" }
+  );
+
+  // Update booking status to payment_failed if booking_id is in metadata
+  if (paymentIntent.metadata?.booking_id) {
+    console.log("Updating booking status to payment_failed");
+
+    // Option 1: Use the new database function
+    const { data, error } = await supabase.rpc(
+      "update_booking_status_for_payment",
+      {
+        payment_intent_id: paymentIntent.id,
+        new_status: "payment_failed",
+      }
+    );
+
+    if (error) {
+      console.error("Error updating booking status with RPC:", error);
+
+      // Option 2: Fall back to direct update via bookings table
+      const { error: directError } = await supabase
+        .from("bookings")
+        .update({ status: "payment_failed" })
+        .eq("stripe_payment_intent_id", paymentIntent.id);
+
+      if (directError) {
+        console.error("Error directly updating booking status:", directError);
+      }
+    } else {
+      console.log("Successfully updated booking status to payment_failed");
+    }
+  }
 }
 
 async function handleSubscriptionCreated(subscription: Stripe.Subscription) {
@@ -209,36 +294,44 @@ async function handleSubscriptionCreated(subscription: Stripe.Subscription) {
     }
 
     // Update subscription record
-    await supabase.from("subscriptions").insert({
-      user_id: data.user_id,
-      stripe_subscription_id: subscription.id,
-      stripe_customer_id: subscription.customer as string,
-      status: subscription.status,
-      price_id: subscription.items.data[0]?.price.id || "",
-      current_period_start: new Date(
-        subscription.current_period_start * 1000
-      ).toISOString(),
-      current_period_end: new Date(
-        subscription.current_period_end * 1000
-      ).toISOString(),
-      created_at: new Date().toISOString(),
-    });
+    await supabase.from("subscriptions").upsert(
+      {
+        user_id: data.user_id,
+        stripe_subscription_id: subscription.id,
+        stripe_customer_id: subscription.customer as string,
+        status: subscription.status,
+        price_id: subscription.items.data[0]?.price.id || "",
+        current_period_start: new Date(
+          subscription.current_period_start * 1000
+        ).toISOString(),
+        current_period_end: new Date(
+          subscription.current_period_end * 1000
+        ).toISOString(),
+        canceled_at: subscription.canceled_at,
+        created_at: new Date().toISOString(),
+      },
+      { onConflict: "stripe_subscription_id" }
+    );
   } else {
     // Update subscription record
-    await supabase.from("subscriptions").insert({
-      user_id: supabaseUserId,
-      stripe_subscription_id: subscription.id,
-      stripe_customer_id: subscription.customer as string,
-      status: subscription.status,
-      price_id: subscription.items.data[0]?.price.id || "",
-      current_period_start: new Date(
-        subscription.current_period_start * 1000
-      ).toISOString(),
-      current_period_end: new Date(
-        subscription.current_period_end * 1000
-      ).toISOString(),
-      created_at: new Date().toISOString(),
-    });
+    await supabase.from("subscriptions").upsert(
+      {
+        user_id: supabaseUserId,
+        stripe_subscription_id: subscription.id,
+        stripe_customer_id: subscription.customer as string,
+        status: subscription.status,
+        price_id: subscription.items.data[0]?.price.id || "",
+        current_period_start: new Date(
+          subscription.current_period_start * 1000
+        ).toISOString(),
+        current_period_end: new Date(
+          subscription.current_period_end * 1000
+        ).toISOString(),
+        canceled_at: subscription.canceled_at,
+        created_at: new Date().toISOString(),
+      },
+      { onConflict: "stripe_subscription_id" }
+    );
   }
 }
 
@@ -324,18 +417,32 @@ async function handleCustomerUpdated(customer: Stripe.Customer) {
     }
 
     // **Optional**: Sync back to profiles table?
-    // const supabaseUserId = customer.metadata?.supabase_user_id;
-    // if (supabaseUserId) {
-    //   console.log(`Also updating profile for user ${supabaseUserId}`);
-    //   const { error: profileUpdateError } = await supabaseAdmin
-    //     .from('profiles')
-    //     .update({ email: customer.email, phone: customer.phone /* map name if needed */ })
-    //     .eq('id', supabaseUserId);
-    //   if (profileUpdateError) {
-    //     console.error(`Error updating profile ${supabaseUserId}:`, profileUpdateError);
-    //   }
-    // }
-
+    const supabaseUserId = customer.metadata?.supabase_user_id;
+    if (supabaseUserId) {
+      console.log(`Also updating profile for user ${supabaseUserId}`);
+      const { error: profileUpdateError } = await supabase
+        .from('profiles')
+        .update({
+          email: customer.email,
+          phone: customer.phone,
+          // Optionally split name if needed:
+          ...(customer.name
+            ? (() => {
+                const [first_name, ...rest] = customer.name.split(' ');
+                return {
+                  first_name,
+                  last_name: rest.join(' ') || null,
+                };
+              })()
+            : {}),
+        })
+        .eq('id', supabaseUserId);
+      if (profileUpdateError) {
+        console.error(`Error updating profile ${supabaseUserId}:`, profileUpdateError);
+      } else {
+        console.log(`Successfully updated profile for user ${supabaseUserId}`);
+      }
+    }
   } catch (error) {
     console.error(
       "Database error handling customer.updated:",
@@ -348,33 +455,80 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
   console.log("Invoice payment succeeded:", invoice.id);
 
   // Record successful invoice payment
-  await supabase.from("invoices").insert({
-    stripe_invoice_id: invoice.id,
-    stripe_customer_id: invoice.customer as string,
-    stripe_subscription_id: invoice.subscription as string,
-    amount_paid: invoice.amount_paid,
-    currency: invoice.currency,
-    status: invoice.status,
-    invoice_pdf: invoice.invoice_pdf,
-    created_at: new Date().toISOString(),
-  });
+  await supabase.from("invoices").upsert(
+    {
+      stripe_invoice_id: invoice.id,
+      stripe_customer_id: invoice.customer as string,
+      stripe_subscription_id: invoice.subscription as string,
+      amount_paid: invoice.amount_paid,
+      currency: invoice.currency,
+      status: invoice.status,
+      invoice_pdf: invoice.invoice_pdf,
+      created_at: new Date().toISOString(),
+    },
+    { onConflict: "stripe_invoice_id" }
+  );
 }
 
 async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
   console.log("Invoice payment failed:", invoice.id);
 
   // Record failed invoice payment
-  await supabase.from("invoices").insert({
-    stripe_invoice_id: invoice.id,
-    stripe_customer_id: invoice.customer as string,
-    stripe_subscription_id: invoice.subscription as string,
-    amount_paid: invoice.amount_paid,
-    currency: invoice.currency,
-    status: invoice.status,
-    created_at: new Date().toISOString(),
-  });
+  await supabase.from("invoices").upsert(
+    {
+      stripe_invoice_id: invoice.id,
+      stripe_customer_id: invoice.customer as string,
+      stripe_subscription_id: invoice.subscription as string,
+      amount_paid: invoice.amount_paid,
+      currency: invoice.currency,
+      status: invoice.status,
+      created_at: new Date().toISOString(),
+    },
+    { onConflict: "stripe_invoice_id" }
+  );
 
   // Optionally: Notify customer about payment failure
+}
+
+// Handler for charge.refunded events
+async function handleChargeRefunded(charge: Stripe.Charge) {
+  console.log("Charge refunded:", charge.id);
+
+  // Check if this charge is associated with a payment intent
+  if (!charge.payment_intent || typeof charge.payment_intent !== "string") {
+    console.log("No payment intent associated with this charge, skipping");
+    return;
+  }
+
+  // Find the payment intent to get booking information
+  try {
+    // Option 1: Use the new database function to update booking status
+    const { data, error } = await supabase.rpc(
+      "update_booking_status_for_payment",
+      {
+        payment_intent_id: charge.payment_intent,
+        new_status: "payment_refunded",
+      }
+    );
+
+    if (error) {
+      console.error("Error updating booking status with RPC:", error);
+
+      // Option 2: Fall back to direct update via bookings table
+      const { error: directError } = await supabase
+        .from("bookings")
+        .update({ status: "payment_refunded" })
+        .eq("stripe_payment_intent_id", charge.payment_intent);
+
+      if (directError) {
+        console.error("Error directly updating booking status:", directError);
+      }
+    } else {
+      console.log("Successfully updated booking status to payment_refunded");
+    }
+  } catch (err) {
+    console.error("Error handling charge refund:", err);
+  }
 }
 
 /* To invoke locally:

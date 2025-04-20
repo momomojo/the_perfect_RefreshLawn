@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import {
   ChevronRight,
@@ -197,7 +198,10 @@ const BookingForm = ({
     } catch (error) {
       console.error("Error fetching payment methods:", error);
       setFetchedPaymentMethods([]); // Reset on error
-      // Optionally show an error message to the user
+      Alert.alert(
+        "Payment Error",
+        parseStripeError(error)
+      );
     } finally {
       setPaymentMethodsLoading(false);
     }
@@ -245,7 +249,7 @@ const BookingForm = ({
     if (currentStep < 7) {
       setCurrentStep(currentStep + 1);
     } else {
-      onComplete(bookingData);
+      handleBookingComplete(bookingData);
     }
   };
 
@@ -732,7 +736,7 @@ const BookingForm = ({
 
         <TouchableOpacity
           className="bg-green-500 rounded-lg py-4 items-center"
-          onPress={() => onComplete(bookingData)}
+          onPress={() => handleBookingComplete(bookingData)}
           disabled={isSubmitting}
         >
           {isSubmitting ? (
@@ -771,6 +775,52 @@ const BookingForm = ({
         return renderConfirmationStep();
       default:
         return renderServiceTypeStep();
+    }
+  };
+
+  const parseStripeError = (error: any): string => {
+    if (!error) return "An unexpected error occurred. Please try again.";
+
+    // If error is a string
+    if (typeof error === "string") return error;
+
+    // If error has a message
+    if (error.message) {
+      // Check for Stripe-specific fields
+      const code = error.stripe_error_code || error.code;
+      const type = error.stripe_error_type || error.type;
+      const decline = error.stripe_decline_code || error.decline_code;
+      if (code || type || decline) {
+        let msg = error.message;
+        if (code) msg += `\n(Code: ${code})`;
+        if (type) msg += `\n(Type: ${type})`;
+        if (decline) msg += `\n(Decline: ${decline})`;
+        return msg;
+      }
+      return error.message;
+    }
+    // If error is an object with useful fields
+    if (error.stripe_error_code || error.stripe_error_type || error.stripe_decline_code) {
+      let msg = "Payment failed.";
+      if (error.stripe_error_code) msg += `\n(Code: ${error.stripe_error_code})`;
+      if (error.stripe_error_type) msg += `\n(Type: ${error.stripe_error_type})`;
+      if (error.stripe_decline_code) msg += `\n(Decline: ${error.stripe_decline_code})`;
+      return msg;
+    }
+    return JSON.stringify(error);
+  };
+
+  const handleBookingComplete = async (bookingData: BookingFormData) => {
+    try {
+      setLoading(true);
+      await onComplete(bookingData);
+    } catch (error) {
+      Alert.alert(
+        "Booking Failed",
+        parseStripeError(error)
+      );
+    } finally {
+      setLoading(false);
     }
   };
 

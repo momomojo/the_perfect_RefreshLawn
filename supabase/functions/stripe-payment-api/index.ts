@@ -6,20 +6,23 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { User, PostgrestError } from "https://esm.sh/@supabase/supabase-js@2.7.1";
+import {
+  User,
+  PostgrestError,
+} from "https://esm.sh/@supabase/supabase-js@2.7.1";
 import Stripe from "https://esm.sh/stripe@12.4.0?dts";
-import { 
-  corsHeaders, 
-  createErrorResponse, 
-  createSuccessResponse, 
+import {
+  corsHeaders,
+  createErrorResponse,
+  createSuccessResponse,
   handleCorsPreflightRequest,
   ResponseHeaders,
-  parseRequestBody
+  parseRequestBody,
 } from "../_shared/http-utils.ts";
-import { 
-  getStripeCustomerId, 
-  stripe, 
-  getSupabaseClient 
+import {
+  getStripeCustomerId,
+  stripe,
+  getSupabaseClient,
 } from "../_shared/stripe-utils.ts";
 import { verifyUser } from "../_shared/auth-utils.ts";
 
@@ -85,9 +88,10 @@ async function handleCreatePaymentIntent(
     }
 
     // Construct customer details from profile or fallbacks
-    const customerName = profileData?.first_name && profileData?.last_name
-      ? `${profileData.first_name} ${profileData.last_name}`
-      : null; // Fallback to null if names missing
+    const customerName =
+      profileData?.first_name && profileData?.last_name
+        ? `${profileData.first_name} ${profileData.last_name}`
+        : null; // Fallback to null if names missing
     const customerEmail = user.email;
     const customerPhone = profileData?.phone || null; // Use profile phone or null
 
@@ -123,7 +127,6 @@ async function handleCreatePaymentIntent(
           updated_at: new Date().toISOString(),
         })
         .eq("user_id", user.id);
-
     } else {
       // 3b. Customer doesn't exist - Create in Stripe and save to local DB
       console.log(`Creating new Stripe customer for user: ${user.id}`);
@@ -160,11 +163,16 @@ async function handleCreatePaymentIntent(
       },
     });
 
-    console.log(`Payment intent created: ${paymentIntent.id} for customer ${customerId}`);
+    console.log(
+      `Payment intent created: ${paymentIntent.id} for customer ${customerId}`
+    );
 
-    return createSuccessResponse({
-      clientSecret: paymentIntent.client_secret,
-    }, headers);
+    return createSuccessResponse(
+      {
+        clientSecret: paymentIntent.client_secret,
+      },
+      headers
+    );
   } catch (error) {
     console.error("Error in handleCreatePaymentIntent:", error);
     return createErrorResponse((error as Error).message, 400, headers);
@@ -181,8 +189,19 @@ async function handleCreateBookingAndCharge(
   const supabase = getSupabaseClient();
 
   // Validate required fields
-  if (!body.serviceId || !body.date || !body.time || !body.address || body.price == null || !body.paymentMethodId) {
-    return createErrorResponse("Missing required booking details.", 400, headers);
+  if (
+    !body.serviceId ||
+    !body.date ||
+    !body.time ||
+    !body.address ||
+    body.price == null ||
+    !body.paymentMethodId
+  ) {
+    return createErrorResponse(
+      "Missing required booking details.",
+      400,
+      headers
+    );
   }
 
   try {
@@ -192,23 +211,31 @@ async function handleCreateBookingAndCharge(
       customerId = await getStripeCustomerId(user.id);
     } catch (error) {
       // If not a cash payment, this is a problem
-      if (body.paymentMethodId !== 'cash') {
-        console.error(`Stripe Customer ID not found for user ${user.id} and payment is not cash.`);
-        throw new Error("Stripe customer profile not found. Cannot process card payment.");
+      if (body.paymentMethodId !== "cash") {
+        console.error(
+          `Stripe Customer ID not found for user ${user.id} and payment is not cash.`
+        );
+        throw new Error(
+          "Stripe customer profile not found. Cannot process card payment."
+        );
       }
       // For cash payments, we can proceed without a customer ID
     }
-    
+
     if (customerId) {
-      console.log(`Using Stripe Customer ID: ${customerId} for user ${user.id}`);
+      console.log(
+        `Using Stripe Customer ID: ${customerId} for user ${user.id}`
+      );
     } else {
-      console.log(`No Stripe Customer ID for user ${user.id}, but using cash payment.`);
+      console.log(
+        `No Stripe Customer ID for user ${user.id}, but using cash payment.`
+      );
     }
 
     // 2. Create the booking record in our database
     let insertError: Error | PostgrestError | null = null;
     let insertedBooking: Booking | null = null;
-    let successfulTableName = "bookings"; // Assume success in primary table first
+    const successfulTableName = "bookings"; // Only use bookings table
 
     // Helper to insert into a table and return result or error
     const insertIntoTable = async (
@@ -223,7 +250,7 @@ async function handleCreateBookingAndCharge(
       return { result, error };
     };
 
-    // Prepare common booking data, always start with 'pending' status
+    // Prepare common booking data, always start with 'pending_payment' status
     const bookingData: Partial<Booking> = {
       customer_id: user.id,
       service_id: body.serviceId,
@@ -232,64 +259,42 @@ async function handleCreateBookingAndCharge(
       address: body.address,
       recurring_plan_id: body.recurringPlanId || null,
       price: body.price,
-      status: "pending", // <<< Always start as pending
+      status: "pending_payment", // <<< Always start as pending_payment
     };
 
     try {
-      // Try inserting into 'bookings' first
-      console.log(`Attempting insert into ${successfulTableName} with data:`, bookingData);
-      const { result, error } = await insertIntoTable(successfulTableName, bookingData);
+      // Try inserting into 'bookings' table
+      console.log(
+        `Attempting insert into bookings with data:`,
+        bookingData
+      );
+      const { result, error } = await insertIntoTable(
+        successfulTableName,
+        bookingData
+      );
 
       if (error) {
-        console.error(`Error creating booking in '${successfulTableName}' table:`, JSON.stringify(error));
+        console.error(
+          `Error creating booking in 'bookings' table:`,
+          JSON.stringify(error)
+        );
         insertError = error;
 
         // If error is 'violates check constraint', handle specifically
         if (error.code === "23514") {
-          console.error(`Check constraint violation for status: ${bookingData.status}`);
+          console.error(
+            `Check constraint violation for status: ${bookingData.status}`
+          );
           throw new Error(
             `Booking status "${bookingData.status}" violates database constraint.`
           );
         }
-        // If error is 'undefined table', try 'customer_bookings'
-        else if (error.code === "42P01") {
-          console.log("Table 'bookings' not found, trying 'customer_bookings'...");
-          successfulTableName = "customer_bookings"; // Update potential success table
-          console.log(`Attempting insert into ${successfulTableName} with data:`, bookingData);
-          const { result: altResult, error: altError } = await insertIntoTable(
-            successfulTableName,
-            bookingData // Use the same data
-          );
-
-          if (altError) {
-            console.error(
-              `Error creating booking in '${successfulTableName}' table:`, JSON.stringify(altError)
-            );
-            // If alternative table also fails with constraint violation, handle it
-            if (altError.code === "23514") {
-              console.error(
-                `Check constraint violation for status in alt table: ${bookingData.status}`
-              );
-              throw new Error(
-                `Booking status "${bookingData.status}" violates database constraint (alt table).`
-              );
-            }
-            insertError = altError; // Keep the error from the alternative table
-            successfulTableName = "bookings"; // Revert if alt failed
-          } else {
-            console.log(
-              `Booking created successfully in '${successfulTableName}':`, altResult
-            );
-            insertedBooking = altResult;
-            insertError = null; // Clear error if successful
-          }
-        } else {
-          // For other errors, just keep the original error
-          insertError = error;
-        }
+        // For other errors, just keep the original error
+        insertError = error;
       } else {
         console.log(
-          `Booking created successfully in '${successfulTableName}':`, result
+          `Booking created successfully in 'bookings':`,
+          result
         );
         insertedBooking = result;
       }
@@ -302,14 +307,22 @@ async function handleCreateBookingAndCharge(
     if (insertError) {
       console.error("Final booking insert error:", insertError);
       const message =
-        insertError instanceof Error ? insertError.message : String(insertError);
+        insertError instanceof Error
+          ? insertError.message
+          : String(insertError);
       // Return 500 for insertion errors
-      return createErrorResponse(`Failed to create booking: ${message}`, 500, headers);
+      return createErrorResponse(
+        `Failed to create booking: ${message}`,
+        500,
+        headers
+      );
     }
 
     if (!insertedBooking) {
       // This case should ideally not be reached if error handling is correct
-      console.error("Booking creation failed, no record returned and no error thrown.");
+      console.error(
+        "Booking creation failed, no record returned and no error thrown."
+      );
       return createErrorResponse(
         "Booking creation failed, no record returned and no error thrown.",
         500,
@@ -318,39 +331,50 @@ async function handleCreateBookingAndCharge(
     }
 
     const bookingId = insertedBooking.id;
-    console.log(`Booking created with ID: ${bookingId} in table: ${successfulTableName}, initial status: ${insertedBooking.status}`);
+    console.log(
+      `Booking created with ID: ${bookingId} in table: ${successfulTableName}, initial status: ${insertedBooking.status}`
+    );
 
     // 3. Handle Cash Payment
     if (body.paymentMethodId === "cash") {
       console.log(`Cash payment for booking ${bookingId}. Updating status.`);
-      // Update status to 'confirmed' assuming cash means confirmed immediately
+      // Update status to 'payment_confirmed' assuming cash means payment is confirmed immediately
       const { error: cashUpdateError } = await supabase
         .from(successfulTableName) // << Use the table where insertion succeeded
-        .update({ status: "confirmed" })
+        .update({ status: "payment_confirmed" })
         .eq("id", bookingId);
 
       if (cashUpdateError) {
         console.error(
-          `Error updating cash booking ${bookingId} status to confirmed:`, cashUpdateError
+          `Error updating cash booking ${bookingId} status to payment_confirmed:`,
+          cashUpdateError
         );
         // Return success but include a warning message
-        return createSuccessResponse({
-          success: true,
-          booking: insertedBooking, // Return booking with original 'pending' status
-          message:
-            "Booking created successfully (cash), but failed to update status to confirmed.",
-        }, headers);
+        return createSuccessResponse(
+          {
+            success: true,
+            booking: insertedBooking, // Return booking with original 'pending' status
+            message:
+              "Booking created successfully (cash), but failed to update status to payment_confirmed.",
+          },
+          headers
+        );
       } else {
-        console.log(`Booking ${bookingId} status updated to confirmed for cash payment.`);
-        insertedBooking.status = "confirmed"; // Update local object status
+        console.log(
+          `Booking ${bookingId} status updated to payment_confirmed for cash payment.`
+        );
+        insertedBooking.status = "payment_confirmed"; // Update local object status
       }
 
       // Return success response for cash booking
-      return createSuccessResponse({
-        success: true,
-        booking: insertedBooking, // Return booking with 'confirmed' status
-        message: "Booking created successfully with cash payment option.",
-      }, headers);
+      return createSuccessResponse(
+        {
+          success: true,
+          booking: insertedBooking, // Return booking with 'payment_confirmed' status
+          message: "Booking created successfully with cash payment option.",
+        },
+        headers
+      );
     }
 
     // 4. Handle Card Payment: Create Payment Intent (but DO NOT confirm here)
@@ -361,7 +385,9 @@ async function handleCreateBookingAndCharge(
         // Double check - this should have been caught earlier
         throw new Error("Stripe customer ID is required for card payments.");
       }
-      console.log(`Creating Payment Intent for booking ${bookingId} using method ${body.paymentMethodId}`);
+      console.log(
+        `Creating Payment Intent for booking ${bookingId} using method ${body.paymentMethodId}`
+      );
       paymentIntent = await stripe.paymentIntents.create({
         amount: Math.round(body.price * 100), // Convert to cents and ensure integer
         currency: "usd",
@@ -372,23 +398,26 @@ async function handleCreateBookingAndCharge(
         metadata: {
           booking_id: bookingId,
           user_id: user.id,
-          payment_method_id: body.paymentMethodId !== 'cash' ? body.paymentMethodId : 'cash' // Store payment method ID in metadata
+          payment_method_id:
+            body.paymentMethodId !== "cash" ? body.paymentMethodId : "cash", // Store payment method ID in metadata
         },
         // Add setup_future_usage if you plan to save the card
         // setup_future_usage: 'off_session', // Example: if saving card for later
       });
       clientSecret = paymentIntent.client_secret; // Get the secret for the client
-      console.log(`PaymentIntent ${paymentIntent.id} created for client-side confirmation.`);
+      console.log(
+        `PaymentIntent ${paymentIntent.id} created for client-side confirmation.`
+      );
 
       // Save payment method ID in notes since there's no payment_method column
       const paymentMethodInfo = `Payment Method: ${body.paymentMethodId}`;
-      
+
       // If there are existing notes, append to them
       if (insertedBooking.notes) {
         await supabase
           .from(successfulTableName)
-          .update({ 
-            notes: `${insertedBooking.notes}. ${paymentMethodInfo}`
+          .update({
+            notes: `${insertedBooking.notes}. ${paymentMethodInfo}`,
           })
           .eq("id", bookingId);
       } else {
@@ -399,13 +428,15 @@ async function handleCreateBookingAndCharge(
       }
 
       // 5. Update booking with Payment Intent ID (but NOT final status yet)
-      console.log(`Updating booking ${bookingId} in ${successfulTableName} with PI ID: ${paymentIntent.id}`);
+      console.log(
+        `Updating booking ${bookingId} in bookings with PI ID: ${paymentIntent.id}`
+      );
       const { data: updatedBooking, error: updateError } = await supabase
-        .from(successfulTableName) // << Use the table where insertion succeeded
+        .from(successfulTableName)
         .update({
           stripe_payment_intent_id: paymentIntent.id,
           notes: `Payment Intent ${paymentIntent.id} created with status: ${paymentIntent.status}. Requires client confirmation.`,
-          status: "pending", // Use valid status from database constraint
+          status: "pending_payment", // Keep status as pending_payment until confirmed
         })
         .eq("id", bookingId)
         .select()
@@ -413,60 +444,83 @@ async function handleCreateBookingAndCharge(
 
       if (updateError) {
         console.error(
-          `Error updating booking ${bookingId} with PI ID:`, updateError
+          `Error updating booking ${bookingId} with PI ID:`,
+          updateError
         );
         // If update fails, still return clientSecret so client can try to pay
-        return createSuccessResponse({
-          success: false, // Indicate partial success (PI created, DB update failed)
-          booking: insertedBooking, // Return original booking
-          message: `Payment Intent created, but failed to update booking record. Payment Intent ID: ${paymentIntent.id}`,
-          client_secret: clientSecret, // CRITICAL: Return secret for client
-          payment_intent_id: paymentIntent.id,
-          requires_payment_confirmation: true, // Signal to client
-        }, headers);
+        return createSuccessResponse(
+          {
+            success: false, // Indicate partial success (PI created, DB update failed)
+            booking: insertedBooking, // Return original booking
+            message: `Payment Intent created, but failed to update booking record. Payment Intent ID: ${paymentIntent.id}`,
+            client_secret: clientSecret, // CRITICAL: Return secret for client
+            payment_intent_id: paymentIntent.id,
+            requires_payment_confirmation: true, // Signal to client
+          },
+          headers
+        );
       }
 
       // Payment Intent created, booking updated with PI ID. Client needs to confirm.
-      console.log(`Booking ${bookingId} updated with PI ID, status: ${updatedBooking?.status}. Ready for client confirmation.`);
-      return createSuccessResponse({
-        success: true,
-        booking: updatedBooking, // Return booking with 'pending' status
-        message: "Booking created, Payment Intent ready for client confirmation.",
-        client_secret: clientSecret, // CRITICAL: Return secret for client
-        payment_intent_id: paymentIntent.id,
-        requires_payment_confirmation: true, // Signal to client
-      }, headers);
-
+      console.log(
+        `Booking ${bookingId} updated with PI ID, status: ${updatedBooking?.status}. Ready for client confirmation.`
+      );
+      return createSuccessResponse(
+        {
+          success: true,
+          booking: updatedBooking, // Return booking with 'pending_payment' status
+          message:
+            "Booking created, Payment Intent ready for client confirmation.",
+          client_secret: clientSecret, // CRITICAL: Return secret for client
+          payment_intent_id: paymentIntent.id,
+          requires_payment_confirmation: true, // Signal to client
+        },
+        headers
+      );
     } catch (paymentError: unknown) {
       // Error occurred during Stripe Payment Intent *creation*
-      console.error(`Stripe Payment Intent Creation Error for booking ${bookingId}:`, paymentError);
+      console.error(
+        `Stripe Payment Intent Creation Error for booking ${bookingId}:`,
+        paymentError
+      );
 
       let errorMessage = "Payment processing failed.";
       let stripeErrorCode = "unknown_error";
-        
+      let stripeErrorType = "unknown";
+      let stripeDeclineCode = "";
+
       // Type assertion for paymentError
-      if (paymentError && typeof paymentError === 'object' && 'type' in paymentError) {
+      if (
+        paymentError &&
+        typeof paymentError === "object" &&
+        "type" in paymentError
+      ) {
         // It's likely a Stripe error
         const stripeError = paymentError as Stripe.errors.StripeError;
         errorMessage = stripeError.message || errorMessage;
         stripeErrorCode = stripeError.code || stripeErrorCode;
+        stripeErrorType = stripeError.type || stripeErrorType;
+        stripeDeclineCode = (stripeError as any).decline_code || "";
       } else if (paymentError && paymentError instanceof Error) {
         errorMessage = (paymentError as Error).message;
       }
 
       // Update booking status to indicate payment setup failure
-      console.log(`Updating booking ${bookingId} in ${successfulTableName} to status: cancelled due to PI creation error`);
+      console.log(
+        `Updating booking ${bookingId} in bookings to status: cancelled due to PI creation error`
+      );
       const { error: failUpdateError } = await supabase
-        .from(successfulTableName) // << Use the table where insertion succeeded
+        .from(successfulTableName)
         .update({
           status: "cancelled", // Use valid status from database constraint
-          notes: `Payment failed: ${errorMessage} (Code: ${stripeErrorCode})`,
+          notes: `Payment failed: ${errorMessage} (Code: ${stripeErrorCode}, Type: ${stripeErrorType}, Decline: ${stripeDeclineCode})`,
         })
         .eq("id", bookingId);
 
       if (failUpdateError) {
         console.error(
-          `Failed to update booking ${bookingId} status after payment intent creation failure:`, failUpdateError
+          `Failed to update booking ${bookingId} status after payment intent creation failure:`,
+          failUpdateError
         );
       }
 
@@ -477,8 +531,10 @@ async function handleCreateBookingAndCharge(
           message: errorMessage,
           booking_id: bookingId, // Include booking ID for reference
           stripe_error_code: stripeErrorCode,
+          stripe_error_type: stripeErrorType,
+          stripe_decline_code: stripeDeclineCode,
         }),
-        { headers, status: 400 } // Use 400 for client-related errors (like invalid card details if provided), 500 for server issues
+        { headers, status: 400 }
       );
     }
   } catch (error: unknown) {
@@ -513,7 +569,9 @@ serve(async (req) => {
       return createErrorResponse("Unauthorized", 401);
     }
 
-    console.log(`stripe-payment-api called: path=${routePath}, user=${user.id}`);
+    console.log(
+      `stripe-payment-api called: path=${routePath}, user=${user.id}`
+    );
 
     // Route the request based on the path from the body
     switch (routePath) {

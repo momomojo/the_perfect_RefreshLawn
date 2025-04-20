@@ -149,6 +149,39 @@ const AddPaymentMethodModal: React.FC<AddPaymentMethodModalProps> = ({
     }
   }, [stripePublishableKey]);
 
+  // --- Enhanced error parsing helper ---
+  function parseStripeError(error: any): string {
+    if (!error) return "An unexpected error occurred. Please try again.";
+
+    // If error is a string
+    if (typeof error === "string") return error;
+
+    // If error has a message
+    if (error.message) {
+      // Check for Stripe-specific fields
+      const code = error.stripe_error_code || error.code;
+      const type = error.stripe_error_type || error.type;
+      const decline = error.stripe_decline_code || error.decline_code;
+      if (code || type || decline) {
+        let msg = error.message;
+        if (code) msg += `\n(Code: ${code})`;
+        if (type) msg += `\n(Type: ${type})`;
+        if (decline) msg += `\n(Decline: ${decline})`;
+        return msg;
+      }
+      return error.message;
+    }
+    // If error is an object with useful fields
+    if (error.stripe_error_code || error.stripe_error_type || error.stripe_decline_code) {
+      let msg = "Payment failed.";
+      if (error.stripe_error_code) msg += `\n(Code: ${error.stripe_error_code})`;
+      if (error.stripe_error_type) msg += `\n(Type: ${error.stripe_error_type})`;
+      if (error.stripe_decline_code) msg += `\n(Decline: ${error.stripe_decline_code})`;
+      return msg;
+    }
+    return JSON.stringify(error);
+  }
+
   const handleSaveCard = async (stripe: any, elements: any) => {
     if (!stripe || !elements || !cardholderName) {
       setError('Please fill in all card details and cardholder name.');
@@ -171,7 +204,7 @@ const AddPaymentMethodModal: React.FC<AddPaymentMethodModalProps> = ({
       });
 
       if (stripeError) {
-        throw new Error(stripeError.message || 'Failed to create payment method.');
+        throw { ...stripeError, message: stripeError.message || 'Failed to create payment method.' };
       }
 
       if (!paymentMethod?.id) {
@@ -190,11 +223,11 @@ const AddPaymentMethodModal: React.FC<AddPaymentMethodModalProps> = ({
       );
 
       if (attachError) {
-        throw new Error(attachError.message || 'Failed to attach payment method.');
+        throw { ...attachError, message: attachError.message || 'Failed to attach payment method.' };
       }
 
       if (attachData?.error) {
-        throw new Error(attachData.error || 'Server error attaching payment method.');
+        throw { ...attachData, message: attachData.error || 'Server error attaching payment method.' };
       }
 
       Alert.alert('Success', 'Payment method added successfully!');
@@ -202,7 +235,8 @@ const AddPaymentMethodModal: React.FC<AddPaymentMethodModalProps> = ({
       onSaveSuccess();
     } catch (err: any) {
       console.error('Error saving card:', err);
-      setError(err.message || 'An unexpected error occurred. Please try again.');
+      setError(parseStripeError(err));
+      Alert.alert('Payment Error', parseStripeError(err));
     } finally {
       setLoading(false);
     }
