@@ -58,29 +58,32 @@ export interface RecurringPlan {
  * - payment_refunded: Payment refunded via Stripe
  * - refunded: General refund status
  */
+export type BookingStatus =
+  | "pending"
+  | "scheduled"
+  | "in_progress"
+  | "completed"
+  | "cancelled"
+  | "pending_payment"
+  | "payment_processing"
+  | "payment_confirmed"
+  | "payment_failed"
+  | "payment_refunded"
+  | "refunded";
+
 export interface Booking {
   id: string;
   customer_id: string;
   technician_id?: string;
   service_id: string;
   recurring_plan_id?: string;
-  status:
-    | "pending"
-    | "scheduled"
-    | "in_progress"
-    | "completed"
-    | "cancelled"
-    | "pending_payment"
-    | "payment_processing"
-    | "payment_confirmed"
-    | "payment_failed"
-    | "payment_refunded"
-    | "refunded";
+  status: BookingStatus;
   price: number;
   scheduled_date: string;
   scheduled_time: string;
   address?: string;
   notes?: string;
+  report_notes?: string | null;
   stripe_payment_intent_id?: string;
   stripe_subscription_id?: string;
   created_at?: string;
@@ -92,6 +95,10 @@ export interface Booking {
   technician?: Profile;
   recurring_plan?: RecurringPlan;
   review?: Review;
+
+  // Added for Job Reports Tab
+  beforePhotos?: { id?: string; uri: string }[];
+  afterPhotos?: { id?: string; uri: string }[];
 }
 
 export interface Review {
@@ -541,28 +548,34 @@ export async function assignTechnician(
 
 export async function updateBookingStatus(
   bookingId: string,
-  status: Booking["status"]
+  status: Booking["status"],
+  userId: string,
+  reportNotes?: string // <-- Add this optional parameter
 ) {
   try {
-    // First try to use the new RPC function
+    console.log("[updateBookingStatus] Params:", {
+      p_booking_id: bookingId,
+      p_new_status: status,
+      p_user_id: userId,
+      p_report_notes: reportNotes, // <-- Add this for logging
+    });
+    // Update status and report notes via RPC
     const { data, error } = await supabase.rpc("update_booking_status", {
       p_booking_id: bookingId,
-      p_status: status,
+      p_new_status: status,
+      p_user_id: userId,
+      p_report_notes: reportNotes,
     });
 
     if (error) {
-      console.warn(
-        "RPC update_booking_status failed, falling back to direct update:",
-        error
-      );
-      // Fall back to direct update if RPC isn't available yet
-      return updateBooking(bookingId, { status });
+      console.error("[updateBookingStatus] RPC error:", error);
+      throw error;
     }
 
     // If RPC was successful, fetch the updated booking
     return getBooking(bookingId);
   } catch (err) {
-    console.error("Error updating booking status:", err);
+    console.error("[updateBookingStatus] Exception:", err);
     throw err;
   }
 }
@@ -1099,4 +1112,50 @@ export async function getSubscriptions(customerId: string) {
     .eq("stripe_customer_id", customerId);
   if (error) throw error;
   return data;
+}
+
+/**
+ * Calls the Supabase Edge Function to process a Stripe refund.
+ */
+export async function refundPayment(paymentIntentId: string, amount?: number) {
+  console.log(
+    `Initiating refund for PI: ${paymentIntentId}, Amount: ${amount}`
+  );
+  if (!paymentIntentId) {
+    throw new Error("Payment Intent ID is required for refund.");
+  }
+
+  const body: { payment_intent_id: string; amount?: number } = {
+    payment_intent_id: paymentIntentId,
+  };
+
+  if (amount) {
+    // Convert amount from dollars (float) to cents (integer)
+    body.amount = Math.round(amount * 100);
+    if (body.amount <= 0) {
+      throw new Error("Refund amount must be positive.");
+    }
+  }
+
+  const { data, error } = await supabase.functions.invoke("stripe-refund", {
+    body: body,
+  });
+
+  if (error) {
+    console.error("Supabase function invocation error:", error);
+    // Try to parse the error message from the function response if available
+    let errorMessage = error.message;
+    try {
+      const functionError = JSON.parse(error.context?.response?.text || "{}");
+      if (functionError.error) {
+        errorMessage = functionError.error;
+      }
+    } catch (e) {
+      // Ignore parsing error
+    }
+    throw new Error(`Refund failed: ${errorMessage}`);
+  }
+
+  console.log("Refund function returned successfully:", data);
+  return data; // Should contain { refundId, status }
 }

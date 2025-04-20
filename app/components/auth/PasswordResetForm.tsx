@@ -5,11 +5,11 @@ import {
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Mail } from "lucide-react-native";
 import { useAuth } from "../../../lib/auth";
+import { showNotification } from "../../../lib/notification";
 
 const PasswordResetForm = () => {
   const router = useRouter();
@@ -22,7 +22,11 @@ const PasswordResetForm = () => {
 
   const handleSubmit = async () => {
     if (!email.trim()) {
-      Alert.alert("Error", "Please enter your email address");
+      showNotification({
+        title: "Error",
+        message: "Please enter your email address",
+        type: "error",
+      });
       return;
     }
 

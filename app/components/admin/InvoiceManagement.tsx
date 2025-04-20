@@ -7,12 +7,12 @@ import {
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   Linking,
 } from "react-native";
 import { Search } from "lucide-react-native";
 import { supabase } from "../../../lib/supabase";
 import { format } from "date-fns";
+import { showNotification } from "../../../lib/notification";
 
 interface Invoice {
   id: string;
@@ -75,13 +75,21 @@ const InvoiceManagement = () => {
       Linking.openURL(data.link);
     } catch (e: any) {
       console.error("Error opening Stripe dashboard:", e);
-      Alert.alert("Error", e.message || "Failed to open Stripe dashboard");
+      showNotification({
+        title: "Error",
+        message: e.message || "Failed to open Stripe dashboard",
+        type: "error",
+      });
     }
   };
 
   const handleDownloadPDF = (url?: string) => {
     if (!url) {
-      Alert.alert("No PDF available for this invoice");
+      showNotification({
+        title: "Info",
+        message: "No PDF available for this invoice",
+        type: "info",
+      });
       return;
     }
     Linking.openURL(url);

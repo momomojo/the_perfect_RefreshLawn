@@ -165,58 +165,131 @@ async function handlePaymentIntentSucceeded(
 ) {
   console.log("Payment intent succeeded:", paymentIntent.id);
 
-  // Extract customer data
-  const supabaseUserId = paymentIntent.metadata?.supabase_user_id;
-  if (!supabaseUserId) {
-    console.log("No user ID in metadata, skipping update");
-    return;
-  }
+  // Extract metadata
+  const metadata = paymentIntent.metadata;
+  const supabaseUserId = metadata?.supabase_user_id;
+  const serviceId = metadata?.service_id;
+  const bookingPrice = metadata?.booking_price; // Actual price (string)
+  const scheduledDate = metadata?.scheduled_date;
+  const scheduledTime = metadata?.scheduled_time;
+  const address = metadata?.address;
+  const notes = metadata?.notes;
+  const propertySize = metadata?.property_size;
+  const areaType = metadata?.area_type;
 
-  // Update payment records in database
-  await supabase.from("payments").upsert(
-    {
-      user_id: supabaseUserId,
-      booking_id: paymentIntent.metadata?.booking_id,
-      stripe_payment_id: paymentIntent.id,
-      stripe_customer_id: paymentIntent.customer as string,
-      amount: paymentIntent.amount,
-      currency: paymentIntent.currency,
-      status: paymentIntent.status,
-      payment_method: paymentIntent.payment_method_types?.join(","),
-      created_at: new Date().toISOString(),
-    },
-    { onConflict: "stripe_payment_id" }
-  );
-
-  // Update booking status to payment_confirmed if booking_id is in metadata
-  if (paymentIntent.metadata?.booking_id) {
-    console.log("Updating booking status to payment_confirmed");
-
-    // Option 1: Use the new database function
-    const { data, error } = await supabase.rpc(
-      "update_booking_status_for_payment",
+  // --- 1. Upsert Payment Record (Keep this part) ---
+  if (supabaseUserId) {
+    await supabase.from("payments").upsert(
       {
-        payment_intent_id: paymentIntent.id,
-        new_status: "payment_confirmed",
-      }
+        user_id: supabaseUserId,
+        // booking_id: ? - We don't have booking_id *yet*
+        stripe_payment_id: paymentIntent.id,
+        stripe_customer_id: paymentIntent.customer as string,
+        amount: paymentIntent.amount, // Amount in cents
+        currency: paymentIntent.currency,
+        status: paymentIntent.status,
+        payment_method: paymentIntent.payment_method_types?.join(","),
+        created_at: new Date().toISOString(),
+      },
+      { onConflict: "stripe_payment_id" }
     );
-
-    if (error) {
-      console.error("Error updating booking status with RPC:", error);
-
-      // Option 2: Fall back to direct update via bookings table
-      const { error: directError } = await supabase
-        .from("bookings")
-        .update({ status: "payment_confirmed" })
-        .eq("stripe_payment_intent_id", paymentIntent.id);
-
-      if (directError) {
-        console.error("Error directly updating booking status:", directError);
-      }
-    } else {
-      console.log("Successfully updated booking status to payment_confirmed");
-    }
+  } else {
+    console.warn(
+      `Payment intent ${paymentIntent.id} succeeded but missing supabase_user_id in metadata. Cannot create payment record.`
+    );
+    // Decide if you want to return early if no user ID
+    // return;
   }
+
+  // --- 2. Create Booking Record (New Logic) ---
+  if (
+    supabaseUserId &&
+    serviceId &&
+    bookingPrice &&
+    scheduledDate &&
+    scheduledTime
+  ) {
+    console.log(
+      `Attempting to create booking for payment intent ${paymentIntent.id}`
+    );
+    try {
+      // FIXED: Make sure we're using the correct table name "services" (plural) everywhere
+      // Optional: Verify service exists before creating booking
+      const { data: serviceData, error: serviceError } = await supabase
+        .from("services") // FIXED: Changed from "service" to "services"
+        .select("id")
+        .eq("id", serviceId)
+        .single();
+
+      if (serviceError) {
+        console.error(
+          `Service lookup failed for ID ${serviceId}:`,
+          serviceError
+        );
+        throw new Error(
+          `Service with ID ${serviceId} not found: ${serviceError.message}`
+        );
+      }
+
+      const { data: newBooking, error: bookingError } = await supabase
+        .from("bookings")
+        .insert({
+          customer_id: supabaseUserId,
+          service_id: serviceId,
+          price: parseFloat(bookingPrice), // Convert string price back to number
+          scheduled_date: scheduledDate,
+          scheduled_time: scheduledTime,
+          status: "payment_confirmed", // Set initial status
+          address: address, // Optional
+          notes: notes, // Optional
+          property_size: propertySize, // Optional
+          area_type: areaType, // Optional
+          stripe_payment_intent_id: paymentIntent.id, // Link to payment
+        })
+        .select("id") // Select the new booking ID
+        .single(); // Expect only one row
+
+      if (bookingError) {
+        console.error(
+          `Failed to create booking for payment intent ${paymentIntent.id}:`,
+          bookingError
+        );
+        // Consider adding retry logic or alerting
+      } else if (newBooking) {
+        console.log(
+          `Successfully created booking ${newBooking.id} for payment intent ${paymentIntent.id}`
+        );
+
+        // --- 3. Update Payment Record with Booking ID (Optional but good practice) ---
+        const { error: paymentUpdateError } = await supabase
+          .from("payments")
+          .update({ booking_id: newBooking.id })
+          .eq("stripe_payment_id", paymentIntent.id);
+
+        if (paymentUpdateError) {
+          console.error(
+            `Failed to update payment record ${paymentIntent.id} with booking ID ${newBooking.id}:`,
+            paymentUpdateError
+          );
+        }
+      }
+    } catch (insertError) {
+      console.error(
+        `Exception during booking insertion for payment intent ${paymentIntent.id}:`,
+        insertError
+      );
+    }
+  } else {
+    // Log missing required metadata for booking creation
+    console.warn(
+      `Payment intent ${paymentIntent.id} succeeded but missing required metadata for booking creation (supabase_user_id, service_id, booking_price, scheduled_date, scheduled_time). Booking not created.`
+    );
+    // Consider alerting if this happens unexpectedly
+  }
+
+  // --- 4. Old Booking Update Logic REMOVED ---
+  // The previous code block that checked `metadata?.booking_id` and updated an
+  // existing booking's status is now gone.
 }
 
 async function handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent) {

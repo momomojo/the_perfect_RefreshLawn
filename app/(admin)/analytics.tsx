@@ -45,13 +45,8 @@ const Analytics = () => {
     setError(null);
 
     try {
-      const { data, error } = await getAllBookings();
-
-      if (error) {
-        throw new Error(error.message);
-      }
-
-      setBookings(data);
+      const bookingsData = await getAllBookings();
+      setBookings(bookingsData);
     } catch (err: any) {
       console.error("Error fetching analytics data:", err);
       setError(err.message || "Failed to load analytics data");
@@ -90,7 +85,7 @@ const Analytics = () => {
   const getRevenueData = () => {
     const { start, end } = getDateRange();
     const filteredBookings = bookings.filter((booking) => {
-      const bookingDate = new Date(booking.created_at);
+      const bookingDate = new Date(booking.created_at!);
       return bookingDate >= start && bookingDate <= end;
     });
 
@@ -101,7 +96,7 @@ const Analytics = () => {
 
       const values = days.map((day) => {
         const dayBookings = filteredBookings.filter((booking) => {
-          const bookingDate = new Date(booking.created_at);
+          const bookingDate = new Date(booking.created_at!);
           return (
             bookingDate.getDate() === day.getDate() &&
             bookingDate.getMonth() === day.getMonth()
@@ -129,7 +124,7 @@ const Analytics = () => {
       const values = Array(weeksInMonth).fill(0);
 
       filteredBookings.forEach((booking) => {
-        const bookingDate = new Date(booking.created_at);
+        const bookingDate = new Date(booking.created_at!);
         const day = bookingDate.getDate();
         const weekIndex = Math.min(
           Math.floor(day / daysPerSegment),
@@ -160,7 +155,7 @@ const Analytics = () => {
     const monthValues = Array(12).fill(0);
 
     filteredBookings.forEach((booking) => {
-      const bookingDate = new Date(booking.created_at);
+      const bookingDate = new Date(booking.created_at!);
       const month = bookingDate.getMonth();
       monthValues[month] += booking.price || 0;
     });
@@ -184,7 +179,7 @@ const Analytics = () => {
 
     const { start, end } = getDateRange();
     const filteredBookings = bookings.filter((booking) => {
-      const bookingDate = new Date(booking.created_at);
+      const bookingDate = new Date(booking.created_at!);
       return bookingDate >= start && bookingDate <= end;
     });
 
@@ -212,7 +207,7 @@ const Analytics = () => {
   const calculateMetrics = () => {
     const { start, end } = getDateRange();
     const filteredBookings = bookings.filter((booking) => {
-      const bookingDate = new Date(booking.created_at);
+      const bookingDate = new Date(booking.created_at!);
       return bookingDate >= start && bookingDate <= end;
     });
 
@@ -473,7 +468,7 @@ const Analytics = () => {
                   {
                     data: [
                       bookings.filter((b) => b.status === "pending").length,
-                      bookings.filter((b) => b.status === "confirmed").length,
+                      bookings.filter((b) => b.status === "payment_confirmed").length,
                       bookings.filter((b) => b.status === "completed").length,
                       bookings.filter((b) => b.status === "cancelled").length,
                     ],
@@ -490,6 +485,8 @@ const Analytics = () => {
                 marginVertical: 8,
                 borderRadius: 16,
               }}
+              yAxisLabel=""
+              yAxisSuffix=""
             />
           </View>
         </View>

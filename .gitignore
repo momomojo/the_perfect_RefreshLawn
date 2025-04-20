@@ -40,3 +40,6 @@ app-example
 
 **/tempobook/dynamic/
 **/tempobook/storyboards/
+
+# Supabase bundled functions output
+supabase/functions_bundled/

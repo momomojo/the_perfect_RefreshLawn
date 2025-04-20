@@ -5,6 +5,7 @@ import {
   ScrollView,
   Image,
   TouchableOpacity,
+  Modal,
   StyleSheet,
   Linking,
 } from "react-native";
@@ -18,6 +19,7 @@ import {
   Clipboard,
   Home,
   User,
+  X,
 } from "lucide-react-native";
 import { format } from "date-fns";
 
@@ -26,6 +28,7 @@ interface JobDetailProps {
   customerName?: string;
   customerPhone?: string;
   customerEmail?: string;
+  customerAuthEmail?: string;
   address?: string;
   serviceType?: string;
   scheduledDate?: string;
@@ -42,6 +45,7 @@ const JobDetail = ({
   customerName = "John Smith",
   customerPhone = "(555) 123-4567",
   customerEmail = "john.smith@example.com",
+  customerAuthEmail,
   address = "123 Lawn Avenue, Green City, GC 12345",
   serviceType = "Standard Lawn Mowing",
   scheduledDate = "June 15, 2023",
@@ -52,6 +56,10 @@ const JobDetail = ({
   propertyImage = "https://images.unsplash.com/photo-1560749003-f4b1e17e2dfd?w=600&q=80",
   status = "scheduled",
 }: JobDetailProps) => {
+  const [modalVisible, setModalVisible] = React.useState(false);
+  const handleImagePress = () => setModalVisible(true);
+  const handleModalClose = () => setModalVisible(false);
+
   const getStatusColor = () => {
     switch (status) {
       case "pending":
@@ -93,8 +101,9 @@ const JobDetail = ({
   };
 
   const handleEmailPress = () => {
-    if (customerEmail) {
-      Linking.openURL(`mailto:${customerEmail}`);
+    const emailToUse = customerAuthEmail || customerEmail;
+    if (emailToUse && emailToUse !== "john.smith@example.com") {
+      Linking.openURL(`mailto:${emailToUse}`);
     }
   };
 
@@ -113,11 +122,41 @@ const JobDetail = ({
 
       {/* Property Image */}
       <View className="mb-6 rounded-lg overflow-hidden">
-        <Image
-          source={{ uri: propertyImage }}
-          className="w-full h-48 rounded-lg"
-          resizeMode="cover"
-        />
+        <TouchableOpacity onPress={handleImagePress} activeOpacity={0.8}>
+          <Image
+            source={{ uri: propertyImage }}
+            className="w-full h-48 rounded-lg"
+            resizeMode="cover"
+          />
+        </TouchableOpacity>
+
+        {/* Enhanced full-screen modal for image */}
+        <Modal
+          visible={modalVisible}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={handleModalClose}
+        >
+          <View style={styles.modalBackground}>
+            <TouchableOpacity
+              style={styles.modalClose}
+              onPress={handleModalClose}
+              activeOpacity={0.7}
+            >
+              <X size={24} color="#fff" />
+            </TouchableOpacity>
+            <Image
+              source={{ uri: propertyImage }}
+              style={styles.modalImage}
+              resizeMode="contain"
+            />
+            <TouchableOpacity
+              style={styles.modalOverlay}
+              activeOpacity={1}
+              onPress={handleModalClose}
+            />
+          </View>
+        </Modal>
       </View>
 
       {/* Service Details Section */}
@@ -208,7 +247,9 @@ const JobDetail = ({
           <Mail size={20} color="#4b5563" />
           <View className="ml-3">
             <Text className="text-gray-500">Email</Text>
-            <Text className="font-medium text-blue-600">{customerEmail}</Text>
+            <Text className="font-medium text-blue-600">
+              {customerAuthEmail || customerEmail}
+            </Text>
           </View>
         </TouchableOpacity>
       </View>
@@ -227,5 +268,41 @@ const JobDetail = ({
     </View>
   );
 };
+
+const styles = StyleSheet.create({
+  modalBackground: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.9)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalImage: {
+    width: "100%",
+    height: "80%",
+    zIndex: 2,
+  },
+  modalClose: {
+    position: "absolute",
+    top: 40,
+    right: 20,
+    zIndex: 3,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    borderRadius: 20,
+    padding: 8,
+  },
+  closeText: {
+    color: "white",
+    fontSize: 20,
+    fontWeight: "bold",
+  },
+  modalOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1,
+  },
+});
 
 export default JobDetail;

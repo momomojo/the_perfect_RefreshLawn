@@ -27,11 +27,14 @@ import {
   Database,
 } from "lucide-react-native";
 import { useAuth } from "../../lib/auth";
+import { showNotification } from "../../lib/notification";
+import { useConfirmation } from "../../lib/confirmation"; // Import useConfirmation
 
 const Settings = () => {
   const [loading, setLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const { signOut } = useAuth();
+  const { showConfirmation } = useConfirmation(); // Get the hook
   const [notificationPrefs, setNotificationPrefs] = useState({
     emailNotifications: true,
     pushNotifications: true,
@@ -46,11 +49,11 @@ const Settings = () => {
     }));
 
     // In a real app, you would save this to user preferences in the database
-    Alert.alert(
-      "Preference Updated",
-      `${key} have been ${!notificationPrefs[key] ? "enabled" : "disabled"}.`,
-      [{ text: "OK" }]
-    );
+    showNotification({
+      title: "Preference Updated",
+      message: `${key} have been ${!notificationPrefs[key] ? "enabled" : "disabled"}.`,
+      type: "success",
+    });
   };
 
   // Handle user logout - Enhanced with more robust techniques
@@ -91,10 +94,11 @@ const Settings = () => {
       console.log("signOut completed successfully");
     } catch (error) {
       console.error("Logout error:", error);
-      Alert.alert(
-        "Error",
-        "Failed to logout. Try using the Force Logout page."
-      );
+      showNotification({
+        title: "Error",
+        message: "Failed to logout. Try using the Force Logout page.",
+        type: "error",
+      });
 
       console.log("Attempting direct Supabase logout as fallback");
       // If regular logout fails, try a direct Supabase logout with global scope
@@ -138,10 +142,13 @@ const Settings = () => {
       return;
     }
 
-    Alert.alert("Confirm Logout", "Are you sure you want to log out?", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Logout", onPress: handleLogout, style: "destructive" },
-    ]);
+    showConfirmation({
+      title: "Confirm Logout",
+      message: "Are you sure you want to log out?",
+      confirmText: "Logout",
+      cancelText: "Cancel",
+      onConfirm: handleLogout,
+    });
   };
 
   // Delete test data function
@@ -233,16 +240,17 @@ const Settings = () => {
         .map(([table, count]) => `${table}: ${count} records deleted`)
         .join("\n");
 
-      Alert.alert(
-        "Test Data Deleted",
-        `The following records were deleted:\n\n${message}`,
-        [{ text: "OK" }]
-      );
+      showNotification({
+        title: "Test Data Deleted",
+        message: `The following records were deleted:\n\n${message}`,
+        type: "success",
+      });
     } catch (error: any) {
-      Alert.alert(
-        "Error Deleting Data",
-        error.message || "An error occurred while deleting test data"
-      );
+      showNotification({
+        title: "Error Deleting Data",
+        message: error.message || "An error occurred while deleting test data",
+        type: "error",
+      });
     } finally {
       setDeleteLoading(false);
     }
@@ -250,14 +258,13 @@ const Settings = () => {
 
   // Confirm test data deletion
   const confirmDeleteTestData = () => {
-    Alert.alert(
-      "Delete Test Data",
-      "This will permanently delete all test data including bookings, reviews, and non-admin users. This action cannot be undone.",
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Delete", onPress: deleteTestData, style: "destructive" },
-      ]
-    );
+    showConfirmation({
+      title: "Delete Test Data",
+      message: "This will permanently delete all test data including bookings, reviews, and non-admin users. This action cannot be undone.",
+      confirmText: "Delete",
+      cancelText: "Cancel",
+      onConfirm: deleteTestData,
+    });
   };
 
   return (

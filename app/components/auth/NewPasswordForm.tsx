@@ -4,7 +4,6 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -13,6 +12,7 @@ import {
 import { useRouter } from "expo-router";
 import { Eye, EyeOff, Lock, CheckCircle } from "lucide-react-native";
 import { useAuth } from "../../../lib/auth";
+import { showNotification } from "../../../lib/notification";
 
 const NewPasswordForm = () => {
   const router = useRouter();
@@ -53,12 +53,20 @@ const NewPasswordForm = () => {
 
   const handleSubmit = async () => {
     if (!password || !confirmPassword) {
-      Alert.alert("Error", "Please fill in all fields");
+      showNotification({
+        title: "Error",
+        message: "Please fill in all fields",
+        type: "error",
+      });
       return;
     }
 
     if (password !== confirmPassword) {
-      Alert.alert("Error", "Passwords do not match");
+      showNotification({
+        title: "Error",
+        message: "Passwords do not match",
+        type: "error",
+      });
       return;
     }
 
@@ -66,7 +74,11 @@ const NewPasswordForm = () => {
       (value) => value === true
     );
     if (!isPasswordValid) {
-      Alert.alert("Error", "Password does not meet all requirements");
+      showNotification({
+        title: "Error",
+        message: "Password does not meet all requirements",
+        type: "error",
+      });
       return;
     }
 

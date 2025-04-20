@@ -7,13 +7,13 @@ import {
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   Linking,
 } from "react-native";
 import { Search, User as UserIcon } from "lucide-react-native";
 import { supabase } from "../../../lib/supabase";
 import { format } from "date-fns";
 import { router } from "expo-router";
+import { showNotification } from "../../../lib/notification";
 
 interface Customer {
   id: string;
@@ -138,13 +138,21 @@ const CustomerManagement = () => {
       Linking.openURL(url);
     } catch (e: any) {
       console.error("Error opening Stripe dashboard:", e);
-      Alert.alert("Error", e.message || "Failed to open Stripe dashboard");
+      showNotification({
+        title: "Error",
+        message: e.message || "Failed to open Stripe dashboard",
+        type: "error",
+      });
     }
   };
 
   const handleViewProfile = (userId?: string | null) => {
     if (!userId) {
-      Alert.alert("No linked Supabase profile found.");
+      showNotification({
+        title: "Info",
+        message: "No linked Supabase profile found.",
+        type: "info",
+      });
       return;
     }
     router.push("/(admin)/users");

@@ -15,6 +15,13 @@ const supabaseAnonKey =
   process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
   Constants.expoConfig?.extra?.supabaseAnonKey;
 
+// DEBUG: Log Supabase config (ensure keys are not fully logged in production)
+console.log("[Supabase] URL:", supabaseUrl);
+console.log(
+  "[Supabase] Anon Key:",
+  supabaseAnonKey ? "[PRESENT]" : "[MISSING]"
+);
+
 // SecureStore adapter for more secure storage in production
 const SecureStoreAdapter = {
   getItem: (key: string) => {
@@ -53,6 +60,29 @@ export const supabase = createClient(supabaseUrl || "", supabaseAnonKey || "", {
     detectSessionInUrl: false,
   },
 });
+
+// DEBUG: Test basic connection AFTER client creation
+console.log("[Supabase] Attempting basic fetch test...");
+fetch(`${supabaseUrl}/rest/v1/`, {
+  // Use a known endpoint path like /rest/v1/
+  method: "HEAD", // Use HEAD to minimize data transfer
+  headers: {
+    apikey: supabaseAnonKey || "", // Include anon key
+  },
+})
+  .then((response) => {
+    console.log(
+      `[Supabase] Basic fetch test response status: ${response.status}`
+    );
+    if (!response.ok) {
+      console.error(
+        `[Supabase] Basic fetch test failed: ${response.statusText}`
+      );
+    }
+  })
+  .catch((err) => {
+    console.error("[Supabase] Basic fetch test EXCEPTION:", err);
+  });
 
 // Export a function to get Supabase client
 export const getSupabase = () => supabase;

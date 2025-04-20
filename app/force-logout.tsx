@@ -3,16 +3,17 @@ import {
   View,
   Text,
   StyleSheet,
-  Alert,
-  Platform,
   TouchableOpacity,
+  ScrollView,
+  Platform,
   ActivityIndicator,
 } from "react-native";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/auth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
-import { ScrollView } from "react-native-gesture-handler";
+import { showNotification } from "@/lib/notification"; // Import the utility
+import { ScrollView as GestureScrollView } from "react-native-gesture-handler";
 
 /**
  * Force Logout Page
@@ -40,7 +41,7 @@ export default function ForceLogoutScreen() {
             prev + "\n⚠️ Web storage clearing only applies to web platform"
         );
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error clearing web storage:", error);
       setResult(
         (prev) => prev + `\n❌ Error clearing web storage: ${error.message}`
@@ -60,7 +61,7 @@ export default function ForceLogoutScreen() {
             prev + "\n⚠️ AsyncStorage clearing only applies to native platforms"
         );
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error clearing AsyncStorage:", error);
       setResult(
         (prev) => prev + `\n❌ Error clearing AsyncStorage: ${error.message}`
@@ -75,7 +76,7 @@ export default function ForceLogoutScreen() {
       setResult(
         (prev) => prev + "\n✅ Forced Supabase signOut with global scope"
       );
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error during force sign out:", error);
       setResult(
         (prev) => prev + `\n❌ Error during force sign out: ${error.message}`
@@ -109,13 +110,14 @@ export default function ForceLogoutScreen() {
         // Navigate to login screen on native
         router.replace("/login");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Force logout failed:", error);
       setResult((prev) => prev + `\n❌ Force logout failed: ${error.message}`);
-      Alert.alert(
-        "Force Logout Failed",
-        "Please check the console for details."
-      );
+      showNotification({
+        title: "Force Logout Failed",
+        message: "Please check the console for details.",
+        type: "error",
+      });
     } finally {
       setLoading(false);
     }
@@ -132,14 +134,14 @@ export default function ForceLogoutScreen() {
       } else {
         setResult("No active session found");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error getting session:", error);
       setResult(`Error getting session: ${error.message}`);
     }
   };
 
   return (
-    <ScrollView style={styles.container}>
+    <GestureScrollView style={styles.container}>
       <View style={styles.content}>
         <Text style={styles.title}>Emergency Authentication Reset</Text>
 
@@ -187,7 +189,7 @@ export default function ForceLogoutScreen() {
           </View>
         ) : null}
       </View>
-    </ScrollView>
+    </GestureScrollView>
   );
 }
 
@@ -271,6 +273,5 @@ const styles = StyleSheet.create({
   },
   resultText: {
     fontFamily: Platform.OS === "web" ? "monospace" : "Courier",
-    whiteSpace: "pre-wrap",
   },
 });

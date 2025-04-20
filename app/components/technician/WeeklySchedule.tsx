@@ -28,7 +28,11 @@ const WeeklySchedule = ({ onDayPress = () => {} }: WeeklyScheduleProps) => {
   const today = new Date().toISOString().split("T")[0];
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      console.log("[WeeklySchedule] No user ID yet—skipping load");
+      setLoading(false);
+      return;
+    }
 
     const loadWeeklySchedule = async () => {
       try {
@@ -59,9 +63,11 @@ const WeeklySchedule = ({ onDayPress = () => {} }: WeeklyScheduleProps) => {
         }
 
         setSchedule(weekSchedule);
+        console.log("[WeeklySchedule] Loaded weekSchedule:", weekSchedule);
       } catch (err) {
         console.error("Error loading weekly schedule:", err);
       } finally {
+        console.log("[WeeklySchedule] Setting loading to false");
         setLoading(false);
       }
     };

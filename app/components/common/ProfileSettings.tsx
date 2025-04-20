@@ -2,12 +2,13 @@ import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
-  ScrollView,
-  Switch,
-  TouchableOpacity,
   TextInput,
-  Alert,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
   ActivityIndicator,
+  Platform,
+  Switch, // Add Switch back
 } from "react-native";
 import {
   ChevronRight,
@@ -28,6 +29,8 @@ import { useAuth } from "../../../lib/auth";
 import { supabase } from "../../../lib/supabase";
 import Constants from "expo-constants";
 import AddPaymentMethodModal from "./AddPaymentMethodModal";
+import { showNotification } from "../../../lib/notification";
+import { useConfirmation } from "../../../lib/confirmation"; // Import useConfirmation
 
 // Access Stripe publishable key from environment variables
 const STRIPE_PUBLISHABLE_KEY = 
@@ -109,6 +112,7 @@ const ProfileSettings = ({
   onUpdateProfile,
 }: ProfileSettingsProps) => {
   const { user, signOut, loading } = useAuth();
+  const { showConfirmation } = useConfirmation(); // Get the hook
   const [formData, setFormData] = useState(userData);
   const [isEditing, setIsEditing] = useState(false);
   const [isBillingEditing, setIsBillingEditing] = useState(false);
@@ -151,7 +155,11 @@ const ProfileSettings = ({
       }
     } catch (error) {
       console.error("Error fetching payment methods:", error);
-      Alert.alert("Error", "Failed to load payment methods");
+      showNotification({
+        title: "Error",
+        message: "Failed to load payment methods",
+        type: "error",
+      });
     } finally {
       setLoadingPaymentMethods(false);
     }
@@ -251,10 +259,18 @@ const ProfileSettings = ({
         })),
       );
 
-      Alert.alert("Success", "Default payment method updated");
+      showNotification({
+        title: "Success",
+        message: "Default payment method updated",
+        type: "success",
+      });
     } catch (error) {
       console.error("Error setting default payment method:", error);
-      Alert.alert("Error", "Failed to update default payment method");
+      showNotification({
+        title: "Error",
+        message: "Failed to update default payment method",
+        type: "error",
+      });
     } finally {
       setLoading(false);
     }
@@ -262,44 +278,44 @@ const ProfileSettings = ({
 
   const handleRemovePaymentMethod = async (paymentMethodId: string) => {
     setLoading(true);
-    Alert.alert(
-      "Remove Payment Method",
-      "Are you sure you want to remove this payment method?",
-      [
-        {
-          text: "Cancel",
-          style: "cancel",
-          onPress: () => setLoading(false),
-        },
-        {
-          text: "Remove",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              const { data, error } = await supabase.functions.invoke(
-                "stripe-customer-api",
-                {
-                  body: {
-                    path: "detach-payment-method",
-                    payload: { paymentMethodId },
-                  },
-                }
-              );
-              if (error) throw error;
-              setPaymentMethods((prev) =>
-                prev.filter((pm) => pm.id !== paymentMethodId)
-              );
-              Alert.alert("Success", "Payment method removed");
-            } catch (error) {
-              console.error("Error removing payment method:", error);
-              Alert.alert("Error", "Failed to remove payment method");
-            } finally {
-              setLoading(false);
+    showConfirmation({
+      title: "Remove Payment Method",
+      message: "Are you sure you want to remove this payment method?",
+      confirmText: "Remove",
+      cancelText: "Cancel",
+      confirmButtonStyle: "destructive", // Hint for red button
+      onConfirm: async () => {
+        try {
+          const { data, error } = await supabase.functions.invoke(
+            "stripe-customer-api",
+            {
+              body: {
+                path: "detach-payment-method",
+                payload: { paymentMethodId },
+              },
             }
-          },
-        },
-      ]
-    );
+          );
+          if (error) throw error;
+          setPaymentMethods((prev) =>
+            prev.filter((pm) => pm.id !== paymentMethodId)
+          );
+          showNotification({
+            title: "Success",
+            message: "Payment method removed",
+            type: "success",
+          });
+        } catch (error) {
+          console.error("Error removing payment method:", error);
+          showNotification({
+            title: "Error",
+            message: "Failed to remove payment method",
+            type: "error",
+          });
+        } finally {
+          setLoading(false);
+        }
+      },
+    });
   };
 
   const validateForm = () => {
@@ -398,21 +414,14 @@ const ProfileSettings = ({
           stripeUpdateSuccessful = false;
 
           const confirmContinue = await new Promise((resolve) => {
-            Alert.alert(
-              "Stripe Update Failed",
-              "We couldn't update your billing information in our payment system, but we can still save your other profile changes. Would you like to continue?",
-              [
-                {
-                  text: "Cancel",
-                  style: "cancel",
-                  onPress: () => resolve(false),
-                },
-                {
-                  text: "Continue",
-                  onPress: () => resolve(true),
-                },
-              ],
-            );
+            showConfirmation({
+              title: "Stripe Update Failed",
+              message: "We couldn't update your billing information in our payment system, but we can still save your other profile changes. Would you like to continue?",
+              confirmText: "Continue",
+              cancelText: "Cancel",
+              onConfirm: () => resolve(true),
+              onCancel: () => resolve(false),
+            });
           });
 
           if (!confirmContinue) {
@@ -426,12 +435,17 @@ const ProfileSettings = ({
         await onUpdateProfile(formData);
 
         if (!stripeUpdateSuccessful) {
-          Alert.alert(
-            "Partial Update",
-            "Your profile information was saved, but there was a problem with your billing address update in our payment system. You may need to update your billing information again later.",
-          );
+          showNotification({
+            title: "Partial Update",
+            message: "Your profile information was saved, but there was a problem with your billing address update in our payment system. You may need to update your billing information again later.",
+            type: "warning",
+          });
         } else {
-          Alert.alert("Success", "Profile updated successfully");
+          showNotification({
+            title: "Success",
+            message: "Profile updated successfully",
+            type: "success",
+          });
         }
       } else {
         console.log("Saving profile data:", formData);
@@ -441,7 +455,11 @@ const ProfileSettings = ({
       setIsBillingEditing(false);
     } catch (error) {
       console.error("Error saving profile:", error);
-      Alert.alert("Error", "Failed to save profile. Please try again.");
+      showNotification({
+        title: "Error",
+        message: "Failed to save profile. Please try again.",
+        type: "error",
+      });
     } finally {
       setLoading(false);
     }
@@ -458,7 +476,11 @@ const ProfileSettings = ({
       setLoading(false);
     } catch (error) {
       console.error("ProfileSettings: Logout error:", error);
-      Alert.alert("Error", "Failed to log out. Please try again.");
+      showNotification({
+        title: "Error",
+        message: "Failed to log out. Please try again.",
+        type: "error",
+      });
       setLoading(false);
     }
   };
@@ -468,17 +490,18 @@ const ProfileSettings = ({
       (pm) =>
         pm.card.brand === newMethod.card_brand &&
         pm.card.last4 === newMethod.card_last4 &&
-        pm.card.exp_month === newMethod.card_exp_month &&
-        pm.card.exp_year === newMethod.card_exp_year
+        pm.card.expiryMonth === newMethod.card_exp_month &&
+        pm.card.expiryYear === newMethod.card_exp_year
     );
   };
 
   const handleAddPaymentMethod = async (newMethod: any) => {
     if (isDuplicatePaymentMethod(newMethod)) {
-      Alert.alert(
-        "Duplicate Card",
-        "This card is already saved. Please use a different card."
-      );
+      showNotification({
+        title: "Error",
+        message: "This card is already saved. Please use a different card.",
+        type: "error",
+      });
       return;
     }
     setPaymentMethods((prev) => [...prev, newMethod]);
@@ -908,16 +931,20 @@ const ProfileSettings = ({
               {paymentMethods.map((method) => (
                 <View
                   key={method.id}
-                  className="flex-row justify-between items-center p-3 bg-white rounded-md mb-2 border border-gray-100"
+                  className={`flex-row items-center justify-between p-4 border rounded-lg mb-3 ${
+                    method.isDefault
+                      ? "border-green-500 bg-green-50"
+                      : "border-gray-300 bg-white"
+                  }`}
                 >
-                  <View className="flex-row items-center flex-1">
+                  <View className="flex-row items-center flex-1 mr-2">
                     <CreditCard size={20} color="#6b7280" />
-                    <View className="ml-3">
-                      <Text>
-                        {method.card.brand.charAt(0).toUpperCase() + method.card.brand.slice(1)} •••• {method.card.last4}
+                    <View className="ml-3 flex-1">
+                      <Text className="font-medium capitalize">
+                        {method.card.brand} **** {method.card.last4}
                       </Text>
-                      <Text className="text-xs text-gray-500">
-                        Expires {method.card.expiryMonth}/{String(method.card.expiryYear).slice(-2)}
+                      <Text className="text-gray-500 text-sm">
+                        Expires: {method.card.expiryMonth}/{String(method.card.expiryYear).slice(-2)}
                       </Text>
                     </View>
                   </View>

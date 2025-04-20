@@ -5,7 +5,6 @@ import {
   SafeAreaView,
   ScrollView,
   ActivityIndicator,
-  Alert,
   TouchableOpacity,
 } from "react-native";
 import { Stack, useRouter, useLocalSearchParams } from "expo-router";
@@ -13,6 +12,7 @@ import { useAuth } from "../../lib/auth";
 import { getBooking, Booking } from "../../lib/data";
 import { Calendar, Clock, MapPin, DollarSign, Info } from "lucide-react-native";
 import { format } from "date-fns";
+import { showNotification } from "../../lib/notification";
 
 export default function BookingDetailsScreen() {
   const router = useRouter();
@@ -49,7 +49,11 @@ export default function BookingDetailsScreen() {
       } catch (err: any) {
         console.error("Error fetching booking details:", err);
         setError(err.message || "Failed to load booking details");
-        Alert.alert("Error", err.message || "Failed to load booking details");
+        showNotification({
+          title: "Error",
+          message: err.message || "Failed to load booking details",
+          type: "error",
+        });
       } finally {
         setLoading(false);
       }

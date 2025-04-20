@@ -18,6 +18,7 @@ interface PaymentIntentRequest {
   amount: number;
   currency?: string;
   payment_method_types?: string[];
+  paymentMethodId?: string; // Added for Stripe saved card support
 }
 
 interface CustomerRequest {
@@ -257,9 +258,10 @@ async function handleCreatePaymentIntent(
     }
 
     // Construct customer details from profile or fallbacks
-    const customerName = profileData?.first_name && profileData?.last_name
-      ? `${profileData.first_name} ${profileData.last_name}`
-      : null; // Fallback to null if names missing
+    const customerName =
+      profileData?.first_name && profileData?.last_name
+        ? `${profileData.first_name} ${profileData.last_name}`
+        : null; // Fallback to null if names missing
     const customerEmail = user.email;
     const customerPhone = profileData?.phone || null; // Use profile phone or null
 
@@ -295,7 +297,6 @@ async function handleCreatePaymentIntent(
           updated_at: new Date().toISOString(),
         })
         .eq("user_id", user.id);
-
     } else {
       // 3b. Customer doesn't exist - Create in Stripe and save to local DB
       console.log(`Creating new Stripe customer for user: ${user.id}`);
@@ -322,7 +323,7 @@ async function handleCreatePaymentIntent(
     }
 
     // 4. Create a PaymentIntent
-    const paymentIntent = await stripe.paymentIntents.create({
+    const paymentIntentParams: Stripe.PaymentIntentCreateParams = {
       amount,
       currency,
       customer: customerId,
@@ -330,9 +331,19 @@ async function handleCreatePaymentIntent(
       metadata: {
         supabase_user_id: user.id,
       },
-    });
+    };
 
-    console.log(`Payment intent created: ${paymentIntent.id} for customer ${customerId}`);
+    // Attach payment method if provided and is a saved card
+    if (body.paymentMethodId && body.paymentMethodId.startsWith("pm_")) {
+      paymentIntentParams.payment_method = body.paymentMethodId;
+      console.log(`Attaching payment method ${body.paymentMethodId} to PaymentIntent`);
+    }
+
+    const paymentIntent = await stripe.paymentIntents.create(paymentIntentParams);
+
+    console.log(
+      `Payment intent created: ${paymentIntent.id} for customer ${customerId}`
+    );
 
     return new Response(
       JSON.stringify({
@@ -356,11 +367,12 @@ async function handleCreateCustomer(
 ) {
   try {
     // 1. Check if customer already exists in our database
-    const { data: existingCustomerRecord, error: customerDbError } = await supabase
-      .from("customers")
-      .select("stripe_customer_id")
-      .eq("user_id", user.id)
-      .maybeSingle();
+    const { data: existingCustomerRecord, error: customerDbError } =
+      await supabase
+        .from("customers")
+        .select("stripe_customer_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
 
     if (customerDbError) throw customerDbError;
 
@@ -368,7 +380,9 @@ async function handleCreateCustomer(
       // Customer already exists, maybe update?
       // For now, just return existing ID as per original logic.
       // Consider adding update logic similar to handleCreatePaymentIntent if needed.
-      console.log(`Customer already exists (handleCreateCustomer): ${existingCustomerRecord.stripe_customer_id}`);
+      console.log(
+        `Customer already exists (handleCreateCustomer): ${existingCustomerRecord.stripe_customer_id}`
+      );
       return new Response(
         JSON.stringify({
           customerId: existingCustomerRecord.stripe_customer_id,
@@ -391,9 +405,10 @@ async function handleCreateCustomer(
     }
 
     // 3. Construct customer details using profile first, then body/auth fallbacks
-    const customerName = profileData?.first_name && profileData?.last_name
-      ? `${profileData.first_name} ${profileData.last_name}`
-      : body.name || null; // Fallback to body.name if profile names missing
+    const customerName =
+      profileData?.first_name && profileData?.last_name
+        ? `${profileData.first_name} ${profileData.last_name}`
+        : body.name || null; // Fallback to body.name if profile names missing
     const customerEmail = user.email;
     const customerPhone = profileData?.phone || body.phone || null; // Use profile phone or body.phone
 
@@ -407,7 +422,9 @@ async function handleCreateCustomer(
       },
     });
     const customerId = stripeCustomer.id;
-    console.log(`New Stripe customer created (handleCreateCustomer): ${customerId}`);
+    console.log(
+      `New Stripe customer created (handleCreateCustomer): ${customerId}`
+    );
 
     // 5. Save the *complete* customer info to your 'customers' database
     await supabase.from("customers").insert({

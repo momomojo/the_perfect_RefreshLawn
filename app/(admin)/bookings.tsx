@@ -20,6 +20,7 @@ import {
 } from "lucide-react-native";
 import { getAllBookings, Booking } from "../../lib/data";
 import { format, parseISO } from "date-fns";
+import { useIsFocused } from "@react-navigation/native";
 
 export default function BookingsScreen() {
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -28,10 +29,17 @@ export default function BookingsScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const isFocused = useIsFocused();
 
   useEffect(() => {
     fetchBookings();
   }, []);
+
+  useEffect(() => {
+    if (isFocused) {
+      fetchBookings();
+    }
+  }, [isFocused]);
 
   useEffect(() => {
     // Apply filters when bookings, searchQuery, or statusFilter changes
@@ -50,9 +58,18 @@ export default function BookingsScreen() {
       );
     }
 
-    // Filter by status
+    // Filter by status (including 'paid' mapping)
     if (statusFilter) {
-      filtered = filtered.filter((booking) => booking.status === statusFilter);
+      if (statusFilter === "paid") {
+        // 'Paid' filter matches booking.status 'payment_confirmed'
+        filtered = filtered.filter(
+          (booking) => booking.status === "payment_confirmed"
+        );
+      } else {
+        filtered = filtered.filter(
+          (booking) => booking.status === statusFilter
+        );
+      }
     }
 
     setFilteredBookings(filtered);
@@ -94,7 +111,7 @@ export default function BookingsScreen() {
         return "bg-green-100 text-green-800 border-green-200";
       case "cancelled":
         return "bg-red-100 text-red-800 border-red-200";
-      case "paid":
+      case "payment_confirmed": // treat as Paid
         return "bg-teal-100 text-teal-800 border-teal-200";
       default:
         return "bg-gray-100 text-gray-800 border-gray-200";
@@ -154,8 +171,12 @@ export default function BookingsScreen() {
         {/* Stripe Payment Info */}
         {item.status === "paid" && item.stripe_payment_intent_id && (
           <View className="mb-2">
-            <Text className="text-xs text-teal-700 font-semibold">Paid via Stripe</Text>
-            <Text className="text-xs text-gray-500">Payment Ref: {item.stripe_payment_intent_id}</Text>
+            <Text className="text-xs text-teal-700 font-semibold">
+              Paid via Stripe
+            </Text>
+            <Text className="text-xs text-gray-500">
+              Payment Ref: {item.stripe_payment_intent_id}
+            </Text>
           </View>
         )}
 

@@ -4,7 +4,6 @@ import {
   Text,
   SafeAreaView,
   StatusBar,
-  Alert,
   ActivityIndicator,
   TextInput,
   KeyboardAvoidingView,
@@ -26,6 +25,8 @@ import {
 import { Check, X, Plus, Camera, Upload } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import { decode } from "base64-arraybuffer";
+import { showNotification } from "../../lib/notification";
+import { useConfirmation } from "../../lib/confirmation";
 
 export default function ServicesScreen() {
   const [loading, setLoading] = useState(true);
@@ -41,6 +42,7 @@ export default function ServicesScreen() {
     image_url: "",
     is_active: true,
   });
+  const { showConfirmation } = useConfirmation();
 
   useEffect(() => {
     fetchServices();
@@ -68,10 +70,11 @@ export default function ServicesScreen() {
         await ImagePicker.requestMediaLibraryPermissionsAsync();
 
       if (!permissionResult.granted) {
-        Alert.alert(
-          "Permission Required",
-          "We need permission to access your photo library."
-        );
+        showNotification({
+          title: "Permission Required",
+          message: "We need permission to access your photo library.",
+          type: "warning",
+        });
         return;
       }
 
@@ -88,20 +91,32 @@ export default function ServicesScreen() {
       }
 
       if (!result.assets || result.assets.length === 0) {
-        Alert.alert("Error", "No image was selected");
+        showNotification({
+          title: "Error",
+          message: "No image was selected",
+          type: "error",
+        });
         return;
       }
 
       const asset = result.assets[0];
       if (!asset.base64) {
-        Alert.alert("Error", "Failed to process image");
+        showNotification({
+          title: "Error",
+          message: "Failed to process image",
+          type: "error",
+        });
         return;
       }
 
       await uploadImage(asset.base64);
     } catch (error) {
       console.error("Error picking image:", error);
-      Alert.alert("Error", "Failed to pick image");
+      showNotification({
+        title: "Error",
+        message: "Failed to pick image",
+        type: "error",
+      });
     }
   };
 
@@ -124,10 +139,11 @@ export default function ServicesScreen() {
 
       if (error) {
         if (error.message.includes("Bucket not found")) {
-          Alert.alert(
-            "Storage Setup Required",
-            "The storage bucket for images doesn't exist. Please create a bucket named 'service_images' in your Supabase dashboard and ensure it has the right permissions."
-          );
+          showNotification({
+            title: "Storage Setup Required",
+            message: "The storage bucket for images doesn't exist. Please create a bucket named 'service_images' in your Supabase dashboard and ensure it has the right permissions.",
+            type: "warning",
+          });
         } else {
           throw error;
         }
@@ -144,10 +160,11 @@ export default function ServicesScreen() {
       }
     } catch (error) {
       console.error("Error uploading image:", error);
-      Alert.alert(
-        "Error",
-        "Failed to upload image. Check console for details."
-      );
+      showNotification({
+        title: "Error",
+        message: "Failed to upload image. Check console for details.",
+        type: "error",
+      });
     } finally {
       setImageUploadLoading(false);
     }
@@ -157,7 +174,11 @@ export default function ServicesScreen() {
     console.log("Add service action triggered");
 
     if (!newService.name || !newService.base_price) {
-      Alert.alert("Error", "Service name and price are required");
+      showNotification({
+        title: "Error",
+        message: "Service name and price are required",
+        type: "error",
+      });
       return;
     }
 
@@ -165,7 +186,11 @@ export default function ServicesScreen() {
       // Convert price to number
       const price = parseFloat(newService.base_price);
       if (isNaN(price)) {
-        Alert.alert("Error", "Price must be a valid number");
+        showNotification({
+          title: "Error",
+          message: "Price must be a valid number",
+          type: "error",
+        });
         return;
       }
 
@@ -175,46 +200,48 @@ export default function ServicesScreen() {
         : 60; // Default duration
 
       if (isNaN(duration)) {
-        Alert.alert("Error", "Duration must be a valid number");
+        showNotification({
+          title: "Error",
+          message: "Duration must be a valid number",
+          type: "error",
+        });
         return;
       }
 
       // Use the createService function from data.ts
       const serviceData = {
         name: newService.name,
-        description: newService.description || null,
+        description: newService.description || undefined,
         base_price: price,
         duration_minutes: duration,
-        image_url: newService.image_url || null,
+        image_url: newService.image_url || undefined,
         is_active: newService.is_active,
       };
 
       await createService(serviceData);
 
-      Alert.alert(
-        "Success",
-        `Service "${newService.name}" has been added successfully!`,
-        [
-          {
-            text: "OK",
-            onPress: () => {
-              setShowAddForm(false);
-              setNewService({
-                name: "",
-                description: "",
-                base_price: "",
-                duration_minutes: "",
-                image_url: "",
-                is_active: true,
-              });
-              fetchServices();
-            },
-          },
-        ]
-      );
+      showNotification({
+        title: "Success",
+        message: `Service "${newService.name}" has been added successfully!`,
+        type: "success",
+      });
+      setShowAddForm(false);
+      setNewService({
+        name: "",
+        description: "",
+        base_price: "",
+        duration_minutes: "",
+        image_url: "",
+        is_active: true,
+      });
+      fetchServices();
     } catch (error: any) {
       console.error("Error adding service:", error);
-      Alert.alert("Error", error.message || "Failed to add service");
+      showNotification({
+        title: "Error",
+        message: error.message || "Failed to add service",
+        type: "error",
+      });
     }
   };
 
@@ -226,14 +253,19 @@ export default function ServicesScreen() {
       // Use the updateService function from data.ts
       await updateService(service.id, updates);
 
-      Alert.alert(
-        "Success",
-        `Service "${service.name}" has been updated successfully!`,
-        [{ text: "OK", onPress: fetchServices }]
-      );
+      showNotification({
+        title: "Success",
+        message: `Service "${service.name}" has been updated successfully!`,
+        type: "success",
+      });
+      fetchServices();
     } catch (error: any) {
       console.error("Error updating service:", error);
-      Alert.alert("Error", error.message || "Failed to update service");
+      showNotification({
+        title: "Error",
+        message: error.message || "Failed to update service",
+        type: "error",
+      });
     }
   };
 
@@ -241,60 +273,58 @@ export default function ServicesScreen() {
     serviceId: string,
     serviceName: string
   ) => {
-    Alert.alert(
-      "Confirm Delete",
-      `Are you sure you want to delete "${serviceName}"? This action cannot be undone.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              // Check if service is used in any bookings
-              const { data: bookings, error: bookingsError } = await supabase
-                .from("bookings")
-                .select("id")
-                .eq("service_id", serviceId)
-                .limit(1);
+    showConfirmation({
+      title: "Confirm Delete",
+      message: `Are you sure you want to delete "${serviceName}"? This action cannot be undone.`,
+      confirmText: "Delete",
+      cancelText: "Cancel",
+      confirmButtonStyle: "destructive",
+      onConfirm: async () => {
+        try {
+          // Check if service is used in any bookings
+          const { data: bookings, error: bookingsError } = await supabase
+            .from("bookings")
+            .select("id")
+            .eq("service_id", serviceId)
+            .limit(1);
 
-              if (bookingsError) throw bookingsError;
+          if (bookingsError) throw bookingsError;
 
-              if (bookings && bookings.length > 0) {
-                // Service is in use, ask if they want to deactivate instead
-                Alert.alert(
-                  "Service In Use",
-                  "This service is currently used in bookings. Instead of deleting, would you like to deactivate it?",
-                  [
-                    { text: "Cancel", style: "cancel" },
-                    {
-                      text: "Deactivate",
-                      onPress: () =>
-                        handleUpdateService({ id: serviceId } as Service, {
-                          is_active: false,
-                        }),
-                    },
-                  ]
-                );
-                return;
-              }
+          if (bookings && bookings.length > 0) {
+            // Service is in use, ask if they want to deactivate instead
+            showConfirmation({
+              title: "Service In Use",
+              message: "This service is currently used in bookings. Instead of deleting, would you like to deactivate it?",
+              confirmText: "Deactivate",
+              cancelText: "Cancel",
+              confirmButtonStyle: "destructive",
+              onConfirm: () =>
+                handleUpdateService({ id: serviceId } as Service, {
+                  is_active: false,
+                }),
+            });
+            return;
+          }
 
-              // If no bookings found, proceed with deletion using function from data.ts
-              await deleteService(serviceId);
+          // If no bookings found, proceed with deletion using function from data.ts
+          await deleteService(serviceId);
 
-              Alert.alert(
-                "Success",
-                `Service "${serviceName}" has been deleted successfully!`,
-                [{ text: "OK", onPress: fetchServices }]
-              );
-            } catch (error: any) {
-              console.error("Error deleting service:", error);
-              Alert.alert("Error", error.message || "Failed to delete service");
-            }
-          },
-        },
-      ]
-    );
+          showNotification({
+            title: "Success",
+            message: `Service "${serviceName}" has been deleted successfully!`,
+            type: "success",
+          });
+          fetchServices();
+        } catch (error: any) {
+          console.error("Error deleting service:", error);
+          showNotification({
+            title: "Error",
+            message: error.message || "Failed to delete service",
+            type: "error",
+          });
+        }
+      },
+    });
   };
 
   const toggleServiceStatus = async (service: Service) => {
@@ -304,16 +334,21 @@ export default function ServicesScreen() {
       // Use the updateService function from data.ts
       await updateService(service.id, { is_active: newStatus });
 
-      Alert.alert(
-        "Success",
-        `Service "${service.name}" has been ${
+      showNotification({
+        title: "Success",
+        message: `Service "${service.name}" has been ${
           newStatus ? "activated" : "deactivated"
         }!`,
-        [{ text: "OK", onPress: fetchServices }]
-      );
+        type: "success",
+      });
+      fetchServices();
     } catch (error: any) {
       console.error("Error toggling service status:", error);
-      Alert.alert("Error", error.message || "Failed to update service status");
+      showNotification({
+        title: "Error",
+        message: error.message || "Failed to update service status",
+        type: "error",
+      });
     }
   };
 

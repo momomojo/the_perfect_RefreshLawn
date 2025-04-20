@@ -3,7 +3,8 @@ export const corsHeaders = {
   "Content-Type": "application/json",
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
 };
 
 // Type definition for response headers
@@ -11,32 +12,26 @@ export type ResponseHeaders = typeof corsHeaders;
 
 // Helper for creating error responses
 export function createErrorResponse(
-  message: string, 
-  status: number = 400, 
+  message: string,
+  status: number = 400,
   headers: ResponseHeaders = corsHeaders
 ): Response {
-  return new Response(
-    JSON.stringify({ error: message }),
-    { headers, status }
-  );
+  return new Response(JSON.stringify({ error: message }), { headers, status });
 }
 
 // Helper for creating success responses
 export function createSuccessResponse(
-  data: any, 
+  data: any,
   headers: ResponseHeaders = corsHeaders
 ): Response {
-  return new Response(
-    JSON.stringify(data),
-    { headers }
-  );
+  return new Response(JSON.stringify(data), { headers });
 }
 
 // Handle CORS preflight requests
 export function handleCorsPreflightRequest(): Response {
-  return new Response(null, { 
-    headers: corsHeaders, 
-    status: 204 
+  return new Response(null, {
+    headers: corsHeaders,
+    status: 204,
   });
 }
 

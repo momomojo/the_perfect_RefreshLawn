@@ -7,6 +7,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { User } from "https://esm.sh/@supabase/supabase-js@2.7.1";
+import Stripe from "https://esm.sh/stripe@12.4.0?dts";
 import {
   corsHeaders,
   createErrorResponse,
@@ -14,13 +15,13 @@ import {
   handleCorsPreflightRequest,
   ResponseHeaders,
   parseRequestBody,
-} from "../_shared/http-utils.ts";
+} from "../shared/http-utils.ts";
 import {
   getStripeCustomerId,
   stripe,
   getSupabaseClient,
-} from "../_shared/stripe-utils.ts";
-import { verifyUser } from "../_shared/auth-utils.ts";
+} from "../shared/stripe-utils.ts";
+import { verifyUser } from "../shared/auth-utils.ts";
 
 // Define interface types
 interface CustomerRequest {
@@ -41,7 +42,7 @@ async function handleCreateCustomer(
   try {
     const supabase = getSupabaseClient();
 
-    // 1. Check if customer already exists in our 'customers' database
+    // 1. Check if customer already exists in our database
     const { data: existingCustomerRecord, error: customerDbError } =
       await supabase
         .from("customers")
@@ -52,9 +53,10 @@ async function handleCreateCustomer(
     if (customerDbError) throw customerDbError;
 
     if (existingCustomerRecord?.stripe_customer_id) {
-      // Customer already exists, maybe update? For now, return existing ID.
+      // Customer already exists, maybe update?
+      // For now, just return existing ID as per original logic.
       console.log(
-        `Customer already exists in DB: ${existingCustomerRecord.stripe_customer_id}`
+        `Customer already exists (handleCreateCustomer): ${existingCustomerRecord.stripe_customer_id}`
       );
       return createSuccessResponse(
         {
@@ -65,30 +67,23 @@ async function handleCreateCustomer(
       );
     }
 
-    // 2. Fetch profile data (needed for name/phone potentially)
+    // 2. Fetch profile data as primary source
     const { data: profileData, error: profileError } = await supabase
       .from("profiles")
-      .select("first_name, last_name, phone") // Only select needed fields
+      .select("first_name, last_name, phone")
       .eq("id", user.id)
-      .single(); // Use single to enforce profile existence
+      .single();
 
-    if (profileError) {
+    if (profileError && profileError.code !== "PGRST116") {
       console.error("Error fetching profile:", profileError);
-      // Handle case where profile might not exist yet, but auth user does
-      if (profileError.code === "PGRST116") {
-        console.warn(
-          "Profile not found for user, proceeding with minimal info."
-        );
-      } else {
-        throw new Error("Could not fetch user profile.");
-      }
+      throw new Error("Could not fetch user profile.");
     }
 
     // 3. Construct customer details using profile first, then body/auth fallbacks
     const customerName =
       profileData?.first_name && profileData?.last_name
         ? `${profileData.first_name} ${profileData.last_name}`
-        : body.name || null; // Fallback to body.name
+        : body.name || null; // Fallback to body.name if profile names missing
     const customerEmail = user.email;
     const customerPhone = profileData?.phone || body.phone || null; // Use profile phone or body.phone
 
@@ -98,49 +93,29 @@ async function handleCreateCustomer(
       name: customerName,
       phone: customerPhone,
       metadata: {
-        supabase_user_id: user.id, // Crucial link back to Supabase auth user
+        supabase_user_id: user.id,
       },
     });
-    const stripeCustomerId = stripeCustomer.id; // Get the new Stripe Customer ID
-    console.log(`New Stripe customer created: ${stripeCustomerId}`);
+    const customerId = stripeCustomer.id;
+    console.log(
+      `New Stripe customer created (handleCreateCustomer): ${customerId}`
+    );
 
     // 5. Save the *complete* customer info to your 'customers' database
-    // Use upsert to handle potential race conditions or if webhook creates it first
-    const { data: upsertedCustomer, error: upsertError } = await supabase
+    const { data: customer, error: custError } = await supabase
       .from("customers")
       .upsert(
-        {
-          user_id: user.id,
-          stripe_customer_id: stripeCustomerId,
-          email: customerEmail, // Store email from auth
-          name: customerName, // Store name used in Stripe
-          phone: customerPhone, // Store phone used in Stripe
-        },
-        {
-          onConflict: "user_id", // Use user_id as the conflict target
-          // ignoreDuplicates: false // Default is false, ensures update if exists
-        }
+        { user_id: user.id, stripe_customer_id, email: user.email },
+        { onConflict: "user_id" }
       )
-      .select() // Select the inserted/updated row
-      .single(); // Expect a single row result
-
-    if (upsertError) {
-      console.error("Error upserting customer record:", upsertError);
-      // Decide how to handle: maybe try to delete the Stripe customer?
-      // For now, throw the error to signal failure.
-      throw upsertError;
-    }
-
-    console.log(
-      "Customer record upserted successfully into DB:",
-      upsertedCustomer
-    );
+      .select()
+      .single();
+    if (custError) throw custError;
 
     return createSuccessResponse(
       {
-        // Return the definitive Stripe Customer ID from the upserted record
-        customerId: upsertedCustomer.stripe_customer_id,
-        message: "Customer created/updated successfully",
+        customerId: customer.stripe_customer_id,
+        message: "Customer created successfully",
       },
       headers
     );
@@ -270,19 +245,19 @@ serve(async (req) => {
 
   // Only allow POST requests
   if (req.method !== "POST") {
-    return createErrorResponse("Method not allowed", 405);
+    return createErrorResponse("Method not allowed", 405, corsHeaders);
   }
 
   try {
     // Parse the request body FIRST to get the routing path and payload
     const body = await parseRequestBody(req);
-    const routePath = body.path; // Get path from body
-    const payload = body.payload || {}; // Get payload from body
+    const routePath = body.path;
+    const payload = body.payload || {};
 
     // Verify the user
     const user = await verifyUser(req);
     if (!user) {
-      return createErrorResponse("Unauthorized", 401);
+      return createErrorResponse("Unauthorized", 401, corsHeaders);
     }
 
     console.log(
@@ -292,21 +267,37 @@ serve(async (req) => {
     // Route the request based on the path from the body
     switch (routePath) {
       case "create-customer":
-        return await handleCreateCustomer(user, payload, corsHeaders);
+        return await handleCreateCustomer(
+          user,
+          payload as CustomerRequest,
+          corsHeaders
+        );
       case "list-payment-methods":
         return await handleListPaymentMethods(user, corsHeaders);
       case "attach-payment-method":
-        return await handleAttachPaymentMethod(user, payload, corsHeaders);
+        return await handleAttachPaymentMethod(
+          user,
+          payload as PaymentMethodRequest,
+          corsHeaders
+        );
       case "detach-payment-method":
-        return await handleDetachPaymentMethod(user, payload, corsHeaders);
+        return await handleDetachPaymentMethod(
+          user,
+          payload as PaymentMethodRequest,
+          corsHeaders
+        );
       case "set-default-payment":
-        return await handleSetDefaultPayment(user, payload, corsHeaders);
+        return await handleSetDefaultPayment(
+          user,
+          payload as PaymentMethodRequest,
+          corsHeaders
+        );
       default:
-        return createErrorResponse("Invalid route", 404);
+        return createErrorResponse("Invalid path", 404, corsHeaders);
     }
   } catch (error) {
-    console.error("Error processing request:", error);
-    return createErrorResponse((error as Error).message, 500);
+    console.error("Error in main function handler:", error);
+    return createErrorResponse((error as Error).message, 500, corsHeaders);
   }
 });
 

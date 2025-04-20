@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   TextInput,
   RefreshControl,
-  Alert,
 } from "react-native";
 import {
   Star,
@@ -21,6 +20,7 @@ import {
 import { format, parseISO, isValid } from "date-fns";
 import { createReview, Booking } from "../../../lib/data";
 import { useAuth } from "../../../lib/auth";
+import { showNotification } from "../../../lib/notification";
 
 interface ServiceHistoryProps {
   services?: Booking[];
@@ -80,16 +80,21 @@ const ServiceHistory = ({ services = [], onRefresh }: ServiceHistoryProps) => {
   const handleRateService = async (bookingId: string, rating: number) => {
     try {
       if (!user) {
-        Alert.alert("Error", "You must be logged in to rate a service");
+        showNotification({
+          title: "Error",
+          message: "You must be logged in to rate a service",
+          type: "error",
+        });
         return;
       }
 
       const booking = services.find((b) => b.id === bookingId);
       if (!booking || !booking.technician_id) {
-        Alert.alert(
-          "Error",
-          "Could not find booking or technician information"
-        );
+        showNotification({
+          title: "Error",
+          message: "Could not find booking or technician information",
+          type: "error",
+        });
         return;
       }
 
@@ -101,7 +106,11 @@ const ServiceHistory = ({ services = [], onRefresh }: ServiceHistoryProps) => {
         rating: rating,
       });
 
-      Alert.alert("Success", "Thank you for your rating!");
+      showNotification({
+        title: "Success",
+        message: "Thank you for your rating!",
+        type: "success",
+      });
 
       // Refresh the list if onRefresh is available
       if (onRefresh) {
@@ -109,7 +118,11 @@ const ServiceHistory = ({ services = [], onRefresh }: ServiceHistoryProps) => {
       }
     } catch (error: any) {
       console.error("Error rating service:", error);
-      Alert.alert("Error", error.message || "Failed to submit rating");
+      showNotification({
+        title: "Error",
+        message: error.message || "Failed to submit rating",
+        type: "error",
+      });
     }
   };
 

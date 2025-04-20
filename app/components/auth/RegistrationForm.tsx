@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   ScrollView,
   Image,
-  Alert,
   ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
@@ -22,6 +21,7 @@ import {
 import { useAuth } from "../../../lib/auth";
 import { supabase } from "../../../lib/supabase";
 import { signUpWithRole, UserRole } from "../../../utils/userRoleManager";
+import { showNotification } from "../../../lib/notification";
 
 const RegistrationForm = () => {
   const router = useRouter();
@@ -76,7 +76,11 @@ const RegistrationForm = () => {
         !formData.firstName ||
         !formData.lastName
       ) {
-        Alert.alert("Error", "Please fill out all required fields");
+        showNotification({
+          title: "Error",
+          message: "Please fill out all required fields",
+          type: "error",
+        });
         setIsSubmitting(false);
         return;
       }
@@ -103,18 +107,20 @@ const RegistrationForm = () => {
       );
 
       if (error) {
-        Alert.alert(
-          "Registration Error",
-          error.message || "An unexpected error occurred"
-        );
+        showNotification({
+          title: "Registration Error",
+          message: error.message || "An unexpected error occurred",
+          type: "error",
+        });
         return;
       }
 
       // Show success message
-      Alert.alert(
-        "Success",
-        "Registration successful! Please check your email for verification."
-      );
+      showNotification({
+        title: "Success",
+        message: "Registration successful! Please check your email for verification.",
+        type: "success",
+      });
 
       // After successful signup, update the profile with additional fields
       if (data?.user) {
@@ -139,10 +145,11 @@ const RegistrationForm = () => {
       // Redirect or show success UI
       router.push("/auth/confirmation");
     } catch (error: any) {
-      Alert.alert(
-        "Registration Error",
-        error.message || "An unexpected error occurred"
-      );
+      showNotification({
+        title: "Registration Error",
+        message: error.message || "An unexpected error occurred",
+        type: "error",
+      });
     } finally {
       setIsSubmitting(false);
     }

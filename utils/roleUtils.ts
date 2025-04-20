@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { supabase } from "../lib/supabase";
 
 /**
  * Utility functions for handling user roles in the RefreshLawn application

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, ActivityIndicator, Alert } from "react-native";
+import { View, Text, ActivityIndicator } from "react-native";
 import { useAuth } from "../../lib/auth";
 import ProfileSettings from "../components/common/ProfileSettings";
 import { supabase } from "../../lib/supabase";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { showNotification } from "../../lib/notification";
 
 interface ProfileData {
   name: string;
@@ -73,7 +74,11 @@ const CustomerProfileScreen = () => {
 
       if (error) {
         console.error("Error fetching profile:", error);
-        Alert.alert("Error", "Failed to load profile data");
+        showNotification({
+          title: "Error",
+          message: "Failed to load profile data",
+          type: "error",
+        });
         return;
       }
 
@@ -103,7 +108,11 @@ const CustomerProfileScreen = () => {
       setProfileData(formattedData);
     } catch (error) {
       console.error("Unexpected error fetching profile:", error);
-      Alert.alert("Error", "An unexpected error occurred");
+      showNotification({
+        title: "Error",
+        message: "An unexpected error occurred",
+        type: "error",
+      });
     } finally {
       setLoading(false);
     }
@@ -155,17 +164,29 @@ const CustomerProfileScreen = () => {
 
       if (error) {
         console.error("Error updating profile:", error);
-        Alert.alert("Error", "Failed to update profile. Please try again.");
+        showNotification({
+          title: "Error",
+          message: "Failed to update profile. Please try again.",
+          type: "error",
+        });
         return;
       }
 
       // Refresh profile data
       fetchUserProfile();
       
-      Alert.alert("Success", "Profile updated successfully");
+      showNotification({
+        title: "Success",
+        message: "Profile updated successfully",
+        type: "success",
+      });
     } catch (error) {
       console.error("Unexpected error updating profile:", error);
-      Alert.alert("Error", "An unexpected error occurred");
+      showNotification({
+        title: "Error",
+        message: "An unexpected error occurred",
+        type: "error",
+      });
     } finally {
       setLoading(false);
     }

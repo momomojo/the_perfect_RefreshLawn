@@ -16,12 +16,22 @@ import { getProfile } from "../../lib/data";
 
 export default function TechnicianDashboard() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
+  console.log("[TechnicianDashboard] authLoading:", authLoading, "user:", user);
   const [profile, setProfile] = useState<{ first_name: string } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user?.id) return;
+    // Wait for auth to finish loading
+    if (authLoading) return;
+    // If no user is signed in, stop loading and show anon state
+    if (!user?.id) {
+      console.log(
+        "[TechnicianDashboard] No user signed in, skipping profile load"
+      );
+      setLoading(false);
+      return;
+    }
 
     const loadProfile = async () => {
       try {
@@ -36,7 +46,7 @@ export default function TechnicianDashboard() {
     };
 
     loadProfile();
-  }, [user?.id]);
+  }, [authLoading, user?.id]);
 
   const handleJobSelect = (jobId: string) => {
     router.push(`/(technician)/job-details/${jobId}`);

@@ -5,7 +5,6 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
-  Alert,
   Linking,
 } from "react-native";
 import {
@@ -21,6 +20,7 @@ import {
 } from "lucide-react-native";
 import { supabase } from "../../../lib/supabase";
 import { format } from "date-fns";
+import { showNotification } from "../../../lib/notification";
 
 interface Transaction {
   id: string;
@@ -170,10 +170,11 @@ const PaymentManagement = ({ onRefund = () => {} }: PaymentManagementProps) => {
     ) {
       onRefund(transaction.id, transaction.amount);
     } else {
-      Alert.alert(
-        "Cannot Refund",
-        `This payment already has status: ${transaction.status}`
-      );
+      showNotification({
+        title: "Cannot Refund",
+        message: `This payment already has status: ${transaction.status}`,
+        type: "warning",
+      });
     }
   };
 
@@ -188,12 +189,20 @@ const PaymentManagement = ({ onRefund = () => {} }: PaymentManagementProps) => {
         }
       );
       if (error) throw error;
-      Alert.alert("Success", `Subscription ${subscriptionId} cancelled`);
+      showNotification({
+        title: "Success",
+        message: `Subscription ${subscriptionId} cancelled`,
+        type: "success",
+      });
       // Refresh data
       setActiveTab(activeTab);
     } catch (e: any) {
       console.error("Error cancelling subscription:", e);
-      Alert.alert("Error", e.message || "Failed to cancel subscription");
+      showNotification({
+        title: "Error",
+        message: e.message || "Failed to cancel subscription",
+        type: "error",
+      });
     } finally {
       setLoading(false);
     }
@@ -219,7 +228,11 @@ const PaymentManagement = ({ onRefund = () => {} }: PaymentManagementProps) => {
       Linking.openURL(url);
     } catch (e: any) {
       console.error("Error getting dashboard link:", e);
-      Alert.alert("Error", e.message || "Failed to get dashboard link");
+      showNotification({
+        title: "Error",
+        message: e.message || "Failed to get dashboard link",
+        type: "error",
+      });
     }
   };
 

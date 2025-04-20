@@ -3,18 +3,32 @@ import {
   View,
   Text,
   SafeAreaView,
-  Alert,
   ActivityIndicator,
 } from "react-native";
 import { Stack } from "expo-router";
 import UserManagement from "../components/admin/UserManagement";
 import { supabase } from "../../lib/supabase";
 import { format } from "date-fns";
+import { showNotification } from "../../lib/notification";
+import { useConfirmation } from "../../lib/confirmation";
+
+type UserRole = "customer" | "technician" | "admin";
+
+interface FormattedUser {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  status: "active" | "inactive";
+  dateJoined: string;
+  avatar?: string;
+}
 
 export default function UsersScreen() {
   const [loading, setLoading] = useState(true);
-  const [users, setUsers] = useState([]);
-  const [error, setError] = useState(null);
+  const [users, setUsers] = useState<FormattedUser[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const { showConfirmation } = useConfirmation();
 
   useEffect(() => {
     fetchUsers();
@@ -25,7 +39,6 @@ export default function UsersScreen() {
       setLoading(true);
       setError(null);
 
-      // Get all profiles
       const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
         .select("*")
@@ -33,21 +46,18 @@ export default function UsersScreen() {
 
       if (profilesError) throw profilesError;
 
-      // Get auth users data using the function instead of direct join
-      const { data: authUsers, error: authUsersError } = await supabase.rpc(
+      const { data: authUsers, error: authUsersError } = (await supabase.rpc(
         "get_users_with_email"
-      );
+      )) as { data: any[]; error: any };
 
       if (authUsersError) throw authUsersError;
 
-      // Map auth data to profiles
-      const authUsersMap = {};
+      const authUsersMap: { [key: string]: any } = {};
       authUsers.forEach((user) => {
         authUsersMap[user.id] = user;
       });
 
-      // Format profiles for UserManagement component
-      const formattedUsers = profiles.map((profile) => ({
+      const formattedUsers: FormattedUser[] = profiles.map((profile) => ({
         id: profile.id,
         name: `${profile.first_name} ${profile.last_name}`,
         email: authUsersMap[profile.id]?.email || "No email",
@@ -62,100 +72,78 @@ export default function UsersScreen() {
       }));
 
       setUsers(formattedUsers);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error fetching users:", err);
-      setError(err.message);
+      setError(err.message || "Unknown error fetching users");
     } finally {
       setLoading(false);
     }
   };
 
   const handleAddUser = () => {
-    Alert.alert(
-      "Add New User",
-      "This would open a form to add a new user. In production, this would invite a user via email.",
-      [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "OK",
-          onPress: () => console.log("Add user dialog acknowledged"),
-        },
-      ]
-    );
+    console.log("Add user dialog acknowledged");
   };
 
-  const handleEditUser = async (user) => {
-    Alert.alert(
-      "Edit User",
-      `This would open a form to edit ${user.name}. In production, you would be able to modify their profile details.`,
-      [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "OK",
-          onPress: () => console.log("Edit user dialog acknowledged"),
-        },
-      ]
-    );
+  const handleEditUser = async (user: FormattedUser) => {
+    console.log("Edit user dialog acknowledged");
   };
 
-  const handleDeleteUser = async (userId) => {
-    Alert.alert(
-      "Delete User",
-      "Are you sure you want to delete this user? This action cannot be undone.",
-      [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              // In a real implementation, you would handle auth deletion as well
-              const { error } = await supabase
-                .from("profiles")
-                .delete()
-                .eq("id", userId);
+  const handleDeleteUser = (userId: string) => {
+    showConfirmation({
+      title: "Confirm Delete",
+      message: "Are you sure you want to delete this user? This action cannot be undone.",
+      confirmText: "Delete",
+      cancelText: "Cancel",
+      onConfirm: async () => {
+        try {
+          const { error } = await supabase
+            .from("profiles")
+            .delete()
+            .eq("id", userId);
 
-              if (error) throw error;
-
-              Alert.alert("Success", "User deleted successfully");
-              // Refresh user list
-              fetchUsers();
-            } catch (err) {
-              console.error("Error deleting user:", err);
-              Alert.alert("Error", err.message || "Failed to delete user");
-            }
-          },
-        },
-      ]
-    );
+          if (error) throw error;
+          fetchUsers();
+        } catch (err: any) {
+          console.error("Error deleting user:", err);
+          showNotification({
+            title: "Error",
+            message: err.message || "Failed to delete user",
+            type: "error",
+          });
+        }
+      },
+    });
   };
 
-  const handleToggleUserStatus = async (userId, newStatus) => {
-    try {
-      // In production, we would also set the banned status in auth users
-      const { error } = await supabase
-        .from("profiles")
-        .update({ active: newStatus === "active" })
-        .eq("id", userId);
+  const handleToggleUserStatus = (userId: string, newStatus: string) => {
+    showConfirmation({
+      title: `Confirm ${newStatus.charAt(0).toUpperCase() + newStatus.slice(1)}`,
+      message: `Are you sure you want to ${newStatus} this user?`,
+      confirmText: newStatus.charAt(0).toUpperCase() + newStatus.slice(1),
+      cancelText: "Cancel",
+      onConfirm: async () => {
+        try {
+          const updateData = {
+            banned_until: newStatus === "inactive" ? new Date().toISOString() : null,
+          };
 
-      if (error) throw error;
+          const { error } = await supabase
+            .from("profiles")
+            .update(updateData)
+            .eq("id", userId);
 
-      Alert.alert("Success", `User status updated to ${newStatus}`);
-      // Refresh user list
-      fetchUsers();
-    } catch (err) {
-      console.error("Error updating user status:", err);
-      Alert.alert("Error", err.message || "Failed to update user status");
-    }
+          if (error) throw error;
+          fetchUsers();
+        } catch (err: any) {
+          console.error("Error updating user status:", err);
+          showNotification({
+            title: "Error",
+            message: err.message || "Failed to update user status",
+            type: "error",
+          });
+        }
+      },
+    });
   };
 
   if (loading) {

@@ -4,13 +4,11 @@ import {
   Text,
   SafeAreaView,
   ActivityIndicator,
-  Alert,
   Platform,
 } from "react-native";
 import { Stack, useRouter, useLocalSearchParams } from "expo-router";
 import BookingForm from "../components/customer/BookingForm";
 import StripePaymentWeb from "../../components/payment/StripePaymentWeb";
-import Toast from "react-native-toast-message";
 import {
   getService,
   getProfile,
@@ -20,6 +18,8 @@ import {
 } from "../../lib/data";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
+import { useConfirmation } from "../../lib/confirmation";
+import { showNotification } from "../../lib/notification";
 
 interface BookingFormData {
   serviceId: string;
@@ -32,13 +32,21 @@ interface BookingFormData {
   paymentMethod: string;
   price: number;
   paymentMethodDetails?: any;
+  notes?: string;
+  propertySize?: string;
+  areaType?: string;
 }
 
 export default function BookingScreen() {
+  // ...existing state
+  const [paymentClientSecret, setPaymentClientSecret] = useState<string | null>(null);
+  const [ephemeralKeySecret, setEphemeralKeySecret] = useState<string | null>(null); // Add state for ephemeral key
+  const [customerId, setCustomerId] = useState<string | null>(null); // Add state for customer ID
   const router = useRouter();
   const params = useLocalSearchParams();
   const { serviceId } = params;
   const { user } = useAuth();
+  const { showConfirmation } = useConfirmation();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -53,16 +61,12 @@ export default function BookingScreen() {
     if (serviceId) {
       fetchServiceAndUserData();
     } else {
-      Alert.alert(
-        "Service Selection Required",
-        "Please select a service from the services page.",
-        [
-          {
-            text: "OK",
-            onPress: () => router.replace("/(customer)/services"),
-          },
-        ]
-      );
+      showConfirmation({
+        title: "Service Selection Required",
+        message: "Please select a service from the services page.",
+        confirmText: "OK",
+        onConfirm: () => router.replace("/(customer)/services"),
+      });
     }
   }, [serviceId]);
 
@@ -83,187 +87,243 @@ export default function BookingScreen() {
     } catch (err: any) {
       console.error("Error fetching service data:", err);
       setError(err.message || "Failed to load service details");
-      Alert.alert(
-        "Error",
-        err.message || "Failed to load service details. Please try again."
-      );
+      showNotification({
+        title: "Error",
+        message:
+          err.message || "Failed to load service details. Please try again.",
+        type: "error",
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  const handleBookingComplete = async (bookingData: BookingFormData) => {
+  // Step 1: Get Payment Secrets and Show Payment Sheet
+  const handleInitiatePayment = async (bookingData: BookingFormData) => {
     if (!user) {
-      Alert.alert("Error", "You must be logged in to book a service");
+      showNotification({
+        title: "Error",
+        message: "You must be logged in to book a service",
+        type: "error",
+      });
       return;
     }
 
-    setPendingBooking(bookingData);
+    setPendingBooking(bookingData); // Store booking details for later
     setSubmitting(true);
     setError(null);
+    setPaymentClientSecret(null); // Reset secrets
+    setEphemeralKeySecret(null);
+    setCustomerId(null);
 
     try {
-      if (
-        bookingData.paymentMethod === "cash" ||
-        bookingData.paymentMethod.startsWith("pm_")
-      ) {
-        console.log("Invoking stripe-payment-api with data:", {
-          serviceId: bookingData.serviceId,
-          paymentMethod: bookingData.paymentMethod,
-          price: bookingData.price,
-        });
-
-        // Get the current session token
-        const {
-          data: { session },
-          error: sessionError,
-        } = await supabase.auth.getSession();
-
-        if (sessionError || !session) {
-          throw new Error(
-            "Authentication session not found: " +
-              (sessionError?.message || "No session")
-          );
-        }
-
-        const { data, error } = await supabase.functions.invoke(
-          "stripe-payment-api",
-          {
-            body: {
-              path: "create-booking-and-charge",
-              payload: {
-                serviceId: bookingData.serviceId,
-                date: bookingData.date,
-                time: bookingData.time,
-                address: bookingData.address,
-                isRecurring: bookingData.isRecurring,
-                recurringPlanId: bookingData.recurringPlan,
-                paymentMethodId: bookingData.paymentMethod,
-                price: bookingData.price,
-              },
-            },
-            // Explicitly set the Authorization header with the access token
-            headers: {
-              Authorization: `Bearer ${session.access_token}`,
-            },
-          }
-        );
-
-        if (error) {
-          console.error("Edge function error details:", error);
-          throw new Error(error.message || "Failed to process booking");
-        }
-
-        console.log("Edge function response:", data);
-
-        setShowPayment(false);
-        setPendingBooking(null);
-
-        // On web, we don't use Alert for success message and navigation
-        if (Platform.OS === 'web') {
-          Toast.show({
-            type: 'success',
-            text1: 'Booking Successful!',
-            text2: bookingData.paymentMethod === "cash"
-              ? "Your service has been booked. Please have cash ready for the service provider."
-              : "Your service has been booked and payment processed. You will receive a confirmation soon.",
-            visibilityTime: 2500,
-          });
-          setTimeout(() => {
-            router.replace("/(customer)/dashboard");
-          }, 2500);
-        } else {
-          // Use Alert for native platforms
-          Alert.alert(
-            "Booking Successful!",
-            bookingData.paymentMethod === "cash"
-              ? "Your service has been booked. Please have cash ready for the service provider."
-              : "Your service has been booked and payment processed. You will receive a confirmation soon.",
-            [
-              {
-                text: "OK",
-                onPress: () => router.replace("/(customer)/dashboard"),
-              },
-            ]
-          );
-        }
-      } else {
-        setShowPayment(true);
+      console.log("Fetching payment secrets...");
+      // Get the current session token
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session) {
+        throw new Error("Authentication session not found: " + (sessionError?.message || "No session"));
       }
+
+      // Call the 'create-payment-intent' endpoint
+      const { data: paymentData, error: paymentError } = await supabase.functions.invoke(
+        "stripe-payment-api",
+        {
+          body: {
+            path: "create-payment-intent",
+            payload: {
+              amount: Math.round(bookingData.price * 100), // Send amount in cents
+              currency: "usd",
+              paymentMethodId: bookingData.paymentMethod.startsWith("pm_")
+                ? bookingData.paymentMethod
+                : undefined,
+              // Booking metadata
+              serviceId: bookingData.serviceId,
+              bookingPrice: bookingData.price,
+              scheduledDate: bookingData.date,
+              scheduledTime: bookingData.time,
+              address: bookingData.address,
+              notes: bookingData.notes,
+              propertySize: bookingData.propertySize,
+              areaType: bookingData.areaType,
+            },
+          },
+        }
+      );
+
+      if (paymentError) {
+        console.error("Error invoking stripe-payment-api (create-payment-intent):", paymentError);
+        throw new Error(paymentError.message || "Failed to initialize payment.");
+      }
+
+      if (!paymentData || !paymentData.paymentIntentClientSecret || !paymentData.ephemeralKeySecret || !paymentData.customerId) {
+        console.error("Invalid response from create-payment-intent:", paymentData);
+        throw new Error("Received incomplete payment details from server.");
+      }
+
+      // Store the secrets in state
+      console.log("Payment secrets received:", paymentData);
+      setPaymentClientSecret(paymentData.paymentIntentClientSecret);
+      setEphemeralKeySecret(paymentData.ephemeralKeySecret);
+      setCustomerId(paymentData.customerId);
+      setShowPayment(true); // Show the payment component
+
     } catch (err: any) {
-      console.error("Error creating booking:", err);
-      setError(err.message || "Failed to create booking. Please try again.");
-      Alert.alert("Error", err.message || "Failed to create booking");
+      console.error("Error initiating payment:", err);
+      setError(err.message || "Failed to initialize payment");
+      setShowPayment(false); // Ensure payment component is hidden on error
+      showNotification({
+        title: "Error",
+        message: err.message || "Failed to initialize payment. Please try again.",
+        type: "error",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Step 2: Create Booking Record After Successful Payment
+  const handleCreateBookingRecord = async () => {
+    if (!pendingBooking || !user) {
+      console.error("Missing pending booking data or user session.");
+      setError("Failed to save booking details after payment.");
+      showNotification({ title: "Error", message: "Could not save booking details. Please contact support.", type: "error" });
+      return false; // Indicate failure
+    }
+
+    console.log("Creating booking record after successful payment...");
+    setSubmitting(true); // Indicate processing
+
+    try {
+      // Get the current session token again (optional, but good practice)
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session) {
+        throw new Error("Authentication session lost before saving booking.");
+      }
+
+      // Call the 'create-booking-and-charge' endpoint (now just creates the booking)
+      const { data: bookingResult, error: bookingError } = await supabase.functions.invoke(
+        "stripe-payment-api",
+        {
+          body: {
+            path: "create-booking-and-charge", // Path to create the booking record
+            payload: {
+              serviceId: pendingBooking.serviceId,
+              date: pendingBooking.date,
+              time: pendingBooking.time,
+              address: pendingBooking.address,
+              price: pendingBooking.price,
+              recurringPlanId: pendingBooking.recurringPlan,
+              // paymentMethodId: pendingBooking.paymentMethod // Optional: maybe store for reference?
+              // Note: We no longer need to pass paymentMethodId for processing here
+            },
+          },
+        }
+      );
+
+      if (bookingError) {
+        console.error("Error invoking stripe-payment-api (create-booking):", bookingError);
+        throw new Error(bookingError.message || "Failed to create booking record.");
+      }
+
+      if (!bookingResult || !bookingResult.booking) {
+        console.error("Invalid response from create-booking-and-charge:", bookingResult);
+        throw new Error("Server did not confirm booking creation.");
+      }
+
+      console.log("Booking record created successfully:", bookingResult.booking.id);
+      return true; // Indicate success
+
+    } catch (err: any) {
+      console.error("Error creating booking record:", err);
+      setError(err.message || "Failed to save booking after payment.");
+      showNotification({ title: "Booking Creation Error", message: err.message || "Could not save booking details. Please contact support.", type: "error" });
+      return false; // Indicate failure
     } finally {
       setSubmitting(false);
     }
   };
 
   const handlePaymentSuccess = async (paymentIntentId: string) => {
-    if (!pendingBooking || !user) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      // NOTE: The booking is already created by the handleCreateBookingAndCharge edge function
-      // in 'pending_payment' status. The webhook (handlePaymentIntentSucceeded) is responsible
-      // for updating the status to 'payment_confirmed'.
-      // We don't need to create or update the booking here anymore after simple payment success.
+    console.log(`Payment successful for PaymentIntent: ${paymentIntentId}`);
 
-      // We just need to clear the pending state and navigate.
+    // Now that payment is confirmed client-side, create the actual booking record
+    const bookingCreated = await handleCreateBookingRecord();
+
+    if (bookingCreated) {
+      // Booking record saved, proceed with success flow
       setShowPayment(false);
       setPendingBooking(null);
+      setPaymentClientSecret(null); // Clear secrets
+      setEphemeralKeySecret(null);
+      setCustomerId(null);
 
-      // On web, directly navigate without Alert
-      if (Platform.OS === 'web') {
-        Toast.show({
-          type: 'success',
-          text1: 'Payment Successful!',
-          text2: 'Your payment is processing. You will receive a confirmation once the booking is fully confirmed.',
-          visibilityTime: 2500,
+      if (Platform.OS === "web") {
+        showNotification({
+          title: "Booking Successful!",
+          message:
+            "Your service has been booked and payment processed. You will receive a confirmation soon.",
+          type: "success",
         });
         setTimeout(() => {
           router.replace("/(customer)/dashboard");
         }, 2500);
       } else {
-        // Use Alert for native platforms
-        Alert.alert(
-          "Payment Successful!",
-          "Your payment is processing. You will receive a confirmation once the booking is fully confirmed.",
-          [
-            {
-              text: "OK",
-              onPress: () => router.replace("/(customer)/dashboard"),
-            },
-          ]
-        );
+        showConfirmation({
+          title: "Booking Successful!",
+          message:
+            "Your service has been booked and payment processed. You will receive a confirmation soon.",
+          confirmText: "OK",
+          onConfirm: () => router.replace("/(customer)/dashboard"),
+        });
       }
-    } catch (err: any) {
-      // This catch block might be less relevant now if we're not doing DB operations here
-      console.error("Error post-payment processing:", err);
-      setError(err.message || "An error occurred after payment.");
-      Alert.alert("Error", err.message || "An error occurred after payment.");
-    } finally {
-      setSubmitting(false);
+    } else {
+      // Booking creation failed after payment - this is a critical error state
+      // Keep payment UI hidden, error state is already set by handleCreateBookingRecord
+      setShowPayment(false);
+      // Optionally, provide specific guidance or keep the user on the page
+      showConfirmation({
+        title: "Action Required",
+        message: "Payment was successful, but saving the booking failed. Please contact support with Payment Intent ID: " + paymentIntentId,
+        confirmText: "OK",
+        onConfirm: () => {},
+      });
     }
   };
 
   const handlePaymentError = (errMsg: string) => {
     setShowPayment(false);
     setPendingBooking(null);
+    setPaymentClientSecret(null); // Clear secrets
+    setEphemeralKeySecret(null);
+    setCustomerId(null);
     setError(errMsg || "Payment failed. Please try again.");
-    
-    // Show error differently based on platform
-    if (Platform.OS === 'web') {
-      Toast.show({
-        type: 'error',
-        text1: 'Payment Error',
-        text2: errMsg || "Payment failed. Please try again.",
-        visibilityTime: 2500,
+
+    if (Platform.OS === "web") {
+      showNotification({
+        title: "Payment Error",
+        message: errMsg || "Payment failed. Please try again.",
+        type: "error",
       });
       setError(errMsg || "Payment failed. Please try again.");
     } else {
-      Alert.alert("Payment Error", errMsg || "Payment failed. Please try again.");
+      showNotification({
+        title: "Payment Error",
+        message: errMsg || "Payment failed. Please try again.",
+        type: "error",
+      });
     }
+  };
+
+  const handleCancelBooking = () => {
+    showConfirmation({
+      title: "Cancel Booking",
+      message: "Are you sure you want to cancel this booking process?",
+      confirmText: "Yes, Cancel",
+      onConfirm: () => {
+        console.log("Booking cancelled by user.");
+        router.back(); // Navigate back if confirmed
+      }
+    });
   };
 
   if (loading) {
@@ -304,10 +364,9 @@ export default function BookingScreen() {
       />
 
       <View className="flex-1">
-        {showPayment && pendingBooking ? (
+        {showPayment && paymentClientSecret && pendingBooking ? (
           <StripePaymentWeb
-            amount={Math.round(pendingBooking.price * 100)} // Convert dollars to cents for Stripe
-            currency="usd"
+            paymentIntentClientSecret={paymentClientSecret} // Pass correct prop name
             onPaymentSuccess={handlePaymentSuccess}
             onError={handlePaymentError}
             onBack={() => setShowPayment(false)}
@@ -316,7 +375,7 @@ export default function BookingScreen() {
           <BookingForm
             service={service}
             userProfile={userProfile}
-            onComplete={handleBookingComplete}
+            onComplete={handleInitiatePayment} // Call handleInitiatePayment instead
             isSubmitting={submitting}
           />
         )}

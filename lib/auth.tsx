@@ -10,7 +10,7 @@ import { supabase, clearStoredSession } from "./supabase";
 import { Alert, Platform } from "react-native";
 import * as WebBrowser from "expo-web-browser";
 import * as Linking from "expo-linking";
-import { router } from "expo-router";
+import { router, useSegments, usePathname } from "expo-router";
 import * as Network from "expo-network";
 import NetInfo from "@react-native-community/netinfo";
 
@@ -64,9 +64,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isTechnician, setIsTechnician] = useState(false);
   const [isCustomer, setIsCustomer] = useState(false);
   const [networkStatus, setNetworkStatus] = useState<boolean | null>(null);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
 
-  // Use a React ref to track token refresh in React Native (window might not exist)
   const hasRefreshedTokenRef = React.useRef(false);
+  const segments = useSegments();
+  const pathname = usePathname();
 
   // Network connectivity monitoring
   useEffect(() => {
@@ -109,9 +111,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [user, session]);
 
+  // Effect for Initial Session Check & Auth State Changes
   useEffect(() => {
-    // Clear any existing stored sessions to prevent auto-login
-    // This is only needed initially since we've disabled persistence
+    // Reset flag on initial mount
+    hasRefreshedTokenRef.current = false;
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      window.__hasRefreshedToken = false;
+    }
+
     clearStoredSession().catch((err) =>
       console.log("Failed to clear stored session:", err)
     );
@@ -154,29 +161,38 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     });
 
     // Check for an existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        checkUserRole(session.user);
-      }
-      setLoading(false);
-    });
+    supabase.auth
+      .getSession()
+      .then(async ({ data: { session: initialSession } }) => {
+        setSession(initialSession);
+        setUser(initialSession?.user ?? null);
+        if (initialSession?.user) {
+          // Await role check on initial load
+          await checkUserRole(initialSession.user);
+        }
+      })
+      .catch((err) => {
+        console.error("Error getting initial session:", err);
+      })
+      .finally(() => {
+        // Mark initial load as complete AFTER session check and role check (if applicable)
+        setInitialLoadComplete(true);
+        setLoading(false);
+      });
 
     // Subscribe to auth state changes
     const {
       data: { subscription: authSubscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
       console.log(`Supabase auth event: ${event}`);
 
-      // Special handling for token refresh events to prevent loops
       if (event === "TOKEN_REFRESHED") {
         console.log("Token refreshed event received");
 
         // Log JWT details for debugging
-        if (session?.access_token) {
+        if (currentSession?.access_token) {
           try {
-            const parts = session.access_token.split(".");
+            const parts = currentSession.access_token.split(".");
             if (parts.length === 3) {
               const base64Url = parts[1];
               const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
@@ -201,56 +217,40 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           }
         }
 
-        setSession(session);
+        setSession(currentSession);
+        // Potentially re-check role if claims might change after refresh
+        if (currentSession?.user) {
+          await checkUserRole(currentSession.user);
+        }
         return;
       }
 
-      setSession(session);
-      setUser(session?.user ?? null);
+      // Update session and user state
+      setSession(currentSession);
+      setUser(currentSession?.user ?? null);
 
-      if (session?.user) {
-        checkUserRole(session.user);
+      // Check role AFTER setting user/session state
+      if (currentSession?.user) {
+        await checkUserRole(currentSession.user);
       } else {
-        // Reset roles when user is null
+        // Reset roles when user is null (SIGNED_OUT)
         setIsAdmin(false);
         setIsTechnician(false);
         setIsCustomer(false);
       }
 
-      setLoading(false);
+      // Remove loading indicator (initial load handled separately)
+      // setLoading(false); // Already handled by initialLoadComplete
 
-      // Handle navigation based on auth state
-      if (event === "SIGNED_IN") {
-        // Log role assignments for debugging
-        console.log("Auth navigation - Current roles:", {
-          isAdmin,
-          isTechnician,
-          isCustomer,
-        });
-
-        // Navigate based on user role instead of always going to customer dashboard
-        if (isAdmin) {
-          console.log("Navigating to admin dashboard");
-          router.replace("/(admin)/dashboard");
-        } else if (isTechnician) {
-          console.log("Navigating to technician dashboard");
-          router.replace("/(technician)/dashboard");
-        } else {
-          // Default to customer dashboard
-          console.log("Navigating to customer dashboard (default)");
-          router.replace("/(customer)/dashboard");
-        }
-      } else if (event === "SIGNED_OUT") {
-        router.replace("/");
-      }
+      // --- REMOVED NAVIGATION LOGIC FROM HERE ---
     });
 
     // Cleanup on unmount
     return () => {
-      subscription.remove();
+      // subscription.remove(); // Linking listener cleanup (if applicable)
       authSubscription.unsubscribe();
     };
-  }, []);
+  }, []); // Empty dependency array - runs once on mount
 
   // Extract tokens from URL for deep linking
   const extractTokensFromUrl = (url: string) => {
@@ -261,8 +261,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
   };
 
-  // Check user role and update state
-  const checkUserRole = async (user: User) => {
+  // Check user role and update state (ensure it sets state reliably)
+  const checkUserRole = async (targetUser: User | null) => {
+    if (!targetUser) {
+      setIsAdmin(false);
+      setIsTechnician(false);
+      setIsCustomer(false);
+      console.log("[checkUserRole] No user provided, roles reset.");
+      return;
+    }
     try {
       // First try to get the role from custom claims
       const {
@@ -318,54 +325,163 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         session.user.app_metadata?.role ||
         session.user.user_metadata?.role;
 
+      let finalIsAdmin = false;
+      let finalIsTechnician = false;
+      let finalIsCustomer = false;
+
       if (roleClaim) {
         console.log("Role from claims:", roleClaim);
-        setIsAdmin(roleClaim === "admin");
-        setIsTechnician(roleClaim === "technician");
-        setIsCustomer(roleClaim === "customer" || !roleClaim);
-        return;
-      }
+        finalIsAdmin = roleClaim === "admin";
+        finalIsTechnician = roleClaim === "technician";
+        finalIsCustomer = roleClaim === "customer" || !roleClaim; // Default to customer if claim exists but doesn't match known roles
+      } else {
+        // Fallback to database query
+        console.log("Role not found in claims, querying database...");
+        const { data, error: dbError } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", targetUser.id)
+          .single();
 
-      // Fallback to database query if not in claims
-      console.log("Role not found in claims, querying database...");
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .single();
+        if (dbError) {
+          console.error("Error fetching user role:", dbError.message);
+          // Decide on default behavior on error - maybe default to customer?
+          finalIsCustomer = true;
+        } else if (data) {
+          console.log("Role from database:", data.role);
+          finalIsAdmin = data.role === "admin";
+          finalIsTechnician = data.role === "technician";
+          finalIsCustomer = data.role === "customer" || !data.role; // Default to customer
 
-      if (error) {
-        console.error("Error fetching user role:", error.message);
-        return;
-      }
-
-      if (data) {
-        console.log("Role from database:", data.role);
-        setIsAdmin(data.role === "admin");
-        setIsTechnician(data.role === "technician");
-        setIsCustomer(data.role === "customer" || !data.role);
-
-        // Only refresh the token on first login or when auth state changes to SIGNED_IN
-        // This prevents the refresh loop
-        const isWeb = typeof window !== "undefined";
-        if (
-          data.role &&
-          !hasRefreshedTokenRef.current &&
-          (!isWeb || !window.__hasRefreshedToken)
-        ) {
-          console.log("Refreshing session to update claims (one-time)...");
-          // Set the flag to prevent future refreshes
-          hasRefreshedTokenRef.current = true;
-          if (isWeb) {
-            window.__hasRefreshedToken = true;
+          // Only refresh the token on first login or when auth state changes to SIGNED_IN
+          // This prevents the refresh loop
+          const isWeb = typeof window !== "undefined";
+          if (
+            data.role &&
+            !hasRefreshedTokenRef.current &&
+            (!isWeb || !window.__hasRefreshedToken)
+          ) {
+            console.log("Refreshing session to update claims (one-time)...");
+            // Set the flag to prevent future refreshes
+            hasRefreshedTokenRef.current = true;
+            if (isWeb) {
+              window.__hasRefreshedToken = true;
+            }
+            await supabase.auth.refreshSession();
           }
-          await supabase.auth.refreshSession();
+        } else {
+          console.log(
+            "No profile found in DB for role, defaulting to customer."
+          );
+          finalIsCustomer = true; // Default if no profile found
         }
       }
+
+      // Set state *once* after determining roles
+      console.log(
+        `[checkUserRole] Setting roles: Admin=${finalIsAdmin}, Tech=${finalIsTechnician}, Cust=${finalIsCustomer}`
+      );
+      setIsAdmin(finalIsAdmin);
+      setIsTechnician(finalIsTechnician);
+      setIsCustomer(finalIsCustomer);
     } catch (error) {
       console.error("Error in checkUserRole:", error);
+      // Set default roles on error
+      setIsAdmin(false);
+      setIsTechnician(false);
+      setIsCustomer(true);
     }
   };
+
+  // Effect for Handling Navigation based on Auth State & Role (REVISED LOGIC)
+  useEffect(() => {
+    // Only run navigation logic after the initial session check is complete
+    if (!initialLoadComplete || loading) {
+      // Also check loading state just in case
+      return;
+    }
+
+    const currentTopLevelSegment = segments[0]; // e.g., '(auth)', '(customer)', '(admin)' or undefined if at '/'
+    const isInAuthRoute = currentTopLevelSegment === "(auth)";
+    // Check if any segment exists and it's not the auth group
+    const isInAppRoute = segments.length > 0 && !isInAuthRoute;
+
+    console.log(
+      `[Navigation Effect V2] Path: ${pathname}, Segments: ${segments.join(
+        "/"
+      )}, User: ${!!user}, isAdmin: ${isAdmin}, isTech: ${isTechnician}, isCust: ${isCustomer}`
+    );
+
+    if (user && session) {
+      // User is logged IN
+      let expectedSegment: string | null = null;
+      if (isAdmin) expectedSegment = "(admin)";
+      else if (isTechnician) expectedSegment = "(technician)";
+      else if (isCustomer) expectedSegment = "(customer)";
+
+      // Determine the target dashboard route based on the segment
+      const targetDashboardRoute = expectedSegment
+        ? `/${expectedSegment}/dashboard`
+        : null;
+
+      // Redirect TO dashboard IF:
+      // 1. User has a role/expectedSegment
+      // 2. User is NOT currently in their correct segment group (or is at root '/')
+      if (
+        expectedSegment &&
+        targetDashboardRoute &&
+        (currentTopLevelSegment !== expectedSegment || pathname === "/")
+      ) {
+        console.log(
+          `[Navigation Effect V2] User logged in. Redirecting from ${pathname} to ${targetDashboardRoute}`
+        );
+        router.replace(targetDashboardRoute as `/${string}`);
+      } else if (
+        !expectedSegment &&
+        !isInAuthRoute &&
+        pathname !== "/account"
+      ) {
+        // Logged in, but no role/segment determined. Not in auth routes and not on account page.
+        console.log(
+          `[Navigation Effect V2] User logged in but no expected segment (role issue?). Consider redirecting to /account or staying put.`
+        );
+        // Optional: Redirect to account page if appropriate
+        // router.replace('/account');
+      } else {
+        // User is logged in AND already in their correct segment (or has no role and we decided not to redirect).
+        // No redirect needed.
+        console.log(
+          `[Navigation Effect V2] User logged in. Correct segment (${currentTopLevelSegment}) or no action needed. Path: ${pathname}`
+        );
+      }
+    } else {
+      // User is logged OUT
+      // Redirect TO login ('/') IF:
+      // 1. User is currently inside any app route segment (not auth or root)
+      if (isInAppRoute) {
+        console.log(
+          `[Navigation Effect V2] User logged out. Redirecting from ${pathname} to /`
+        );
+        router.replace("/");
+      } else {
+        // User is logged out and already on '/' or '/(auth)/...'. Do nothing.
+        console.log(
+          `[Navigation Effect V2] User logged out and already in public area. No redirect needed.`
+        );
+      }
+    }
+    // Ensure all state variables that influence logic are dependencies
+  }, [
+    user,
+    session,
+    isAdmin,
+    isTechnician,
+    isCustomer,
+    loading,
+    initialLoadComplete,
+    segments,
+    pathname,
+  ]);
 
   // Sign up with email and password
   const signUp = async (
@@ -535,7 +651,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
               localStorage.removeItem(key);
             }
           }
-          
+
           // Also clear session storage
           for (let i = 0; i < sessionStorage.length; i++) {
             const key = sessionStorage.key(i);
@@ -576,11 +692,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       console.error("Error in signOut:", error);
       setError(error.message);
       Alert.alert("Error", "Failed to logout: " + error.message);
-      
+
       // Try one more time with a different approach if first attempt failed
       try {
         await supabase.auth.signOut();
-        
+
         // Force navigation even if there was an initial error
         if (Platform.OS === "web") {
           window.location.href = "/";

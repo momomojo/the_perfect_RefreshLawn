@@ -54,17 +54,6 @@ export default function CustomerLayout() {
             }}
           />
           <Tabs.Screen
-            name="booking"
-            options={{
-              title: "Book Service",
-              headerTitle: "Book a Service",
-              tabBarIcon: ({ color }) => <Calendar size={24} color={color} />,
-              tabBarLabel: ({ color }) => (
-                <Text style={{ color, fontSize: 12 }}>Book</Text>
-              ),
-            }}
-          />
-          <Tabs.Screen
             name="history"
             options={{
               title: "Service History",
@@ -87,6 +76,14 @@ export default function CustomerLayout() {
                 <Text style={{ color, fontSize: 12 }}>Profile</Text>
               ),
             }}
+          />
+          <Tabs.Screen
+            name="booking"
+            options={{ href: null, headerShown: false }}
+          />
+          <Tabs.Screen
+            name="booking-details/[id]"
+            options={{ href: null, headerShown: false }}
           />
         </Tabs>
       </View>

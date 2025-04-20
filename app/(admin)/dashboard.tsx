@@ -12,13 +12,14 @@ import BusinessMetrics from "../components/admin/BusinessMetrics";
 import TodayOverview from "../components/admin/TodayOverview";
 import QuickActions from "../components/admin/QuickActions";
 import { useUserRole } from "../../hooks/useUserRole";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import { supabase } from "../../lib/supabase";
 import { getAllBookings, Booking, Profile } from "../../lib/data";
 import { format } from "date-fns";
 
 const AdminDashboard = () => {
   const { refreshRole } = useUserRole();
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [metricsData, setMetricsData] = useState({
     revenue: "$0",
@@ -157,19 +158,19 @@ const AdminDashboard = () => {
 
   // Handler functions for quick actions
   const handleAddUser = () => {
-    router.push("/(admin)/users");
+    router.push("/users");
   };
 
   const handleAddService = () => {
-    router.push("/(admin)/services");
+    router.push("/services");
   };
 
   const handleGenerateReport = () => {
-    router.push("/(admin)/analytics");
+    router.push("/analytics");
   };
 
   const handleManagePayments = () => {
-    router.push("/(admin)/payments");
+    router.push("/billing");
   };
 
   if (loading) {

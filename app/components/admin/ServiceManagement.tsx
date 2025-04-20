@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   TextInput,
   Modal,
-  Alert,
   Image,
 } from "react-native";
 import {
@@ -21,10 +20,11 @@ import {
   Image as ImageIcon,
   Camera,
 } from "lucide-react-native";
-import { Service } from "../../lib/data";
+import { Service } from "../../../lib/data";
 import * as ImagePicker from "expo-image-picker";
 import { supabase } from "../../../lib/supabase";
 import { decode } from "base64-arraybuffer";
+import { showNotification } from "../../../lib/notification";
 
 interface ServiceManagementProps {
   services: Service[];
@@ -79,10 +79,11 @@ const ServiceManagement = ({
         await ImagePicker.requestMediaLibraryPermissionsAsync();
 
       if (!permissionResult.granted) {
-        Alert.alert(
-          "Permission Required",
-          "We need permission to access your photo library."
-        );
+        showNotification({
+          title: "Permission Required",
+          message: "We need permission to access your photo library.",
+          type: "warning", // Using warning for permissions
+        });
         return;
       }
 
@@ -99,20 +100,32 @@ const ServiceManagement = ({
       }
 
       if (!result.assets || result.assets.length === 0) {
-        Alert.alert("Error", "No image was selected");
+        showNotification({
+          title: "Error",
+          message: "No image was selected",
+          type: "error",
+        });
         return;
       }
 
       const asset = result.assets[0];
       if (!asset.base64) {
-        Alert.alert("Error", "Failed to process image");
+        showNotification({
+          title: "Error",
+          message: "Failed to process image",
+          type: "error",
+        });
         return;
       }
 
       await uploadImage(asset.base64);
     } catch (error) {
       console.error("Error picking image:", error);
-      Alert.alert("Error", "Failed to pick image");
+      showNotification({
+        title: "Error",
+        message: "Failed to pick image",
+        type: "error",
+      });
     }
   };
 
@@ -136,10 +149,12 @@ const ServiceManagement = ({
       if (error) {
         if (error.message.includes("Bucket not found")) {
           // Bucket doesn't exist - we should inform the user
-          Alert.alert(
-            "Storage Setup Required",
-            "The storage bucket for images doesn't exist. Please create a bucket named 'service_images' in your Supabase dashboard."
-          );
+          showNotification({
+            title: "Storage Setup Required",
+            message:
+              "The 'service_images' bucket doesn't exist. Please create it in Supabase.",
+            type: "warning",
+          });
         } else {
           throw error;
         }
@@ -159,10 +174,11 @@ const ServiceManagement = ({
       }
     } catch (error) {
       console.error("Error uploading image:", error);
-      Alert.alert(
-        "Error",
-        "Failed to upload image. Check console for details."
-      );
+      showNotification({
+        title: "Error",
+        message: "Failed to upload image. Check console for details.",
+        type: "error",
+      });
     } finally {
       setImageUploadLoading(false);
     }
@@ -173,14 +189,22 @@ const ServiceManagement = ({
     if (!editingService) return;
 
     if (!editFormData.name) {
-      Alert.alert("Error", "Service name is required");
+      showNotification({
+        title: "Error",
+        message: "Service name is required",
+        type: "error",
+      });
       return;
     }
 
     // Convert price to number
     const price = parseFloat(editFormData.base_price);
     if (isNaN(price)) {
-      Alert.alert("Error", "Price must be a valid number");
+      showNotification({
+        title: "Error",
+        message: "Price must be a valid number",
+        type: "error",
+      });
       return;
     }
 
@@ -190,17 +214,21 @@ const ServiceManagement = ({
       : 60; // Default duration
 
     if (isNaN(duration)) {
-      Alert.alert("Error", "Duration must be a valid number");
+      showNotification({
+        title: "Error",
+        message: "Duration must be a valid number",
+        type: "error",
+      });
       return;
     }
 
     // Prepare updates
     const updates: Partial<Service> = {
       name: editFormData.name,
-      description: editFormData.description || null,
+      description: editFormData.description || undefined,
       base_price: price,
       duration_minutes: duration,
-      image_url: editFormData.image_url || null,
+      image_url: editFormData.image_url || undefined,
     };
 
     onUpdateService(editingService, updates);

@@ -15,13 +15,13 @@ import {
   handleCorsPreflightRequest,
   ResponseHeaders,
   parseRequestBody,
-} from "../_shared/http-utils.ts";
+} from "../shared/http-utils.ts";
 import {
   getStripeCustomerId,
   stripe,
   getSupabaseClient,
-} from "../_shared/stripe-utils.ts";
-import { verifyUser } from "../_shared/auth-utils.ts";
+} from "../shared/stripe-utils.ts";
+import { verifyUser } from "../shared/auth-utils.ts";
 
 // Define interface types
 interface SubscriptionRequest {
@@ -83,26 +83,14 @@ async function handleCreateSubscription(
     });
 
     // Store subscription in database
-    await supabase.from("subscriptions").upsert(
-      {
-        user_id: user.id,
-        stripe_subscription_id: subscription.id,
-        stripe_customer_id: customer.stripe_customer_id,
-        status: subscription.status,
-        price_id: subscription.items.data[0].price.id,
-        current_period_start: new Date(
-          subscription.current_period_start * 1000
-        ).toISOString(),
-        current_period_end: new Date(
-          subscription.current_period_end * 1000
-        ).toISOString(),
-        canceled_at: subscription.canceled_at
-          ? new Date(subscription.canceled_at * 1000).toISOString()
-          : null,
-        created_at: new Date().toISOString(),
-      },
-      { onConflict: "stripe_subscription_id" }
-    );
+    await supabase.from("subscriptions").insert({
+      user_id: user.id,
+      stripe_subscription_id: subscription.id,
+      stripe_customer_id: customer.stripe_customer_id,
+      status: subscription.status,
+      price_id: priceId,
+      created_at: new Date().toISOString(),
+    });
 
     return createSuccessResponse(
       {
@@ -185,7 +173,7 @@ serve(async (req) => {
 
   // Only allow POST requests
   if (req.method !== "POST") {
-    return createErrorResponse("Method not allowed", 405);
+    return createErrorResponse("Method not allowed", 405, corsHeaders);
   }
 
   try {
@@ -197,7 +185,7 @@ serve(async (req) => {
     // Verify the user
     const user = await verifyUser(req);
     if (!user) {
-      return createErrorResponse("Unauthorized", 401);
+      return createErrorResponse("Unauthorized", 401, corsHeaders);
     }
 
     console.log(
@@ -207,17 +195,29 @@ serve(async (req) => {
     // Route the request based on the path from the body
     switch (routePath) {
       case "create-subscription":
-        return await handleCreateSubscription(user, payload, corsHeaders);
+        return await handleCreateSubscription(
+          user,
+          payload as SubscriptionRequest,
+          corsHeaders
+        );
       case "cancel-subscription":
-        return await handleCancelSubscription(user, payload, corsHeaders);
+        return await handleCancelSubscription(
+          user,
+          payload as CancelSubscriptionRequest,
+          corsHeaders
+        );
       case "list-invoices":
-        return await handleListInvoices(user, payload, corsHeaders);
+        return await handleListInvoices(
+          user,
+          payload as ListInvoicesRequest,
+          corsHeaders
+        );
       default:
-        return createErrorResponse("Invalid route", 404);
+        return createErrorResponse("Invalid path", 404, corsHeaders);
     }
   } catch (error) {
-    console.error("Error processing request:", error);
-    return createErrorResponse((error as Error).message, 500);
+    console.error("Error in main function handler:", error);
+    return createErrorResponse((error as Error).message, 500, corsHeaders);
   }
 });
 

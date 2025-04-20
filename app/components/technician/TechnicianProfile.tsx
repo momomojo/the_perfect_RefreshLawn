@@ -6,7 +6,6 @@ import {
   Switch,
   TouchableOpacity,
   TextInput,
-  Alert,
   Image,
   ActivityIndicator,
 } from "react-native";
@@ -23,6 +22,7 @@ import {
 import { useAuth } from "../../../lib/auth";
 import { supabase } from "../../../lib/supabase";
 import { updateProfile } from "../../../lib/data";
+import { showNotification } from "../../../lib/notification"; // Import the utility
 
 interface TechnicianProfileProps {
   name?: string;
@@ -133,7 +133,11 @@ const TechnicianProfile = ({
       const userId = (await supabase.auth.getSession()).data.session?.user.id;
 
       if (!userId) {
-        Alert.alert("Error", "You must be logged in to update your profile");
+        showNotification({
+          title: "Error",
+          message: "You must be logged in to update your profile",
+          type: "error",
+        });
         return;
       }
 
@@ -145,10 +149,18 @@ const TechnicianProfile = ({
         // Note: We're not updating email as that would require auth verification
       });
 
-      Alert.alert("Success", "Profile updated successfully");
+      showNotification({
+        title: "Success",
+        message: "Profile updated successfully",
+        type: "success",
+      });
     } catch (error) {
       console.error("Error saving profile:", error);
-      Alert.alert("Error", "Failed to update profile. Please try again.");
+      showNotification({
+        title: "Error",
+        message: "Failed to update profile. Please try again.",
+        type: "error",
+      });
     } finally {
       setLoading(false);
     }
@@ -167,7 +179,11 @@ const TechnicianProfile = ({
       // The auth context will handle the navigation once signed out
     } catch (error) {
       console.error("Logout error:", error);
-      Alert.alert("Error", "Failed to log out. Please try again.");
+      showNotification({
+        title: "Error",
+        message: "Failed to log out. Please try again.",
+        type: "error",
+      });
     } finally {
       setLoading(false);
     }

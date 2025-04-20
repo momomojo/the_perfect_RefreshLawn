@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   SafeAreaView,
   RefreshControl,
-  Alert,
   ActivityIndicator,
   Image,
 } from "react-native";
@@ -35,9 +34,9 @@ import {
 import { format } from "date-fns";
 import { Card } from "react-native-paper";
 import { RealtimeChannel } from "@supabase/supabase-js";
+import { showNotification } from "../../lib/notification";
 
 import UpcomingAppointments from "../components/customer/UpcomingAppointments";
-import RecentServices from "../components/customer/RecentServices";
 import QuickBooking from "../components/customer/QuickBooking";
 
 // Define interfaces for the components
@@ -155,7 +154,11 @@ const CustomerDashboard = () => {
     } catch (err: any) {
       console.error("Error fetching dashboard data:", err);
       setError(err.message || "Failed to load dashboard data");
-      Alert.alert("Error", err.message || "Failed to load dashboard data");
+      showNotification({
+        title: "Error",
+        message: err.message || "Failed to load dashboard data",
+        type: "error",
+      });
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -226,7 +229,8 @@ const CustomerDashboard = () => {
   }, [fetchData]);
 
   const handleViewAppointment = (id: string) => {
-    router.push(`/(customer)/booking-details?id=${id}`);
+    // Navigate to the booking details page via dynamic route
+    router.push(`/(customer)/booking-details/${id}`);
   };
 
   const handleBookService = (serviceId: string) => {
@@ -269,13 +273,12 @@ const CustomerDashboard = () => {
       fetchData();
     } catch (err: any) {
       console.error("Error submitting review:", err.message);
-      Alert.alert("Error", "Failed to submit rating. Please try again.");
+      showNotification({
+        title: "Error",
+        message: "Failed to submit rating. Please try again.",
+        type: "error",
+      });
     }
-  };
-
-  const handleViewServiceDetails = (id: string) => {
-    console.log(`View service details for ID: ${id}`);
-    router.push(`/(customer)/booking-details?id=${id}`);
   };
 
   // Extract services data for quick booking
@@ -432,16 +435,6 @@ const CustomerDashboard = () => {
                   ? "irrigation"
                   : "schedule",
               }))}
-            />
-          </View>
-
-          <View style={{ marginBottom: 24 }}>
-            <RecentServices
-              services={upcomingBookings.filter(
-                (booking) => booking.status === "completed"
-              )}
-              onRateService={handleRateService}
-              onViewDetails={handleViewServiceDetails}
             />
           </View>
 

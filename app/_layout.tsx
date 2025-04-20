@@ -8,6 +8,7 @@ import "react-native-reanimated";
 import "../global.css";
 import { Platform } from "react-native";
 import { AuthProvider } from "../lib/auth";
+import { ConfirmationModalProvider } from "../lib/confirmation"; // Restore the provider
 import Toast from "react-native-toast-message";
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
@@ -37,17 +38,23 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
-      <ThemeProvider value={DefaultTheme}>
-        <Stack
-          screenOptions={({ route }) => ({
-            headerShown: !route.name.startsWith("tempobook"),
-          })}
-        >
-          <Stack.Screen name="index" options={{ headerShown: false }} />
-        </Stack>
-        <StatusBar style="auto" />
-        <Toast />
-      </ThemeProvider>
+      <ConfirmationModalProvider>
+        <ThemeProvider value={DefaultTheme}>
+          <Stack
+            screenOptions={({ route }) => ({
+              headerShown: !route.name.startsWith("tempobook"),
+            })}
+          >
+            <Stack.Screen name="index" options={{ headerShown: false }} />
+            <Stack.Screen name="(admin)" options={{ headerShown: false }} />
+            <Stack.Screen name="(admin_stack)" options={{ headerShown: false }} />
+            <Stack.Screen name="(customer)" options={{ headerShown: false }} />
+            <Stack.Screen name="(technician)" options={{ headerShown: false }} />
+          </Stack>
+          <StatusBar style="auto" />
+          <Toast />
+        </ThemeProvider>
+      </ConfirmationModalProvider>
     </AuthProvider>
   );
 }

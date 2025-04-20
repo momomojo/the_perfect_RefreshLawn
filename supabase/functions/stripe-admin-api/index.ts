@@ -8,23 +8,20 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { User } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 import Stripe from "https://esm.sh/stripe@12.4.0?dts";
-import { 
-  corsHeaders, 
-  createErrorResponse, 
-  createSuccessResponse, 
+import {
+  corsHeaders,
+  createErrorResponse,
+  createSuccessResponse,
   handleCorsPreflightRequest,
   ResponseHeaders,
-  parseRequestBody
-} from "../_shared/http-utils.ts";
-import { 
-  getStripeCustomerId, 
-  stripe, 
-  getSupabaseClient 
-} from "../_shared/stripe-utils.ts";
-import { 
-  verifyUser, 
-  isAdmin 
-} from "../_shared/auth-utils.ts";
+  parseRequestBody,
+} from "../shared/http-utils.ts"; // Updated import path
+import {
+  getStripeCustomerId,
+  stripe,
+  getSupabaseClient,
+} from "../shared/stripe-utils.ts"; // Updated import path
+import { verifyUser, isAdmin } from "../shared/auth-utils.ts"; // Updated import path
 
 // Define interface types
 interface AdminListRequest {
@@ -277,54 +274,84 @@ async function handleAdminCancelSubscription(
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
-    return handleCorsPreflightRequest();
+    return handleCorsPreflightRequest(); // Use imported function
   }
 
   // Only allow POST requests
   if (req.method !== "POST") {
-    return createErrorResponse("Method not allowed", 405);
+    return createErrorResponse("Method not allowed", 405, corsHeaders); // Use imported function and headers
   }
 
   try {
     // Parse the request body FIRST to get the routing path and payload
-    const body = await parseRequestBody(req);
+    const body = await parseRequestBody(req); // Use imported function
     const routePath = body.path; // Get path from body
     const payload = body.payload || {}; // Get payload from body
 
     // Verify the user
-    const user = await verifyUser(req);
+    const user = await verifyUser(req); // Use imported function
     if (!user) {
-      return createErrorResponse("Unauthorized", 401);
+      return createErrorResponse("Unauthorized", 401, corsHeaders); // Use imported function and headers
     }
 
-    // Verify admin privileges for all routes in this function
-    if (!(await isAdmin(user.id))) {
-      console.error(`User ${user.id} attempted to access admin API without privileges`);
-      return createErrorResponse("Forbidden - Admin privileges required", 403);
+    // Check if the user is an admin
+    const userIsAdmin = await isAdmin(user.id); // Use imported function
+    if (!userIsAdmin) {
+      return createErrorResponse(
+        "Forbidden: Admin role required",
+        403,
+        corsHeaders
+      ); // Use imported function and headers
     }
 
-    console.log(`stripe-admin-api called: path=${routePath}, admin=${user.id}`);
+    console.log(
+      `stripe-admin-api called: path=${routePath}, admin_user=${user.id}`
+    );
 
-    // Simplified path names since this is in the admin-specific function
+    // Route the request based on the path from the body
     switch (routePath) {
-      case "list-customers":
-        return await handleAdminListCustomers(user, payload, corsHeaders);
-      case "list-subscriptions":
-        return await handleAdminListSubscriptions(user, payload, corsHeaders);
-      case "list-payments":
-        return await handleAdminListPayments(user, payload, corsHeaders);
-      case "list-invoices":
-        return await handleAdminListInvoices(user, payload, corsHeaders);
-      case "get-dashboard-link":
-        return await handleAdminGetStripeDashboardLink(user, payload, corsHeaders);
-      case "cancel-subscription":
-        return await handleAdminCancelSubscription(user, payload, corsHeaders);
+      case "admin-list-customers":
+        return await handleAdminListCustomers(
+          user,
+          payload as AdminListRequest,
+          corsHeaders // Pass imported headers
+        );
+      case "admin-list-subscriptions":
+        return await handleAdminListSubscriptions(
+          user,
+          payload as AdminListRequest,
+          corsHeaders // Pass imported headers
+        );
+      case "admin-list-payments":
+        return await handleAdminListPayments(
+          user,
+          payload as AdminListRequest,
+          corsHeaders // Pass imported headers
+        );
+      case "admin-list-invoices":
+        return await handleAdminListInvoices(
+          user,
+          payload as AdminListRequest,
+          corsHeaders // Pass imported headers
+        );
+      case "admin-get-stripe-dashboard-link":
+        return await handleAdminGetStripeDashboardLink(
+          user,
+          payload as AdminDashboardLinkRequest,
+          corsHeaders // Pass imported headers
+        );
+      case "admin-cancel-subscription":
+        return await handleAdminCancelSubscription(
+          user,
+          payload as AdminCancelSubscriptionRequest,
+          corsHeaders // Pass imported headers
+        );
       default:
-        return createErrorResponse("Invalid route", 404);
+        return createErrorResponse("Invalid admin path", 404, corsHeaders); // Use imported function and headers
     }
   } catch (error) {
-    console.error("Error processing request:", error);
-    return createErrorResponse((error as Error).message, 500);
+    console.error("Error in admin function handler:", error);
+    return createErrorResponse((error as Error).message, 500, corsHeaders); // Use imported function and headers
   }
 });
 

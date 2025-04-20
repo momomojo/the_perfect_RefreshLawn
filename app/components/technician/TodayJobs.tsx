@@ -39,7 +39,11 @@ const TodayJobs = ({
   );
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      console.log("[TodayJobs] No user ID yet—skipping load");
+      setLoading(false);
+      return;
+    }
 
     const loadTodayJobs = async () => {
       try {

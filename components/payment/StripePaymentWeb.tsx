@@ -1,230 +1,182 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { loadStripe, Stripe } from "@stripe/stripe-js";
-import {
-  Elements,
-  CardElement,
-  useStripe,
-  useElements,
-} from "@stripe/react-stripe-js";
+import { Elements, useStripe, useElements, PaymentElement } from "@stripe/react-stripe-js";
 import Constants from "expo-constants";
-import { supabase } from "../../lib/supabase"; // Import your Supabase client
+import { ActivityIndicator, View, Text, TouchableOpacity } from "react-native";
 
 interface StripePaymentWebProps {
-  amount: number; // in cents
-  currency?: string;
+  paymentIntentClientSecret: string; 
   onPaymentSuccess: (paymentIntentId: string) => void;
   onError?: (error: string) => void;
-  onBack?: () => void; // Added for navigation
+  onBack?: () => void;
 }
 
-// Ensure the publishable key is provided
-const publishableKey = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY;
+// --- Fix Stripe Initialization: Use appropriate environment variables --- 
+const publishableKey = Constants.expoConfig?.extra?.stripePublishableKey || process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || "";
+console.log("Stripe publishable key (StripePaymentWeb):", publishableKey);
 if (!publishableKey) {
   console.error(
-    "Missing EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY environment variable."
+    "Error: Stripe publishable key is not set in environment variables or Constants.expoConfig."
   );
+  // Optionally, you could throw an error or return a component indicating configuration error
 }
-// Load Stripe outside of component render to avoid recreating on every render
-const stripePromise = loadStripe(publishableKey || "");
+const stripePromise = loadStripe(publishableKey);
 
-const CheckoutForm: React.FC<StripePaymentWebProps> = ({
-  amount,
-  currency = "usd",
+const CheckoutFormComponent: React.FC<StripePaymentWebProps> = ({
+  paymentIntentClientSecret, 
   onPaymentSuccess,
   onError,
   onBack,
 }) => {
   const stripe = useStripe();
-  const elements = useElements();
+  const elements = useElements(); 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
 
-  const CARD_ELEMENT_OPTIONS = {
-    style: {
-      base: {
-        fontSize: "18px",
-        color: "#32325d",
-        "::placeholder": {
-          color: "#a0aec0",
-        },
-        padding: "18px 12px",
-        backgroundColor: "#fff",
-        letterSpacing: "0.025em",
-        fontFamily: "inherit",
-      },
-      invalid: {
-        color: "#fa755a",
-      },
-    },
-  };
+  useEffect(() => {
+    if (!stripe) {
+      return;
+    }
+    const clientSecret = new URLSearchParams(window.location.search).get(
+      "payment_intent_client_secret"
+    );
+    if (!clientSecret) {
+      return;
+    }
+    stripe.retrievePaymentIntent(clientSecret).then(({ paymentIntent }) => {
+      switch (paymentIntent?.status) {
+        case "succeeded":
+          setMessage("Payment succeeded!");
+          onPaymentSuccess(paymentIntent.id);
+          break;
+        case "processing":
+          setMessage("Your payment is processing.");
+          break;
+        case "requires_payment_method":
+          setMessage("Your payment was not successful, please try again.");
+          onError?.("Payment failed: Requires payment method.");
+          break;
+        default:
+          setMessage("Something went wrong.");
+          onError?.("Payment failed: Unknown error.");
+          break;
+      }
+    });
+  }, [stripe]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     setError(null);
-    setLoading(true);
+    setMessage(null);
 
     if (!stripe || !elements) {
-      setError("Stripe is not loaded");
-      setLoading(false);
+      setError("Stripe.js has not loaded yet.");
       return;
     }
 
-    // Get Supabase session for auth token
-    const { data: sessionData, error: sessionError } =
-      await supabase.auth.getSession();
+    setLoading(true);
 
-    if (sessionError || !sessionData?.session?.access_token) {
-      setError("Authentication error. Please log in again.");
-      setLoading(false);
-      onError && onError("Authentication error.");
-      return;
+    const { error: submitError } = await stripe.confirmPayment({
+      elements,
+      confirmParams: {
+        return_url: `${window.location.origin}/payment-complete`, 
+      },
+    });
+
+    if (submitError) {
+      setError(submitError.message || "An unexpected error occurred.");
+      onError?.(submitError.message || "An unexpected error occurred.");
     }
 
-    // Call Supabase Edge Function using supabase.functions.invoke
-    try {
-      const { data, error: invokeError } = await supabase.functions.invoke(
-        "stripe-payment-api",
-        {
-          body: { amount, currency },
-        }
-      );
+    setLoading(false);
+  };
 
-      if (invokeError) throw invokeError;
-      if (data.error || !data.clientSecret) {
-        throw new Error(data.error || "Failed to create payment intent");
-      }
-
-      // Confirm card payment with billing details for SCA/fraud compliance
-      const user = sessionData.session.user;
-      const result = await stripe.confirmCardPayment(data.clientSecret, {
-        payment_method: {
-          card: elements.getElement(CardElement)!,
-          billing_details: {
-            email: user.email,
-            name: user.user_metadata.full_name || "",
-          },
-        },
-      });
-
-      if (result.error) {
-        setError(result.error.message || "Payment failed");
-        setLoading(false);
-        onError && onError(result.error.message || "Payment failed");
-      } else if (
-        result.paymentIntent &&
-        result.paymentIntent.status === "succeeded"
-      ) {
-        setLoading(false);
-        onPaymentSuccess(result.paymentIntent.id);
-      } else {
-        setError("Payment did not succeed");
-        setLoading(false);
-        onError && onError("Payment did not succeed");
-      }
-    } catch (error) {
-      setError("Failed to create payment intent");
-      setLoading(false);
-      onError && onError("Failed to create payment intent");
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
     }
   };
 
   return (
-    <form onSubmit={handleSubmit}>
-      {/* Back Button */}
-      {onBack && (
-        <button
-          type="button"
-          onClick={onBack}
+    <View style={{ flex: 1, padding: 20 }}> 
+      <form onSubmit={handleSubmit} style={{ width: '100%', maxWidth: 500, margin: 'auto' }}>
+        {onBack && (
+          <TouchableOpacity onPress={handleBack} style={{ marginBottom: 20, flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={{ color: '#06d6a0', fontWeight: '600', fontSize: 16 }}>Back</Text>
+          </TouchableOpacity>
+        )}
+
+        <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' }}>Complete Your Payment</Text>
+
+        <PaymentElement id="payment-element" options={{ layout: "tabs" }} />
+
+        <button 
+          disabled={loading || !stripe || !elements} 
+          id="submit"
           style={{
-            marginBottom: 24,
-            background: "none",
-            border: "none",
-            color: "#06d6a0",
-            fontWeight: 600,
-            fontSize: 16,
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-          }}
-        >
-          {/* Simple left arrow icon using SVG */}
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#06d6a0"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
-          Back
-        </button>
-      )}
-      <div
-        style={{
-          minWidth: 320,
-          minHeight: 120,
-          padding: "24px 20px",
-          borderRadius: 12,
-          boxShadow: "0 4px 24px rgba(0,0,0,0.07)",
-          background: "#fff",
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "center",
-          alignItems: "center",
-          gap: 24,
-        }}
-        className="card-container"
-      >
-        <div style={{ width: "100%", marginBottom: 24 }}>
-          <CardElement options={CARD_ELEMENT_OPTIONS} />
-        </div>
-        <button
-          type="submit"
-          disabled={loading}
-          style={{
-            width: "100%",
-            padding: "14px 0",
+            width: '100%',
+            padding: '14px 0',
             fontSize: 18,
             borderRadius: 8,
-            background: "#06d6a0",
-            color: "#fff",
-            border: "none",
+            background: (loading || !stripe || !elements) ? '#a3e6e0' : '#06d6a0',
+            color: '#fff',
+            border: 'none',
             fontWeight: 600,
-            cursor: loading ? "not-allowed" : "pointer",
-            boxShadow: "0 2px 8px rgba(6,214,160,0.08)",
-            transition: "background 0.2s",
-            outline: "none",
+            cursor: (loading || !stripe || !elements) ? 'not-allowed' : 'pointer',
+            marginTop: 24,
+            opacity: (loading || !stripe || !elements) ? 0.6 : 1
           }}
         >
-          {loading ? "Processing..." : `Pay $${(amount / 100).toFixed(2)}`}
+          <span id="button-text">
+            {loading ? 
+              <ActivityIndicator size="small" color="#fff" /> : 
+              "Pay now"
+            }
+          </span>
         </button>
-        {error && (
-          <div
-            style={{
-              color: "#fa755a",
-              fontWeight: 500,
-              marginTop: 12,
-              textAlign: "center",
-              fontSize: 16,
-            }}
-          >
-            {error}
-          </div>
-        )}
-      </div>
-    </form>
+
+        {(error || message) && 
+          <Text style={{ 
+            color: error ? '#ef4444' : '#10b981', 
+            marginTop: 16, 
+            textAlign: 'center', 
+            fontWeight: '500'
+          }}>
+            {error || message}
+          </Text>
+        }
+      </form>
+    </View>
   );
 };
 
-const StripePaymentWeb: React.FC<StripePaymentWebProps> = (props) => (
-  <Elements stripe={stripePromise}>
-    <CheckoutForm {...props} />
-  </Elements>
-);
+const StripePaymentWeb: React.FC<StripePaymentWebProps> = (props) => {
+  const options = {
+    clientSecret: props.paymentIntentClientSecret,
+    appearance: {
+      theme: 'stripe',
+      variables: {
+        colorPrimary: '#06d6a0',
+        colorBackground: '#ffffff',
+        colorText: '#32325d',
+      },
+    } as const, 
+  };
+
+  if (!props.paymentIntentClientSecret) {
+     return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <Text style={{ color: "#ef4444" }}>Missing Payment Details.</Text>
+      </View>
+    );
+  }
+
+  return (
+    <Elements stripe={stripePromise} options={options}>
+      <CheckoutFormComponent {...props} />
+    </Elements>
+  );
+};
 
 export default StripePaymentWeb;

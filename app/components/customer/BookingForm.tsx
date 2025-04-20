@@ -30,6 +30,8 @@ import {
   Profile,
 } from "../../../lib/data";
 import { format, addDays } from "date-fns";
+import { showNotification } from "@/lib/notification"; // Import the utility
+import { TextInput } from 'react-native';
 
 interface StripePaymentMethod {
   id: string;
@@ -61,6 +63,9 @@ export interface BookingFormData {
   paymentMethod: string;
   price: number;
   paymentMethodDetails?: StripePaymentMethod | { id: "cash"; name: "Cash" };
+  notes?: string;
+  propertySize?: string; // e.g., "small", "medium", "large" or sq ft
+  areaType?: string; // e.g., "front yard", "back yard", "full property"
 }
 
 const BookingForm = ({
@@ -93,6 +98,9 @@ const BookingForm = ({
     paymentMethod: "",
     price: service?.base_price || 0,
     paymentMethodDetails: undefined,
+    notes: "",
+    propertySize: "",
+    areaType: "",
   });
 
   // Get real data on component mount
@@ -199,10 +207,11 @@ const BookingForm = ({
     } catch (error) {
       console.error("Error fetching payment methods:", error);
       setFetchedPaymentMethods([]); // Reset on error
-      Alert.alert(
-        "Payment Error",
-        parseStripeError(error)
-      );
+      showNotification({
+        title: "Payment Error",
+        message: parseStripeError(error),
+        type: "error",
+      });
     } finally {
       setPaymentMethodsLoading(false);
     }
@@ -445,43 +454,63 @@ const BookingForm = ({
   };
 
   const renderAddressStep = () => {
-    const demoAddress = userProfile?.address || "123 Main Street, Anytown, USA";
-
     return (
       <View className="flex-1 px-4">
-        <Text className="text-xl font-bold mb-4">Confirm Property Address</Text>
-        <View className="bg-white rounded-lg p-4 shadow-sm mb-4">
-          <Text className="text-lg font-semibold mb-2">Service Details:</Text>
-          <Text className="text-gray-600 mb-1">{bookingData.serviceName}</Text>
-          <Text className="text-gray-600 mb-1">
-            {new Date(bookingData.date).toLocaleDateString("en-US", {
-              weekday: "long",
-              month: "long",
-              day: "numeric",
-            })}
-          </Text>
-          <Text className="text-gray-600">{bookingData.time}</Text>
-        </View>
+        <Text className="text-xl font-bold mb-4">Confirm Service Address</Text>
+        <Text className="text-gray-600 mb-2">Please confirm or update the address for your service.</Text>
+        <TextInput
+          className="bg-white border border-gray-300 rounded-lg p-3 mb-4 text-gray-800"
+          placeholder="Enter service address"
+          value={bookingData.address}
+          onChangeText={(text) =>
+            setBookingData({ ...bookingData, address: text })
+          }
+          placeholderTextColor="#9ca3af"
+        />
+        
+        {/* --- Add Property Size, Area Type, and Notes Inputs --- */}
+        <Text className="text-gray-600 mb-1 mt-2">Property Size</Text>
+        <TextInput
+          className="bg-white border border-gray-300 rounded-lg p-3 mb-4 text-gray-800"
+          placeholder="e.g., 1/4 acre, 5000 sq ft"
+          value={bookingData.propertySize}
+          onChangeText={(text) =>
+            setBookingData({ ...bookingData, propertySize: text })
+          }
+          placeholderTextColor="#9ca3af"
+        />
+
+        <Text className="text-gray-600 mb-1 mt-2">Area to Service</Text>
+        <TextInput
+          className="bg-white border border-gray-300 rounded-lg p-3 mb-4 text-gray-800"
+          placeholder="e.g., Front Yard, Full Property"
+          value={bookingData.areaType}
+          onChangeText={(text) =>
+            setBookingData({ ...bookingData, areaType: text })
+          }
+          placeholderTextColor="#9ca3af"
+        />
+
+        <Text className="text-gray-600 mb-1 mt-2">Additional Notes (Optional)</Text>
+        <TextInput
+          className="bg-white border border-gray-300 rounded-lg p-3 mb-4 text-gray-800 h-24"
+          placeholder="Any specific instructions? Gate code?"
+          value={bookingData.notes}
+          onChangeText={(text) =>
+            setBookingData({ ...bookingData, notes: text })
+          }
+          multiline
+          numberOfLines={4}
+          textAlignVertical="top"
+          placeholderTextColor="#9ca3af"
+        />
+        {/* --- End Added Inputs --- */}
 
         <TouchableOpacity
-          className="bg-white rounded-lg p-4 mb-3 shadow-sm flex-row items-center"
-          onPress={() => handleAddressSubmit(demoAddress)}
+          className="bg-green-500 rounded-lg py-3 px-4 mb-3 mt-auto"
+          onPress={nextStep}
         >
-          <MapPin size={20} color="#10B981" className="mr-3" />
-          <View className="flex-1">
-            <Text className="text-lg font-semibold mb-1">Current Address</Text>
-            <Text className="text-gray-600">{demoAddress}</Text>
-          </View>
-          <ChevronRight size={20} color="#9CA3AF" />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          className="bg-white rounded-lg p-4 mb-3 shadow-sm flex-row items-center"
-          onPress={() => {}}
-        >
-          <MapPin size={20} color="#9CA3AF" className="mr-3" />
-          <Text className="text-lg text-gray-600">Add New Address</Text>
-          <ChevronRight size={20} color="#9CA3AF" className="ml-auto" />
+          <Text className="text-white font-bold text-lg">Next</Text>
         </TouchableOpacity>
       </View>
     );
@@ -785,10 +814,11 @@ const BookingForm = ({
       setLoading(true);
       await onComplete(bookingData);
     } catch (error) {
-      Alert.alert(
-        "Booking Failed",
-        parseStripeError(error)
-      );
+      showNotification({
+        title: "Booking Failed",
+        message: parseStripeError(error),
+        type: "error",
+      });
     } finally {
       setLoading(false);
     }
