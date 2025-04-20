@@ -261,22 +261,21 @@ const ProfileSettings = ({
   };
 
   const handleRemovePaymentMethod = async (paymentMethodId: string) => {
-    try {
-      setLoading(true);
-
-      Alert.alert(
-        "Remove Payment Method",
-        "Are you sure you want to remove this payment method?",
-        [
-          {
-            text: "Cancel",
-            style: "cancel",
-            onPress: () => setLoading(false),
-          },
-          {
-            text: "Remove",
-            style: "destructive",
-            onPress: async () => {
+    setLoading(true);
+    Alert.alert(
+      "Remove Payment Method",
+      "Are you sure you want to remove this payment method?",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+          onPress: () => setLoading(false),
+        },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: async () => {
+            try {
               const { data, error } = await supabase.functions.invoke(
                 "stripe-customer-api",
                 {
@@ -284,25 +283,23 @@ const ProfileSettings = ({
                     path: "detach-payment-method",
                     payload: { paymentMethodId },
                   },
-                },
+                }
               );
-
               if (error) throw error;
-
               setPaymentMethods((prev) =>
-                prev.filter((pm) => pm.id !== paymentMethodId),
+                prev.filter((pm) => pm.id !== paymentMethodId)
               );
               Alert.alert("Success", "Payment method removed");
+            } catch (error) {
+              console.error("Error removing payment method:", error);
+              Alert.alert("Error", "Failed to remove payment method");
+            } finally {
               setLoading(false);
-            },
+            }
           },
-        ],
-      );
-    } catch (error) {
-      console.error("Error removing payment method:", error);
-      Alert.alert("Error", "Failed to remove payment method");
-      setLoading(false);
-    }
+        },
+      ]
+    );
   };
 
   const validateForm = () => {
@@ -464,6 +461,28 @@ const ProfileSettings = ({
       Alert.alert("Error", "Failed to log out. Please try again.");
       setLoading(false);
     }
+  };
+
+  const isDuplicatePaymentMethod = (newMethod: any) => {
+    return paymentMethods.some(
+      (pm) =>
+        pm.card.brand === newMethod.card_brand &&
+        pm.card.last4 === newMethod.card_last4 &&
+        pm.card.exp_month === newMethod.card_exp_month &&
+        pm.card.exp_year === newMethod.card_exp_year
+    );
+  };
+
+  const handleAddPaymentMethod = async (newMethod: any) => {
+    if (isDuplicatePaymentMethod(newMethod)) {
+      Alert.alert(
+        "Duplicate Card",
+        "This card is already saved. Please use a different card."
+      );
+      return;
+    }
+    setPaymentMethods((prev) => [...prev, newMethod]);
+    fetchPaymentMethods(); // Refresh from backend in case of changes
   };
 
   return (
@@ -941,10 +960,7 @@ const ProfileSettings = ({
           <AddPaymentMethodModal 
             visible={isAddCardModalVisible}
             onClose={() => setIsAddCardModalVisible(false)}
-            onSaveSuccess={() => {
-              setIsAddCardModalVisible(false);
-              fetchPaymentMethods(); // Refresh payment methods list
-            }}
+            onSaveSuccess={handleAddPaymentMethod}
             stripePublishableKey={STRIPE_PUBLISHABLE_KEY}
           />
         </View>

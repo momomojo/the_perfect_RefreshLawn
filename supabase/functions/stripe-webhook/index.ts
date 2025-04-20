@@ -421,24 +421,27 @@ async function handleCustomerUpdated(customer: Stripe.Customer) {
     if (supabaseUserId) {
       console.log(`Also updating profile for user ${supabaseUserId}`);
       const { error: profileUpdateError } = await supabase
-        .from('profiles')
+        .from("profiles")
         .update({
           email: customer.email,
           phone: customer.phone,
           // Optionally split name if needed:
           ...(customer.name
             ? (() => {
-                const [first_name, ...rest] = customer.name.split(' ');
+                const [first_name, ...rest] = customer.name.split(" ");
                 return {
                   first_name,
-                  last_name: rest.join(' ') || null,
+                  last_name: rest.join(" ") || null,
                 };
               })()
             : {}),
         })
-        .eq('id', supabaseUserId);
+        .eq("id", supabaseUserId);
       if (profileUpdateError) {
-        console.error(`Error updating profile ${supabaseUserId}:`, profileUpdateError);
+        console.error(
+          `Error updating profile ${supabaseUserId}:`,
+          profileUpdateError
+        );
       } else {
         console.log(`Successfully updated profile for user ${supabaseUserId}`);
       }

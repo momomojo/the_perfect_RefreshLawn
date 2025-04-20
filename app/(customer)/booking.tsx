@@ -1,17 +1,18 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
   SafeAreaView,
   ActivityIndicator,
   Alert,
+  Platform,
 } from "react-native";
 import { Stack, useRouter, useLocalSearchParams } from "expo-router";
 import BookingForm from "../components/customer/BookingForm";
 import StripePaymentWeb from "../../components/payment/StripePaymentWeb";
+import Toast from "react-native-toast-message";
 import {
   getService,
-  createBooking,
   getProfile,
   Booking,
   Service,
@@ -43,7 +44,9 @@ export default function BookingScreen() {
   const [error, setError] = useState<string | null>(null);
   const [service, setService] = useState<Service | null>(null);
   const [userProfile, setUserProfile] = useState<Profile | null>(null);
-  const [pendingBooking, setPendingBooking] = useState<BookingFormData | null>(null);
+  const [pendingBooking, setPendingBooking] = useState<BookingFormData | null>(
+    null
+  );
   const [showPayment, setShowPayment] = useState(false);
 
   useEffect(() => {
@@ -100,18 +103,27 @@ export default function BookingScreen() {
     setError(null);
 
     try {
-      if (bookingData.paymentMethod === 'cash' || bookingData.paymentMethod.startsWith('pm_')) {
+      if (
+        bookingData.paymentMethod === "cash" ||
+        bookingData.paymentMethod.startsWith("pm_")
+      ) {
         console.log("Invoking stripe-payment-api with data:", {
           serviceId: bookingData.serviceId,
           paymentMethod: bookingData.paymentMethod,
-          price: bookingData.price
+          price: bookingData.price,
         });
 
         // Get the current session token
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
 
         if (sessionError || !session) {
-          throw new Error("Authentication session not found: " + (sessionError?.message || "No session"));
+          throw new Error(
+            "Authentication session not found: " +
+              (sessionError?.message || "No session")
+          );
         }
 
         const { data, error } = await supabase.functions.invoke(
@@ -127,13 +139,13 @@ export default function BookingScreen() {
                 isRecurring: bookingData.isRecurring,
                 recurringPlanId: bookingData.recurringPlan,
                 paymentMethodId: bookingData.paymentMethod,
-                price: bookingData.price
-              }
+                price: bookingData.price,
+              },
             },
             // Explicitly set the Authorization header with the access token
             headers: {
-              Authorization: `Bearer ${session.access_token}`
-            }
+              Authorization: `Bearer ${session.access_token}`,
+            },
           }
         );
 
@@ -147,18 +159,34 @@ export default function BookingScreen() {
         setShowPayment(false);
         setPendingBooking(null);
 
-        Alert.alert(
-          "Booking Successful!",
-          bookingData.paymentMethod === 'cash'
-            ? "Your service has been booked. Please have cash ready for the service provider."
-            : "Your service has been booked and payment processed. You will receive a confirmation soon.",
-          [
-            {
-              text: "OK",
-              onPress: () => router.replace("/(customer)/dashboard"),
-            },
-          ]
-        );
+        // On web, we don't use Alert for success message and navigation
+        if (Platform.OS === 'web') {
+          Toast.show({
+            type: 'success',
+            text1: 'Booking Successful!',
+            text2: bookingData.paymentMethod === "cash"
+              ? "Your service has been booked. Please have cash ready for the service provider."
+              : "Your service has been booked and payment processed. You will receive a confirmation soon.",
+            visibilityTime: 2500,
+          });
+          setTimeout(() => {
+            router.replace("/(customer)/dashboard");
+          }, 2500);
+        } else {
+          // Use Alert for native platforms
+          Alert.alert(
+            "Booking Successful!",
+            bookingData.paymentMethod === "cash"
+              ? "Your service has been booked. Please have cash ready for the service provider."
+              : "Your service has been booked and payment processed. You will receive a confirmation soon.",
+            [
+              {
+                text: "OK",
+                onPress: () => router.replace("/(customer)/dashboard"),
+              },
+            ]
+          );
+        }
       } else {
         setShowPayment(true);
       }
@@ -176,37 +204,44 @@ export default function BookingScreen() {
     setSubmitting(true);
     setError(null);
     try {
-      const newBooking: Omit<Booking, "id" | "created_at" | "updated_at"> = {
-        customer_id: user.id,
-        service_id: pendingBooking.serviceId,
-        status: "paid", // Mark as paid
-        price: pendingBooking.price,
-        scheduled_date: pendingBooking.date,
-        scheduled_time: pendingBooking.time,
-        address: pendingBooking.address,
-        recurring_plan_id: pendingBooking.isRecurring
-          ? pendingBooking.recurringPlan
-          : undefined,
-        notes: `Customer booking from app. Stripe PaymentIntent: ${paymentIntentId}`,
-      };
-      await createBooking(newBooking);
+      // NOTE: The booking is already created by the handleCreateBookingAndCharge edge function
+      // in 'pending_payment' status. The webhook (handlePaymentIntentSucceeded) is responsible
+      // for updating the status to 'payment_confirmed'.
+      // We don't need to create or update the booking here anymore after simple payment success.
+
+      // We just need to clear the pending state and navigate.
       setShowPayment(false);
       setPendingBooking(null);
 
-      Alert.alert(
-        "Booking Successful!",
-        "Your service has been booked and payment received. You will receive a confirmation soon.",
-        [
-          {
-            text: "OK",
-            onPress: () => router.replace("/(customer)/dashboard"),
-          },
-        ]
-      );
+      // On web, directly navigate without Alert
+      if (Platform.OS === 'web') {
+        Toast.show({
+          type: 'success',
+          text1: 'Payment Successful!',
+          text2: 'Your payment is processing. You will receive a confirmation once the booking is fully confirmed.',
+          visibilityTime: 2500,
+        });
+        setTimeout(() => {
+          router.replace("/(customer)/dashboard");
+        }, 2500);
+      } else {
+        // Use Alert for native platforms
+        Alert.alert(
+          "Payment Successful!",
+          "Your payment is processing. You will receive a confirmation once the booking is fully confirmed.",
+          [
+            {
+              text: "OK",
+              onPress: () => router.replace("/(customer)/dashboard"),
+            },
+          ]
+        );
+      }
     } catch (err: any) {
-      console.error("Error creating booking:", err);
-      setError(err.message || "Failed to create booking. Please try again.");
-      Alert.alert("Error", err.message || "Failed to create booking");
+      // This catch block might be less relevant now if we're not doing DB operations here
+      console.error("Error post-payment processing:", err);
+      setError(err.message || "An error occurred after payment.");
+      Alert.alert("Error", err.message || "An error occurred after payment.");
     } finally {
       setSubmitting(false);
     }
@@ -216,7 +251,19 @@ export default function BookingScreen() {
     setShowPayment(false);
     setPendingBooking(null);
     setError(errMsg || "Payment failed. Please try again.");
-    Alert.alert("Payment Error", errMsg || "Payment failed. Please try again.");
+    
+    // Show error differently based on platform
+    if (Platform.OS === 'web') {
+      Toast.show({
+        type: 'error',
+        text1: 'Payment Error',
+        text2: errMsg || "Payment failed. Please try again.",
+        visibilityTime: 2500,
+      });
+      setError(errMsg || "Payment failed. Please try again.");
+    } else {
+      Alert.alert("Payment Error", errMsg || "Payment failed. Please try again.");
+    }
   };
 
   if (loading) {

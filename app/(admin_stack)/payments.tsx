@@ -4,8 +4,8 @@ import PaymentManagement from "../components/admin/PaymentManagement";
 import { Stack } from "expo-router"; // Import Stack
 
 export default function PaymentsScreen() {
-  // ... existing processRefund function ...
-  const processRefund = async (paymentIntentId: any, amount: any) => {
+  // Process refund (placeholder logic)
+  const processRefund = async (paymentIntentId: string, amount: number) => {
     Alert.alert(
       "Process Refund",
       `In production, this would process a refund of $${amount} via Stripe API for payment ${paymentIntentId}.`,
@@ -17,7 +17,9 @@ export default function PaymentsScreen() {
         {
           text: "Simulate Refund",
           onPress: async () => {
-            // ... (keep existing simulation logic)
+            // In a real app, you might update local state or make another API call
+            // For simulation, just show success
+            Alert.alert("Success", `Simulated refund for ${paymentIntentId}`);
           },
         },
       ]

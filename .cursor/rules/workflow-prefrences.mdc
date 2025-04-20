@@ -1,4 +1,9 @@
 ---
+description: 
+globs: 
+alwaysApply: true
+---
+---
 description: How I like to code
 globs: 
 alwaysApply: false

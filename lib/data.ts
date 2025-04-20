@@ -44,13 +44,38 @@ export interface RecurringPlan {
   updated_at?: string;
 }
 
+/**
+ * Booking status workflow:
+ * - pending_payment: Initial status when booking is created, awaiting payment
+ * - pending: Legacy status, maintained for backward compatibility
+ * - payment_processing: Payment is being processed by Stripe
+ * - payment_confirmed: Payment successful, booking awaiting scheduling
+ * - scheduled: Booking has been assigned to technician
+ * - in_progress: Service is being performed
+ * - completed: Service finished successfully
+ * - payment_failed: Payment attempt unsuccessful
+ * - cancelled: Booking cancelled
+ * - payment_refunded: Payment refunded via Stripe
+ * - refunded: General refund status
+ */
 export interface Booking {
   id: string;
   customer_id: string;
   technician_id?: string;
   service_id: string;
   recurring_plan_id?: string;
-  status: "pending" | "scheduled" | "in_progress" | "completed" | "cancelled" | "paid";
+  status:
+    | "pending"
+    | "scheduled"
+    | "in_progress"
+    | "completed"
+    | "cancelled"
+    | "pending_payment"
+    | "payment_processing"
+    | "payment_confirmed"
+    | "payment_failed"
+    | "payment_refunded"
+    | "refunded";
   price: number;
   scheduled_date: string;
   scheduled_time: string;
@@ -457,19 +482,6 @@ export async function getBooking(bookingId: string) {
   return data as Booking;
 }
 
-export async function createBooking(
-  booking: Omit<Booking, "id" | "created_at" | "updated_at">
-) {
-  const { data, error } = await supabase
-    .from("bookings")
-    .insert(booking)
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data as Booking;
-}
-
 export async function updateBooking(
   bookingId: string,
   updates: Partial<Booking>
@@ -512,10 +524,11 @@ export async function assignTechnician(
         error
       );
       // Fall back to direct update if RPC isn't available yet
-      return updateBooking(bookingId, {
+      await updateBooking(bookingId, {
         technician_id: technicianId,
         status: "scheduled",
       });
+      return getBooking(bookingId);
     }
 
     // If RPC was successful, fetch the updated booking
@@ -1019,4 +1032,71 @@ export function subscribeToNotifications(callback: (payload: any) => void) {
     });
 
   return channel;
+}
+
+// Stripe-related data helpers
+export interface Customer {
+  id: string;
+  user_id: string;
+  stripe_customer_id: string;
+  email?: string;
+  name?: string;
+  phone?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export async function getCustomer(userId: string) {
+  const { data, error } = await supabase
+    .from("customers")
+    .select<"*", Customer>("*")
+    .eq("user_id", userId)
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export interface PaymentRecord {
+  id: string;
+  user_id: string;
+  booking_id?: string;
+  stripe_payment_id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  payment_method?: string;
+  error_message?: string;
+  created_at?: string;
+}
+
+export async function getPayments(bookingId: string) {
+  const { data, error } = await supabase
+    .from("payments")
+    .select<"*", PaymentRecord>("*")
+    .eq("booking_id", bookingId);
+  if (error) throw error;
+  return data;
+}
+
+export interface SubscriptionRecord {
+  id: string;
+  user_id: string;
+  stripe_subscription_id: string;
+  stripe_customer_id: string;
+  status: string;
+  price_id: string;
+  current_period_start?: string;
+  current_period_end?: string;
+  canceled_at?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export async function getSubscriptions(customerId: string) {
+  const { data, error } = await supabase
+    .from("subscriptions")
+    .select<"*", SubscriptionRecord>("*")
+    .eq("stripe_customer_id", customerId);
+  if (error) throw error;
+  return data;
 }

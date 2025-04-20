@@ -8,6 +8,7 @@ import "react-native-reanimated";
 import "../global.css";
 import { Platform } from "react-native";
 import { AuthProvider } from "../lib/auth";
+import Toast from "react-native-toast-message";
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -45,6 +46,7 @@ export default function RootLayout() {
           <Stack.Screen name="index" options={{ headerShown: false }} />
         </Stack>
         <StatusBar style="auto" />
+        <Toast />
       </ThemeProvider>
     </AuthProvider>
   );

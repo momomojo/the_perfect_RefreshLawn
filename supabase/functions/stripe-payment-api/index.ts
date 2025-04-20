@@ -264,10 +264,7 @@ async function handleCreateBookingAndCharge(
 
     try {
       // Try inserting into 'bookings' table
-      console.log(
-        `Attempting insert into bookings with data:`,
-        bookingData
-      );
+      console.log(`Attempting insert into bookings with data:`, bookingData);
       const { result, error } = await insertIntoTable(
         successfulTableName,
         bookingData
@@ -292,10 +289,7 @@ async function handleCreateBookingAndCharge(
         // For other errors, just keep the original error
         insertError = error;
       } else {
-        console.log(
-          `Booking created successfully in 'bookings':`,
-          result
-        );
+        console.log(`Booking created successfully in 'bookings':`, result);
         insertedBooking = result;
       }
     } catch (err: unknown) {

@@ -8,6 +8,7 @@ import {
   User,
 } from "lucide-react-native";
 import { router } from "expo-router";
+import { Booking } from "../../../lib/data";
 
 interface JobSummary {
   id: string;
@@ -15,7 +16,7 @@ interface JobSummary {
   address: string;
   service: string;
   technician: string;
-  status: "scheduled" | "in-progress" | "completed" | "issue";
+  status: Booking["status"] | "issue";
 }
 
 interface TodayOverviewProps {
@@ -42,7 +43,7 @@ const TodayOverview = ({
       address: "456 Oak Ave, Anytown",
       service: "Hedge Trimming",
       technician: "Jane Smith",
-      status: "in-progress",
+      status: "in_progress",
     },
     {
       id: "3",
@@ -134,13 +135,22 @@ const TodayOverview = ({
 const getJobStatusColor = (status: JobSummary["status"]) => {
   switch (status) {
     case "scheduled":
+    case "pending":
+    case "pending_payment":
+    case "payment_processing":
+    case "payment_confirmed":
       return "bg-gray-100";
-    case "in-progress":
+    case "in_progress":
       return "bg-blue-50";
     case "completed":
       return "bg-green-50";
     case "issue":
       return "bg-red-50";
+    case "cancelled":
+    case "payment_failed":
+    case "payment_refunded":
+    case "refunded":
+      return "bg-red-100";
     default:
       return "bg-gray-100";
   }
@@ -152,7 +162,27 @@ const getStatusIndicator = (status: JobSummary["status"]) => {
       return (
         <Text className="text-gray-600 text-xs font-medium">Scheduled</Text>
       );
-    case "in-progress":
+    case "pending":
+      return <Text className="text-gray-600 text-xs font-medium">Pending</Text>;
+    case "pending_payment":
+      return (
+        <Text className="text-amber-600 text-xs font-medium">
+          Pending Payment
+        </Text>
+      );
+    case "payment_processing":
+      return (
+        <Text className="text-blue-600 text-xs font-medium">
+          Processing Payment
+        </Text>
+      );
+    case "payment_confirmed":
+      return (
+        <Text className="text-blue-600 text-xs font-medium">
+          Payment Confirmed
+        </Text>
+      );
+    case "in_progress":
       return (
         <Text className="text-blue-600 text-xs font-medium">In Progress</Text>
       );
@@ -162,7 +192,24 @@ const getStatusIndicator = (status: JobSummary["status"]) => {
       );
     case "issue":
       return <Text className="text-red-600 text-xs font-medium">Issue</Text>;
+    case "cancelled":
+      return (
+        <Text className="text-red-600 text-xs font-medium">Cancelled</Text>
+      );
+    case "payment_failed":
+      return (
+        <Text className="text-red-600 text-xs font-medium">Payment Failed</Text>
+      );
+    case "payment_refunded":
+      return (
+        <Text className="text-red-600 text-xs font-medium">
+          Payment Refunded
+        </Text>
+      );
+    case "refunded":
+      return <Text className="text-red-600 text-xs font-medium">Refunded</Text>;
     default:
+      const _exhaustiveCheck: never = status;
       return null;
   }
 };

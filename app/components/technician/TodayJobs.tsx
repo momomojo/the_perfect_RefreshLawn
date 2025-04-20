@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { MapPin, Clock, ChevronRight, CheckCircle } from "lucide-react-native";
-import { getTechnicianBookings } from "../../../lib/data";
+import { getTechnicianBookings, Booking } from "../../../lib/data";
 import { useAuth } from "../../../lib/auth";
 import { format } from "date-fns";
 
@@ -18,7 +18,7 @@ interface Job {
   address: string;
   time: string;
   serviceType: string;
-  status: "pending" | "scheduled" | "in_progress" | "completed" | "cancelled";
+  status: Booking["status"];
   propertyImage?: string;
 }
 
@@ -34,9 +34,9 @@ const TodayJobs = ({
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
 
-  const [activeFilter, setActiveFilter] = useState<
-    "all" | "pending" | "scheduled" | "in_progress" | "completed" | "cancelled"
-  >("all");
+  const [activeFilter, setActiveFilter] = useState<"all" | Booking["status"]>(
+    "all"
+  );
 
   useEffect(() => {
     if (!user?.id) return;
@@ -64,7 +64,7 @@ const TodayJobs = ({
             "h:mm a"
           )}`,
           serviceType: booking.service?.name || "",
-          status: booking.status as any, // Cast to match the Job interface
+          status: booking.status as Booking["status"],
           propertyImage:
             "https://images.unsplash.com/photo-1560749003-f4b1e17e2dfd?w=400&q=80", // Default image
         }));
@@ -86,9 +86,13 @@ const TodayJobs = ({
       ? jobs
       : jobs.filter((job) => job.status === activeFilter);
 
-  const getStatusColor = (status: Job["status"]) => {
+  const getStatusColor = (status: Booking["status"]) => {
     switch (status) {
       case "pending":
+      case "pending_payment":
+      case "payment_processing":
+      case "payment_confirmed":
+      case "payment_failed":
         return "bg-amber-100 text-amber-800";
       case "scheduled":
         return "bg-blue-100 text-blue-800";
@@ -97,25 +101,40 @@ const TodayJobs = ({
       case "completed":
         return "bg-green-100 text-green-800";
       case "cancelled":
+      case "payment_refunded":
+      case "refunded":
         return "bg-red-100 text-red-800";
       default:
         return "bg-gray-100 text-gray-800";
     }
   };
 
-  const getStatusText = (status: Job["status"]) => {
+  const getStatusText = (status: Booking["status"]) => {
     switch (status) {
       case "pending":
         return "Pending";
+      case "pending_payment":
+        return "Pending Payment";
+      case "payment_processing":
+        return "Processing Payment";
+      case "payment_confirmed":
+        return "Payment Confirmed";
       case "scheduled":
         return "Scheduled";
       case "in_progress":
         return "In Progress";
       case "completed":
         return "Completed";
+      case "payment_failed":
+        return "Payment Failed";
       case "cancelled":
         return "Cancelled";
+      case "payment_refunded":
+        return "Payment Refunded";
+      case "refunded":
+        return "Refunded";
       default:
+        const _exhaustiveCheck: never = status;
         return "Unknown";
     }
   };

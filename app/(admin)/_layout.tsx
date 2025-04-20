@@ -127,9 +127,10 @@ export default function AdminLayout() {
               ),
             }}
           />
-          <Tabs.Screen name="payments" options={{ href: null }} />
-          <Tabs.Screen name="customers" options={{ href: null }} />
-          <Tabs.Screen name="invoices" options={{ href: null }} />
+          {/* Hidden screens removed from layout - let Expo Router discover them */}
+          {/* <Tabs.Screen name="payments" options={{ href: null }} /> */}
+          {/* <Tabs.Screen name="customers" options={{ href: null }} /> */}
+          {/* <Tabs.Screen name="invoices" options={{ href: null }} /> */}
         </Tabs>
       </View>
     </ProtectedRoute>

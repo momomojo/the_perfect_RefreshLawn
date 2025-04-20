@@ -1,4 +1,9 @@
 ---
+description: 
+globs: 
+alwaysApply: false
+---
+---
 description: This is the projoct's tech stack
 globs: 
 alwaysApply: false

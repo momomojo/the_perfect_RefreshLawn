@@ -21,6 +21,7 @@ import {
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../lib/auth"; // Correct import for user authentication
 import AddPaymentMethodModal from "../common/AddPaymentMethodModal";
+import BookingHeader from "./BookingHeader";
 import {
   getRecurringPlans,
   getServices,
@@ -259,25 +260,7 @@ const BookingForm = ({
     }
   };
 
-  const renderStepIndicator = () => {
-    return (
-      <View className="flex-row justify-between items-center mb-6 px-4">
-        {[1, 2, 3, 4, 5, 6, 7].map((step) => (
-          <View
-            key={step}
-            className={`h-2 w-2 rounded-full ${
-              step === currentStep
-                ? "bg-green-500"
-                : step < currentStep
-                ? "bg-gray-400"
-                : "bg-gray-200"
-            }`}
-          />
-        ))}
-      </View>
-    );
-  };
-
+  // --- Step Navigation and Utility Handlers ---
   const generateAvailableDates = () => {
     const dates = [];
     const today = new Date();
@@ -310,12 +293,11 @@ const BookingForm = ({
       let [hours, minutes] = timePart.split(":");
       let hoursInt = parseInt(hours);
       if (meridiem === "PM" && hoursInt < 12) hoursInt += 12;
-      if (meridiem === "AM" && hoursInt === 12) hoursInt = 0; // Midnight case
+      if (meridiem === "AM" && hoursInt === 12) hoursInt = 0;
       const formattedHours = hoursInt.toString().padStart(2, "0");
       timeValue = `${formattedHours}:${minutes}:00`;
     } catch (err) {
       console.error("Error formatting time:", time, err);
-      // Keep original time if formatting fails
     }
     setBookingData({ ...bookingData, time: timeValue });
     nextStep();
@@ -327,23 +309,16 @@ const BookingForm = ({
   };
 
   const handleRecurringToggle = (isRecurring: boolean) => {
-    // Update the recurring status in booking data
     setBookingData((prev) => ({
       ...prev,
       isRecurring,
-      // If switching to one-time, clear the recurring plan
+      // Reset recurringPlan if switching to one-time
       recurringPlan: isRecurring ? prev.recurringPlan : undefined,
     }));
-
-    // Always move to the next step - we'll handle conditional rendering in the step display
-    nextStep();
   };
 
   const handleRecurringPlanSelect = (planId: string) => {
-    const selectedPlan = recurringPlans.find((p) => p.id === planId);
-    // TODO: Adjust price based on plan discount if applicable
     setBookingData({ ...bookingData, recurringPlan: planId });
-    nextStep(); // Move to payment step
   };
 
   const renderServiceTypeStep = () => {
@@ -515,61 +490,50 @@ const BookingForm = ({
   const renderRecurringStep = () => {
     return (
       <View className="flex-1 px-4">
-        <Text className="text-xl font-bold mb-4">Recurring Service</Text>
+        <Text className="text-xl font-bold mb-4">Service Frequency</Text>
         <View className="bg-white rounded-lg p-4 shadow-sm mb-4">
-          <Text className="text-lg font-semibold">
-            Would you like to schedule this as a recurring service?
+          <Text className="text-lg font-semibold mb-2">
+            How often would you like this service?
           </Text>
-          <Text className="text-gray-600 mt-2">
-            Save by setting up regular maintenance
-          </Text>
-
-          <View className="flex-row mt-6 gap-3">
+          <View className="flex-col gap-3 mt-2">
+            {/* One-time option */}
             <TouchableOpacity
-              className={`flex-1 p-4 rounded-lg ${
-                bookingData.isRecurring
-                  ? "bg-green-100 border-2 border-green-500"
-                  : "bg-gray-100 border-2 border-gray-200"
-              }`}
-              onPress={() => handleRecurringToggle(true)}
-            >
-              <Text
-                className={`text-center font-semibold ${
-                  bookingData.isRecurring ? "text-green-600" : "text-gray-600"
-                }`}
-              >
-                Yes, make it recurring
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              className={`flex-1 p-4 rounded-lg ${
-                !bookingData.isRecurring
-                  ? "bg-green-100 border-2 border-green-500"
-                  : "bg-gray-100 border-2 border-gray-200"
-              }`}
+              className={`flex-row items-center p-4 rounded-lg mb-2 ${!bookingData.isRecurring ? "bg-green-100 border-2 border-green-500" : "bg-gray-100 border-2 border-gray-200"}`}
               onPress={() => handleRecurringToggle(false)}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: !bookingData.isRecurring }}
             >
-              <Text
-                className={`text-center font-semibold ${
-                  !bookingData.isRecurring ? "text-green-600" : "text-gray-600"
-                }`}
-              >
-                No, one-time only
-              </Text>
+              <View className={`w-6 h-6 rounded-full border-2 mr-3 ${!bookingData.isRecurring ? "border-green-600 bg-green-500" : "border-gray-400 bg-white"} items-center justify-center`}>
+                {!bookingData.isRecurring && <View className="w-3 h-3 rounded-full bg-white" />}
+              </View>
+              <Text className={`text-lg font-semibold ${!bookingData.isRecurring ? "text-green-700" : "text-gray-700"}`}>One-time Service</Text>
+            </TouchableOpacity>
+            {/* Recurring option */}
+            <TouchableOpacity
+              className={`flex-row items-center p-4 rounded-lg ${bookingData.isRecurring ? "bg-green-100 border-2 border-green-500" : "bg-gray-100 border-2 border-gray-200"}`}
+              onPress={() => handleRecurringToggle(true)}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: bookingData.isRecurring }}
+            >
+              <View className={`w-6 h-6 rounded-full border-2 mr-3 ${bookingData.isRecurring ? "border-green-600 bg-green-500" : "border-gray-400 bg-white"} items-center justify-center`}>
+                {bookingData.isRecurring && <View className="w-3 h-3 rounded-full bg-white" />}
+              </View>
+              <Text className={`text-lg font-semibold ${bookingData.isRecurring ? "text-green-700" : "text-gray-700"}`}>Recurring Subscription</Text>
             </TouchableOpacity>
           </View>
         </View>
-
+        {/* If recurring, show plan selection */}
         {bookingData.isRecurring && (
-          <View className="mb-4">
-            <Text className="text-lg font-semibold mb-3">Select Plan</Text>
-            <ScrollView>
+          <View className="bg-white rounded-lg p-4 shadow-sm mb-4">
+            <Text className="text-lg font-semibold mb-3">Select a Recurring Plan</Text>
+            <ScrollView style={{ maxHeight: 180 }}>
               {recurringPlans.map((plan) => (
                 <TouchableOpacity
                   key={plan.id}
-                  className="flex-row justify-between items-center bg-white p-4 rounded-lg shadow-sm mb-3"
+                  className={`flex-row justify-between items-center bg-white p-4 rounded-lg shadow-sm mb-3 border-2 ${bookingData.recurringPlan === plan.id ? "border-green-500 bg-green-50" : "border-gray-200"}`}
                   onPress={() => handleRecurringPlanSelect(plan.id)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: bookingData.recurringPlan === plan.id }}
                 >
                   <View>
                     <Text className="text-lg font-medium">{plan.name}</Text>
@@ -580,12 +544,24 @@ const BookingForm = ({
                       </Text>
                     )}
                   </View>
-                  <ChevronRight size={20} color="#9CA3AF" />
+                  <View className={`w-5 h-5 rounded-full border-2 ml-3 ${bookingData.recurringPlan === plan.id ? "border-green-500 bg-green-500" : "border-gray-300 bg-white"} items-center justify-center`}>
+                    {bookingData.recurringPlan === plan.id && <View className="w-2 h-2 rounded-full bg-white" />}
+                  </View>
                 </TouchableOpacity>
               ))}
             </ScrollView>
           </View>
         )}
+        {/* Continue button */}
+        <TouchableOpacity
+          className={`bg-green-500 rounded-lg py-4 items-center mt-2 ${bookingData.isRecurring && !bookingData.recurringPlan ? "opacity-50" : ""}`}
+          onPress={nextStep}
+          disabled={bookingData.isRecurring && !bookingData.recurringPlan}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: bookingData.isRecurring && !bookingData.recurringPlan }}
+        >
+          <Text className="text-white font-bold text-lg">Continue</Text>
+        </TouchableOpacity>
       </View>
     );
   };
@@ -752,12 +728,6 @@ const BookingForm = ({
   };
 
   const renderCurrentStep = () => {
-    // If we're on step 5 (recurring plan selection) but one-time service is selected,
-    // skip to step 6 (payment method)
-    if (currentStep === 5 && !bookingData.isRecurring) {
-      return renderPaymentStep();
-    }
-
     switch (currentStep) {
       case 1:
         return renderServiceTypeStep();
@@ -826,31 +796,32 @@ const BookingForm = ({
 
   return (
     <View className="flex-1 bg-gray-50">
-      {renderStepIndicator()}
+      <BookingHeader
+        onBack={prevStep}
+        currentStep={currentStep}
+        totalSteps={7}
+        title={(() => {
+          switch (currentStep) {
+            case 1:
+              return "Select Service Type";
+            case 2:
+              return "Select Date";
+            case 3:
+              return "Select Time";
+            case 4:
+              return "Confirm Address";
+            case 5:
+              return "Service Frequency";
+            case 6:
+              return "Payment Method";
+            case 7:
+              return "Confirmation";
+            default:
+              return undefined;
+          }
+        })()}
+      />
       {renderCurrentStep()}
-
-      {currentStep < 7 && currentStep > 1 && (
-        <View className="flex-row justify-between px-4 py-4">
-          <TouchableOpacity
-            className="flex-row items-center"
-            onPress={prevStep}
-          >
-            <ArrowLeft size={20} color="#4B5563" />
-            <Text className="text-gray-600 ml-2">Back</Text>
-          </TouchableOpacity>
-
-          {/* Skip button for recurring step if needed */}
-          {currentStep === 5 && !bookingData.isRecurring && (
-            <TouchableOpacity
-              className="flex-row items-center"
-              onPress={nextStep}
-            >
-              <Text className="text-gray-600 mr-2">Next</Text>
-              <ArrowRight size={20} color="#4B5563" />
-            </TouchableOpacity>
-          )}
-        </View>
-      )}
     </View>
   );
 };

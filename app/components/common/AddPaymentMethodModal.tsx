@@ -36,7 +36,7 @@ if (isWeb) {
 interface AddPaymentMethodModalProps {
   visible: boolean;
   onClose: () => void;
-  onSaveSuccess: () => void;
+  onSaveSuccess: (cardDetails: any) => void;
   stripePublishableKey: string;
 }
 
@@ -183,61 +183,44 @@ const AddPaymentMethodModal: React.FC<AddPaymentMethodModalProps> = ({
   }
 
   const handleSaveCard = async (stripe: any, elements: any) => {
-    if (!stripe || !elements || !cardholderName) {
-      setError('Please fill in all card details and cardholder name.');
-      return;
-    }
-    
-    setError(null);
     setLoading(true);
-
+    setError(null);
     try {
       const cardElement = elements.getElement(CardElement);
-      
-      // Create payment method
       const { error: stripeError, paymentMethod } = await stripe.createPaymentMethod({
         type: 'card',
         card: cardElement,
-        billing_details: {
-          name: cardholderName,
+      });
+      if (stripeError) {
+        setError(parseStripeError(stripeError));
+        setLoading(false);
+        return;
+      }
+      // Attach payment method to customer
+      const { data, error: attachError } = await supabase.functions.invoke('stripe-customer-api', {
+        body: {
+          path: 'attach-payment-method',
+          payload: { paymentMethodId: paymentMethod.id },
         },
       });
-
-      if (stripeError) {
-        throw { ...stripeError, message: stripeError.message || 'Failed to create payment method.' };
-      }
-
-      if (!paymentMethod?.id) {
-        throw new Error('Payment method ID not received from Stripe.');
-      }
-
-      // Attach payment method to customer via Supabase Function
-      const { data: attachData, error: attachError } = await supabase.functions.invoke(
-        'stripe-customer-api',
-        {
-          body: {
-            path: 'attach-payment-method',
-            payload: { paymentMethodId: paymentMethod.id },
-          },
-        }
-      );
-
       if (attachError) {
-        throw { ...attachError, message: attachError.message || 'Failed to attach payment method.' };
+        setError(parseStripeError(attachError));
+        setLoading(false);
+        return;
       }
-
-      if (attachData?.error) {
-        throw { ...attachData, message: attachData.error || 'Server error attaching payment method.' };
-      }
-
-      Alert.alert('Success', 'Payment method added successfully!');
-      handleClose();
-      onSaveSuccess();
-    } catch (err: any) {
-      console.error('Error saving card:', err);
+      // Extract card details for duplicate check
+      const card = paymentMethod.card || paymentMethod.card_details || {};
+      const cardDetails = {
+        card_brand: card.brand,
+        card_last4: card.last4,
+        card_exp_month: card.exp_month || card.expiryMonth,
+        card_exp_year: card.exp_year || card.expiryYear,
+      };
+      onSaveSuccess(cardDetails);
+      setLoading(false);
+      onClose();
+    } catch (err) {
       setError(parseStripeError(err));
-      Alert.alert('Payment Error', parseStripeError(err));
-    } finally {
       setLoading(false);
     }
   };

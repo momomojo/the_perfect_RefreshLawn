@@ -47,6 +47,17 @@ CREATE TABLE IF NOT EXISTS recurring_plans (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Create booking_status ENUM type if it doesn't exist
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'booking_status') THEN
+    CREATE TYPE public.booking_status AS ENUM (
+      'pending', 'scheduled', 'in_progress', 'completed', 'cancelled'
+    );
+  END IF;
+END
+$$;
+
 -- Create bookings table - Service appointments
 CREATE TABLE IF NOT EXISTS bookings (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -54,7 +65,7 @@ CREATE TABLE IF NOT EXISTS bookings (
   technician_id UUID REFERENCES profiles(id),
   service_id UUID REFERENCES services(id) NOT NULL,
   recurring_plan_id UUID REFERENCES recurring_plans(id),
-  status TEXT CHECK (status IN ('pending', 'scheduled', 'in_progress', 'completed', 'cancelled')) DEFAULT 'pending',
+  status public.booking_status DEFAULT 'pending',
   price DECIMAL(10, 2) NOT NULL,
   scheduled_date DATE NOT NULL,
   scheduled_time TIME NOT NULL,

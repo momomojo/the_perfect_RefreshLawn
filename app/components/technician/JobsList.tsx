@@ -28,7 +28,18 @@ interface Job {
   date: string;
   time: string;
   serviceType: string;
-  status: "pending" | "scheduled" | "in_progress" | "completed" | "cancelled";
+  status:
+    | "pending"
+    | "scheduled"
+    | "in_progress"
+    | "completed"
+    | "cancelled"
+    | "pending_payment"
+    | "payment_processing"
+    | "payment_confirmed"
+    | "payment_failed"
+    | "payment_refunded"
+    | "refunded";
 }
 
 const JobsList = () => {
@@ -97,20 +108,37 @@ const JobsList = () => {
         new Date(b.date + "T" + b.time).getTime()
       );
     } else {
-      // Sort by status priority: in_progress, scheduled, pending, completed, cancelled
+      // Sort by status priority according to the workflow
       const statusPriority = {
         in_progress: 0,
         scheduled: 1,
-        pending: 2,
-        completed: 3,
-        cancelled: 4,
+        payment_confirmed: 2,
+        pending_payment: 3,
+        payment_processing: 4,
+        pending: 5,
+        completed: 6,
+        payment_failed: 7,
+        cancelled: 8,
+        payment_refunded: 9,
+        refunded: 10,
       };
-      return statusPriority[a.status] - statusPriority[b.status];
+      // Handle unknown status by giving it lowest priority
+      const aStatus =
+        statusPriority[a.status] !== undefined ? statusPriority[a.status] : 100;
+      const bStatus =
+        statusPriority[b.status] !== undefined ? statusPriority[b.status] : 100;
+      return aStatus - bStatus;
     }
   });
 
   const getStatusColor = (status: string) => {
     switch (status) {
+      case "pending_payment":
+        return "bg-gray-100 text-gray-800";
+      case "payment_processing":
+        return "bg-purple-100 text-purple-800";
+      case "payment_confirmed":
+        return "bg-indigo-100 text-indigo-800";
       case "scheduled":
         return "bg-blue-100 text-blue-800";
       case "in_progress":
@@ -119,8 +147,14 @@ const JobsList = () => {
         return "bg-amber-100 text-amber-800";
       case "completed":
         return "bg-green-100 text-green-800";
+      case "payment_failed":
+        return "bg-red-100 text-red-800";
       case "cancelled":
         return "bg-red-100 text-red-800";
+      case "payment_refunded":
+        return "bg-orange-100 text-orange-800";
+      case "refunded":
+        return "bg-orange-100 text-orange-800";
       default:
         return "bg-gray-100 text-gray-800";
     }
@@ -185,16 +219,20 @@ const JobsList = () => {
             </TouchableOpacity>
             <TouchableOpacity
               className={`flex-row items-center mr-2 px-3 py-1 rounded-full ${
-                filterStatus === "pending" ? "bg-blue-500" : "bg-gray-200"
+                filterStatus === "payment_confirmed"
+                  ? "bg-blue-500"
+                  : "bg-gray-200"
               }`}
-              onPress={() => setFilterStatus("pending")}
+              onPress={() => setFilterStatus("payment_confirmed")}
             >
               <Text
                 className={`${
-                  filterStatus === "pending" ? "text-white" : "text-gray-800"
+                  filterStatus === "payment_confirmed"
+                    ? "text-white"
+                    : "text-gray-800"
                 }`}
               >
-                Pending
+                Confirmed
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -239,6 +277,20 @@ const JobsList = () => {
                 }`}
               >
                 Completed
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              className={`flex-row items-center mr-2 px-3 py-1 rounded-full ${
+                filterStatus === "cancelled" ? "bg-blue-500" : "bg-gray-200"
+              }`}
+              onPress={() => setFilterStatus("cancelled")}
+            >
+              <Text
+                className={`${
+                  filterStatus === "cancelled" ? "text-white" : "text-gray-800"
+                }`}
+              >
+                Cancelled
               </Text>
             </TouchableOpacity>
           </ScrollView>

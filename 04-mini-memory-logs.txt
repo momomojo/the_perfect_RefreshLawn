@@ -1,112 +1,224 @@
-Stripe & Supabase Integration Audit Report
-Date: 2025‑06‑17
-Scope: Review of your Expo app’s Stripe integration (Edge Functions, Webhooks, DB schema, migrations, and frontend) versus the live Supabase database.
-1. Live Database vs. Local Migrations
-1.1 Live Supabase Schema (inspected via MCP)
-Your production DB (project lawnrefresh-git-auth) does contain these Stripe‑related tables in public:
-customers (PK id, user_id → auth.users(id), UNIQUE stripe_customer_id)
-subscriptions (PK id, user_id → auth.users, UNIQUE stripe_subscription_id)
-payments (PK id, user_id → auth.users, UNIQUE stripe_payment_id)
-invoices (PK id, UNIQUE stripe_invoice_id)
-Each has proper foreign keys back to auth.users, customers, or bookings, and appropriate UNIQUE constraints on Stripe IDs.
-1.2 Local Migration Files
-Your migration folder includes:
-Migrations to add Stripe fields (stripe_customer_id on profiles; stripe_product_id/stripe_price_id on services)
-Indexes, constraints, triggers, and RLS policies
-No explicit migrations that CREATE the customers, subscriptions, payments, or invoices tables.
-Gap: The local migration set does not define these four core tables, yet they exist in production. You need to reconcile—either add missing migrations or remove the discrepancy.
-2. Code Integration Overview
-2.1 Edge Functions & Shared Helpers
-Monolith: stripe-api Edge Function (1 000 LOC) handling create-payment-intent, create-customer, subscribe, list/attach/detach payment methods, admin endpoints, etc.
-Microservices: Separate Edge Functions under stripe-customer-api, stripe-payment-api, stripe-subscription-api, stripe-admin-api.
-Shared utils: _shared/stripe-utils.ts provides a single getStripeCustomerId(userId) with fallback to profiles.
-2.2 Webhooks
-stripe-webhook function verifies signatures and handles events:
-payment_intent.succeeded → payments.insert
-customer.subscription.* → subscriptions.insert|update|…
-invoice.* → invoices.insert
-2.3 Frontend
-Web: StripePaymentWeb.tsx using supabase.functions.invoke("stripe-api") → create-payment-intent → stripe.confirmCardPayment.
-App: booking.tsx calls stripe-payment-api → create-booking-and-charge (handles booking + payment in one call).
-3. Key Issues
-3.1 Missing Migrations
-customers, subscriptions, payments, invoices tables are not created by any local SQL file—yet they exist live.
-Action: Add idempotent Supabase migrations for all Stripe tables (columns, FKs, ENUMs, UNIQUE constraints).
-3.2 Inconsistent Customer ID Storage
-You store Stripe IDs on both profiles.stripe_customer_id and separate customers table.
-_shared/stripe-utils.ts tries profiles as fallback but profiles column is rarely updated.
-Action: Pick one: either migrate off profiles.stripe_customer_id into customers entirely (remove the column and fallback code) or unify by syncing both consistently.
-3.3 Duplicate Function Code
-You maintain two code paths—monolithic stripe-api vs. microservices—often duplicating work (e.g. getStripeCustomerId, attach/detach PM).
-Risk: Drift, harder maintenance.
-Action: Consolidate on one pattern. Either retire the monolith in favor of specialized functions (already used by your booking screen), or vice versa.
-3.4 API Version Mismatch
-stripe-api uses apiVersion: "2023‑10‑16" but stripe-webhook uses "2024‑06‑20".
-Risk: Webhook payload shapes may differ from client calls.
-Action: Standardize on one API version across all functions.
-3.5 Webhook Idempotency & Integrity
-Handlers do raw INSERT on every event—retrying a Stripe event will duplicate records.
-Action:
-Add UNIQUE constraints on Stripe IDs (stripe_payment_id, etc.).
-Switch to .upsert() or ON CONFLICT DO NOTHING/UPDATE in your webhook code.
-3.6 Sensitive Logging
-You log partial webhook secret in the Edge Function console.
-Action: Remove or fully redact credentials from logs.
-3.7 Frontend Header Override
-In StripePaymentWeb.tsx, you pass an empty headers object to invoke—likely dropping default Authorization header.
-Action: Omit headers override or explicitly re‑pass the JWT so your Edge Function sees the user’s token.
-3.8 Billing Details & Fraud/SCA
-Your card confirmation omits billing_details (name, address).
-Action: Supply billing_details in confirmCardPayment to help fraud checks and SCA compliance.
-4. Status Overlap & Confusion
-4.1 Booking Status Enum
-Your booking.status column uses a custom enum (booking_status) defined (in DB) as:
-Apply to 04-mini-memo...
-The code’s migrations only ever added 'pending','scheduled','in_progress','completed','cancelled','paid'.
-Live DB has a more nuanced workflow; Local migrations are out of sync.
-Action: Align migrations and type definition with live enum values.
-4.2 Payment Status
-You also store a free‑text payments.status and a bookings.payment_status column.
-Risk: Users and code may confuse these with booking.status.
-Action:
-Keep booking.status strictly for the booking workflow.
-Use payments.status (or a dedicated payment_status ENUM) for payment‑specific states.
-Avoid overloading a single status field.
-5. Recommendations
-5.1 Consolidate / Migrate Stripe Tables
-Add missing migrations for customers, subscriptions, payments, invoices with:
-Proper FKs (user_id → auth.users, stripe_customer_id → customers.stripe_customer_id)
-UNIQUE constraints on all Stripe IDs
-ENUM columns for subscriptions.status, invoices.status if desired
-5.2 Standardize the Edge Function Pattern
-Recommendation: Embrace the microservices approach already wired into your booking flow:
-Use stripe-customer-api for customer creation/listing
-Use stripe-payment-api for booking+charge
-Use stripe-subscription-api for subscriptions
-Use stripe-admin-api only for admin dashboards
-Why: Smaller, single‑responsibility functions simplify local testing, CI, and rollback. They map directly to your frontend calls.
-5.3 Remove Duplication & Align Helpers
-Centralize in _shared/stripe-utils.ts:
-Single getStripeCustomerId helper
-Common error handling and API version setting
-Delete overlapping code in stripe-api monolith or vice versa.
-5.4 Harden Webhooks
-Add idempotent upsert logic (.upsert(...)) based on UNIQUE Stripe IDs.
-Standardize on one Stripe API version (e.g. 2024‑06‑20) in all functions.
-5.5 Clarify Status Domains
-Booking workflow: exclusively use booking_status enum.
-Payment workflow: rename payment_status or use a new ENUM in payments table.
-Update UI labels so users see “Payment Succeeded/Failed” vs. “Booking Scheduled/In Progress/Completed” independently.
-5.6 Frontend Adjustments
-In StripePaymentWeb.tsx, drop custom headers override so invoke() passes JWT.
-Supply billing_details in confirmCardPayment.
-Ensure EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY is set in all build environments.
-6. Next Steps
-Review & merge the missing migrations for Stripe tables.
-Refactor your Edge Functions to the microservice pattern.
-Align enums and status fields in local migrations with production.
-Test end‑to‑end in Expo with test cards, covering success/failure & webhook retries.
-Deploy and monitor logs, paying attention to duplicates or missing events.
+Stripe & Supabase Integration Audit Report & Rework Plan
+Date: 2025-06-17
+Scope: Review & fix Expo app's Stripe integration (Edge Functions, Webhooks, DB schema, migrations, frontend) vs. live Supabase DB.
+
+--- CORE ISSUES ---
+1.  **Missing Migrations:** `customers`, `subscriptions`, `payments`, `invoices` tables exist live but have no local CREATE migrations.
+2.  **Inconsistent Customer ID:** `profiles.stripe_customer_id` and `customers` table used inconsistently.
+3.  **Duplicate Function Logic:** Monolithic `stripe-api` vs. microservices (`stripe-customer-api`, etc.).
+4.  **API Version Mismatch:** Stripe API versions differ between functions/webhooks.
+5.  **Webhook Idempotency:** Raw INSERTs risk duplicates on retries.
+6.  **Sensitive Logging:** Webhook secret exposure.
+7.  **Frontend Issues:** Empty `headers` override in invoke, missing `billing_details`.
+8.  **Status Confusion:** `booking.status` enum/values mismatch live DB; overlap with payment statuses.
+
+--- REWORK PLAN & PROGRESS ---
+
+✅ **DONE:**
+*   **Migrations:**
+    *   Created migration `20250617000000` for core Stripe tables (`customers`, `payments`, `subscriptions`, `invoices`).
+    *   Created migration `20250617000002` for `subscription_status` and `invoice_status` ENUMs & applied to tables.
+    *   Created migrations `20250617000001`, `20250617000003` to add missing `booking_status` enum values (`payment_processing`, `payment_failed`, `payment_confirmed`, `pending_payment`, `payment_refunded`, `refunded`) via `ADD VALUE`.
+    *   Created migration `20250618000001` to DROP `stripe_customer_id` column from `public.profiles`.
+*   **Customer ID Consolidation:**
+    *   Removed fallback logic from `_shared/stripe-utils.ts` (now only uses `public.customers`).
+    *   Confirmed via search that `profiles.stripe_customer_id` is no longer used in code.
+*   **Edge Functions:**
+    *   Refactored `stripe-webhook` to use `upsert` for payments, subscriptions, invoices.
+    *   Refactored `stripe-subscription-api` to `upsert` subscriptions.
+    *   Refactored `stripe-customer-api` to `upsert` customers into `public.customers`.
+    *   Standardized Stripe API version (`2024-06-20`) in `_shared/stripe-utils.ts`, `stripe-webhook`, `stripe-api`.
+    *   Removed sensitive logging (webhook secret) from `stripe-webhook`.
+    *   Removed initial log from `stripe-api`.
+    *   Refactored `stripe-payment-api` to upsert payments and changed initial booking status to `pending_payment` to match enum values.
+    *   Corrected booking update after Payment Intent creation in `stripe-payment-api` to use `pending_payment`.
+*   **Data Layer (`lib/data.ts`):**
+    *   Added helpers: `getCustomer`, `getPayments`, `getSubscriptions`.
+*   **Frontend (`components/payment/StripePaymentWeb.tsx`):**
+    *   Removed unused `token` variable.
+    *   Removed empty `headers` override in `invoke`.
+    *   Updated Edge Function invocation to use `stripe-payment-api`.
+    *   Added `billing_details` to `confirmCardPayment` for SCA/fraud compliance.
+    *   Added runtime check and console error if `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` is not set.
+*   **Testing:**
+    *   Confirmed `tests/stripe.spec.ts` exists.
+    *   Updated `tests/stripe.spec.ts` to invoke `stripe-payment-api` instead of `stripe-api`.
+    *   Added E2E test placeholders for:
+        - Booking with charge (`create-booking-and-charge`).
+        - Webhook idempotency handling.
+
+🚧 **PENDING REVIEW / CLEANUP:**
+*   **`booking_status` Migrations:** Conflicts identified.
+    *   **Plan:** Modify `initial_schema` to use ENUM, delete `20250616000200` (CHECK constraint update) and `20250618000000` (redundant CREATE TYPE). Keep `...0001` & `...0003` (ADD VALUE). **Needs user confirmation before proceeding.**
+
+🔲 **TO DO (Remaining):**
+*   **Migrations:**
+    *   Execute `booking_status` cleanup plan (Requires confirmation).
+    *   Apply `20250617000000_create_stripe_tables.sql` migration (and others once ready).
+*   **Edge Functions:**
+    *   Review microservices (`stripe-customer-api`, etc.) to ensure full coverage of `stripe-api` functionality.
+    *   Retire monolithic `stripe-api` function (delete or archive folder).
+*   **Frontend:**
+    *   Add `billing_details` to `confirmCardPayment` in `StripePaymentWeb.tsx`.
+    *   Align status strings in `app/(customer)/booking.tsx` with updated `booking_status` enum (after migration cleanup).
+    *   Ensure `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` is set.
+*   **Admin UI:**
+    *   Update `app/(admin)/payments.tsx` (and similar) to query `public.payments`.
+*   **Data Layer (`lib/data.ts`):**
+    *   Refactor `createBooking` (if exists) to not handle payment/customer logic directly.
+*   **Testing:**
+    *   Implement E2E tests in `tests/stripe.spec.ts`.
+
+--- ORIGINAL CONVERSATION SUMMARY (Pre-Rework) ---
+*   Initial goal: Find missing migration files after Git issues.
+*   Strategy: Check remote branches (`git branch -r`, `git ls-tree`).
+*   Discovery: Live DB schema mismatched local migrations (Stripe tables existed live, not locally).
+*   Shift: Initiated audit & rework plan based on discrepancies.
 
 # tag: stripe-tables-migration-missing
 # Note: After reviewing the new migrations staged (20250617*), none include CREATE statements for the core Stripe tables (customers, subscriptions, payments, invoices). We still need to author idempotent migrations that define these tables with proper PKs, FKs, and UNIQUE constraints. 
+
+
+
+Below is a high‑level roadmap of every area we'll touch, driven by the Stripe gaps we uncovered. I've called out each file or migration, the change required, and tiny code snippets to illustrate what needs to move. Once you sign off, we'll tackle each in turn.
+–––
+1. Migrations
+We already added 20250617000000_create_stripe_tables.sql. Beyond that, we need:
+1.1. Booking status enum alignment
+Our code uses statuses like "payment_processing", "payment_confirmed", "payment_failed", etc., but our enum only contains pending, scheduled, … paid.
+Action: Extend the enum (and its CHECK constraint) to include these workflow states.
+Snippet (in a new migration, right after our create‑tables script):
+Apply
+1.2. (Optional) ENUM for subscription & invoice status
+We store them as free‑text. If we want rigid status values, add new ENUM types and columns:
+Apply
+–––
+2. Edge Functions
+All of these live under supabase/functions. We'll refactor each to use our new tables and enforce idempotency.
+2.1. stripe-customer-api/index.ts
+Before: writes to profiles.stripe_customer_id (via helper).
+After: upsert into public.customers and return that row.
+Snippet:
+Apply
+2.2. stripe-payment-api/index.ts
+Before: directly called the legacy stripe-payment-api edge function invoked by booking.tsx.
+After:
+Ensure the function calls our new public.payments table, not payments via RLS row‑level.
+Use .upsert() in case of retries.
+Snippet:
+Apply
+2.3. stripe-subscription-api/index.ts
+Mirror the same upsert pattern into public.subscriptions.
+Guarantee stripe_customer_id FK points at our customers table.
+2.4. stripe-webhook/index.ts
+Before: raw INSERT on each event.
+After: .upsert() on Stripe ID with onConflict to ignore duplicates.
+Snippet:
+Apply
+–––
+3. Front‑end Expo App
+3.1. app/components/payment/StripePaymentWeb.tsx
+Remove the empty headers override so the Supabase client automatically attaches the JWT.
+Add billing_details to confirmCardPayment():
+Apply
+3.2. app/(customer)/booking.tsx
+After payment success, our code createBooking({ status: 'paid', … }) must match the new enum.
+Ensure createBooking writes to the same bookings table and triggers no conflicts.
+3.3. Admin UIs
+app/(admin)/payments.tsx & PaymentManagement.tsx
+They likely query the old payments RLS view. Update them to read from our new public.payments table.
+Ensure queries now call .from('payments') instead of .from('payments_view').
+–––
+4. Data Library (lib/data.ts)
+4.1. Add new helpers:
+Apply
+4.2. Update createBooking (if it existed) to no longer insert into payments or customers as separate logic now lives in functions.
+–––
+5. End‑to‑end Testing
+Write a quick E2E (or unit) test in tests/stripe.spec.ts to:
+Create a customer via stripe-customer-api.
+Confirm it appears in public.customers.
+Create a payment via UI (or call function) and ensure public.payments is seeded.
+Simulate a webhook event and ensure upsert logic prevents duplicates.
+–––
+6. Summary & Timeline
+Migrations (today):
+create_stripe_tables
+booking_status_enum_update
+Edge Functions (next):
+Refactor each to use new tables/upsert.
+Frontend:
+Update headers + billing_details.
+Align status strings.
+Data Layer: Add helpers in lib/data.ts.
+Admin UI: Query new tables.
+Testing & Deploy.
+This plan cleanly separates concerns—migrations first, functions next, then UI. Everything uses idempotent patterns, avoids drift, and aligns the Expo app and database
+
+
+## Conversation Summary (Extended)
+
+1.  **Initial Goal:** Identify missing Supabase migration files potentially lost during Git operations (rebasing, cherry-picking).
+2.  **Strategy:** Examine remote branches to locate the commit history containing the migrations.
+3.  **Action:** Listed remote branches using `git branch -r`. Output included branches like `origin/main`, `origin/supabase-auth`, and several `origin/stripe-integration-*` branches.
+4.  **Problem Shift:** Discovered discrepancies between the live Supabase schema (containing Stripe tables like `customers`, `payments`, `subscriptions`, `invoices`) and the local `supabase/migrations` folder (which lacked `CREATE TABLE` statements for these).
+5.  **Audit Request:** You asked for a review of the Stripe integration across migrations, Edge Functions, webhooks, and frontend code, comparing local state to the production database.
+6.  **Audit Findings (`04-mini-memory-logs.txt`):**
+    *   **Missing Migrations:** Core Stripe tables exist live but aren't defined locally.
+    *   **Inconsistent Customer ID:** `profiles.stripe_customer_id` and `customers` table both used.
+    *   **Duplicate Function Code:** Monolithic `stripe-api` vs. microservice functions (`stripe-customer-api`, etc.).
+    *   **API Version Mismatch:** Different Stripe API versions used in functions/webhooks.
+    *   **Webhook Idempotency & Integrity:** Handlers do raw INSERT on every event—retrying a Stripe event will duplicate records.
+    *   **Sensitive Logging:** You log partial webhook secret in the Edge Function console.
+    *   **Frontend Header Override:** In StripePaymentWeb.tsx, you pass an empty headers object to invoke—likely dropping default Authorization header.
+    *   **Billing Details & Fraud/SCA:** Your card confirmation omits billing_details (name, address).
+    *   **Status Overlap & Confusion:** Your booking.status column uses a custom enum (booking_status) defined (in DB) as:
+        Apply to 04-mini-memo...
+        The code's migrations only ever added 'pending','scheduled','in_progress','completed','cancelled','paid'.
+        Live DB has a more nuanced workflow; Local migrations are out of sync.
+7.  **Proposed Plan (Roadmap in `04-mini-memory-logs.txt`):**
+    *   **Migrations:** Add missing `CREATE TABLE` migrations, align `booking_status` enum.
+    *   **Edge Functions:** Refactor to use new tables, use `upsert` for idempotency (targeting `stripe-webhook`, `stripe-customer-api`, `stripe-payment-api`, `stripe-subscription-api`). Standardize on microservices.
+    *   **Frontend:** Fix `headers` override, add `billing_details`, align status strings.
+    *   **Data Layer (`lib/data.ts`):** Add helpers (`getCustomer`, `getPayments`, `getSubscriptions`).
+    *   **Admin UI:** Update queries to use new tables (`public.payments`).
+    *   **Testing:** Add E2E tests (`tests/stripe.spec.ts`).
+8.  **Implementation Start:**
+    *   Confirmed the migration `20250617000002_create_subscription_invoice_status_enum.sql` exists locally.
+    *   Added data helpers (`getCustomer`, `getPayments`, `getSubscriptions`) to `lib/data.ts`. (Introduced linter errors).
+    *   Updated `stripe-webhook/index.ts` to use `upsert` for payments, subscriptions, and invoices based on Stripe IDs.
+    *   Updated `stripe-subscription-api/index.ts` to use `upsert` for subscriptions.
+9.  **Current Request:** Append this full summary, fix linter errors, review changes, and continue implementation.
+
+10. Implementation Progress
+    * Added Stripe data helpers (`getCustomer`, `getPayments`, `getSubscriptions`) in `lib/data.ts` and fixed Supabase type errors.
+    * Refactored `supabase/functions/stripe-webhook/index.ts` to use `upsert` with `onConflict` for `payments`, `subscriptions`, and `invoices` handlers.
+    * Refactored `supabase/functions/stripe-subscription-api/index.ts` to upsert subscription records on `stripe_subscription_id`.
+    * Refactored `supabase/functions/stripe-customer-api/index.ts` `handleCreateCustomer` to upsert complete customer details into `public.customers` and remove reliance on `profiles` for storage.
+
+11. Next Steps
+    * Locate and refactor the Stripe payment component in the frontend to remove empty headers override and include `billing_details` in `confirmCardPayment`.
+    * Update admin UI components to query `public.payments` instead of the old RLS view.
+    * Continue with frontend booking status enum alignment once the migrations are updated.
+
+12. Review & Corrections
+    * Removed the unused 'token' variable in `components/payment/StripePaymentWeb.tsx` after dropping the headers override.
+    * Updated admin refund simulation in `app/(admin)/payments.tsx` to plan for using `booking_id` from the payments table instead of parsing from the transaction ID.
+    * Verified the test file `tests/stripe.spec.ts` was created and lives in the new `tests/` directory.
+
+13. Next Actions
+    * Use Supabase MCP to list projects and identify the correct `project_id` for the Lawn Refresh database.
+    * Fetch the current database schema (tables/extensions/migrations) using Supabase MCP `list_tables` and `list_extensions`.
+    * Based on the live schema, author idempotent migrations for the core Stripe tables (`customers`, `subscriptions`, `payments`, `invoices`).
+
+* Edge Functions:*
+   ✅ Retired monolithic `stripe-api` function and verified all endpoints are covered by microservices.
+
+* Frontend (`app/(customer)/booking.tsx`):
+    *   Aligned booking creation status in `handlePaymentSuccess` to use `payment_confirmed` enum.
+
+* Admin UI (`app/(admin)/payments.tsx`):
+    *   Queries updated to read directly from `public.payments` with proper mapping via `mapPaymentStatus`.
+
+* Data Layer (`lib/data.ts`):
+    *   Extended `Booking.status` union type to include all new `booking_status` enum values (`

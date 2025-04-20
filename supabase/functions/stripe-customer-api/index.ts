@@ -7,18 +7,18 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { User } from "https://esm.sh/@supabase/supabase-js@2.7.1";
-import { 
-  corsHeaders, 
-  createErrorResponse, 
-  createSuccessResponse, 
+import {
+  corsHeaders,
+  createErrorResponse,
+  createSuccessResponse,
   handleCorsPreflightRequest,
   ResponseHeaders,
-  parseRequestBody
+  parseRequestBody,
 } from "../_shared/http-utils.ts";
-import { 
-  getStripeCustomerId, 
-  stripe, 
-  getSupabaseClient 
+import {
+  getStripeCustomerId,
+  stripe,
+  getSupabaseClient,
 } from "../_shared/stripe-utils.ts";
 import { verifyUser } from "../_shared/auth-utils.ts";
 
@@ -40,42 +40,55 @@ async function handleCreateCustomer(
 ) {
   try {
     const supabase = getSupabaseClient();
-    
-    // 1. Check if customer already exists in our database
-    const { data: existingCustomerRecord, error: customerDbError } = await supabase
-      .from("customers")
-      .select("stripe_customer_id")
-      .eq("user_id", user.id)
-      .maybeSingle();
+
+    // 1. Check if customer already exists in our 'customers' database
+    const { data: existingCustomerRecord, error: customerDbError } =
+      await supabase
+        .from("customers")
+        .select("stripe_customer_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
 
     if (customerDbError) throw customerDbError;
 
     if (existingCustomerRecord?.stripe_customer_id) {
-      // Customer already exists, maybe update?
-      // For now, just return existing ID as per original logic.
-      console.log(`Customer already exists (handleCreateCustomer): ${existingCustomerRecord.stripe_customer_id}`);
-      return createSuccessResponse({
-        customerId: existingCustomerRecord.stripe_customer_id,
-        message: "Customer already exists",
-      }, headers);
+      // Customer already exists, maybe update? For now, return existing ID.
+      console.log(
+        `Customer already exists in DB: ${existingCustomerRecord.stripe_customer_id}`
+      );
+      return createSuccessResponse(
+        {
+          customerId: existingCustomerRecord.stripe_customer_id,
+          message: "Customer already exists",
+        },
+        headers
+      );
     }
 
-    // 2. Fetch profile data as primary source
+    // 2. Fetch profile data (needed for name/phone potentially)
     const { data: profileData, error: profileError } = await supabase
       .from("profiles")
-      .select("first_name, last_name, phone")
+      .select("first_name, last_name, phone") // Only select needed fields
       .eq("id", user.id)
-      .single();
+      .single(); // Use single to enforce profile existence
 
-    if (profileError && profileError.code !== "PGRST116") {
+    if (profileError) {
       console.error("Error fetching profile:", profileError);
-      throw new Error("Could not fetch user profile.");
+      // Handle case where profile might not exist yet, but auth user does
+      if (profileError.code === "PGRST116") {
+        console.warn(
+          "Profile not found for user, proceeding with minimal info."
+        );
+      } else {
+        throw new Error("Could not fetch user profile.");
+      }
     }
 
     // 3. Construct customer details using profile first, then body/auth fallbacks
-    const customerName = profileData?.first_name && profileData?.last_name
-      ? `${profileData.first_name} ${profileData.last_name}`
-      : body.name || null; // Fallback to body.name if profile names missing
+    const customerName =
+      profileData?.first_name && profileData?.last_name
+        ? `${profileData.first_name} ${profileData.last_name}`
+        : body.name || null; // Fallback to body.name
     const customerEmail = user.email;
     const customerPhone = profileData?.phone || body.phone || null; // Use profile phone or body.phone
 
@@ -85,26 +98,52 @@ async function handleCreateCustomer(
       name: customerName,
       phone: customerPhone,
       metadata: {
-        supabase_user_id: user.id,
+        supabase_user_id: user.id, // Crucial link back to Supabase auth user
       },
     });
-    const customerId = stripeCustomer.id;
-    console.log(`New Stripe customer created (handleCreateCustomer): ${customerId}`);
+    const stripeCustomerId = stripeCustomer.id; // Get the new Stripe Customer ID
+    console.log(`New Stripe customer created: ${stripeCustomerId}`);
 
     // 5. Save the *complete* customer info to your 'customers' database
-    await supabase.from("customers").insert({
-      user_id: user.id,
-      stripe_customer_id: customerId,
-      name: customerName, // Store the name used in Stripe
-      email: customerEmail, // Store the email used in Stripe
-      phone: customerPhone, // Store the phone used in Stripe
-      created_at: new Date().toISOString(),
-    });
+    // Use upsert to handle potential race conditions or if webhook creates it first
+    const { data: upsertedCustomer, error: upsertError } = await supabase
+      .from("customers")
+      .upsert(
+        {
+          user_id: user.id,
+          stripe_customer_id: stripeCustomerId,
+          email: customerEmail, // Store email from auth
+          name: customerName, // Store name used in Stripe
+          phone: customerPhone, // Store phone used in Stripe
+        },
+        {
+          onConflict: "user_id", // Use user_id as the conflict target
+          // ignoreDuplicates: false // Default is false, ensures update if exists
+        }
+      )
+      .select() // Select the inserted/updated row
+      .single(); // Expect a single row result
 
-    return createSuccessResponse({
-      customerId: customerId,
-      message: "Customer created successfully",
-    }, headers);
+    if (upsertError) {
+      console.error("Error upserting customer record:", upsertError);
+      // Decide how to handle: maybe try to delete the Stripe customer?
+      // For now, throw the error to signal failure.
+      throw upsertError;
+    }
+
+    console.log(
+      "Customer record upserted successfully into DB:",
+      upsertedCustomer
+    );
+
+    return createSuccessResponse(
+      {
+        // Return the definitive Stripe Customer ID from the upserted record
+        customerId: upsertedCustomer.stripe_customer_id,
+        message: "Customer created/updated successfully",
+      },
+      headers
+    );
   } catch (error) {
     console.error("Error in handleCreateCustomer:", error);
     return createErrorResponse((error as Error).message, 400, headers);
@@ -123,18 +162,19 @@ async function handleListPaymentMethods(user: User, headers: ResponseHeaders) {
 
     // Get default payment method
     const customer = await stripe.customers.retrieve(customerId);
-    const defaultPaymentMethodId = customer.invoice_settings?.default_payment_method;
+    const defaultPaymentMethodId =
+      customer.invoice_settings?.default_payment_method;
 
     // Format for client with nested card structure to match frontend expectations
     const formattedMethods = paymentMethods.data.map((pm) => ({
       id: pm.id,
       card: {
-        brand: pm.card?.brand || '',
-        last4: pm.card?.last4 || '',
+        brand: pm.card?.brand || "",
+        last4: pm.card?.last4 || "",
         expiryMonth: pm.card?.exp_month || 0,
-        expiryYear: pm.card?.exp_year || 0
+        expiryYear: pm.card?.exp_year || 0,
       },
-      isDefault: pm.id === defaultPaymentMethodId
+      isDefault: pm.id === defaultPaymentMethodId,
     }));
 
     return createSuccessResponse({ paymentMethods: formattedMethods }, headers);
@@ -183,7 +223,7 @@ async function handleDetachPaymentMethod(
     // Optional: Check if it's the default payment method first
     const customerId = await getStripeCustomerId(user.id);
     const customer = await stripe.customers.retrieve(customerId);
-    
+
     // @ts-ignore - The types are a bit off here
     if (customer.invoice_settings?.default_payment_method === paymentMethodId) {
       throw new Error("Cannot detach the default payment method.");
@@ -245,7 +285,9 @@ serve(async (req) => {
       return createErrorResponse("Unauthorized", 401);
     }
 
-    console.log(`stripe-customer-api called: path=${routePath}, user=${user.id}`);
+    console.log(
+      `stripe-customer-api called: path=${routePath}, user=${user.id}`
+    );
 
     // Route the request based on the path from the body
     switch (routePath) {

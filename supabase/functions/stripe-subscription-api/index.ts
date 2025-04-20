@@ -8,18 +8,18 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { User } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 import Stripe from "https://esm.sh/stripe@12.4.0?dts";
-import { 
-  corsHeaders, 
-  createErrorResponse, 
-  createSuccessResponse, 
+import {
+  corsHeaders,
+  createErrorResponse,
+  createSuccessResponse,
   handleCorsPreflightRequest,
   ResponseHeaders,
-  parseRequestBody
+  parseRequestBody,
 } from "../_shared/http-utils.ts";
-import { 
-  getStripeCustomerId, 
-  stripe, 
-  getSupabaseClient 
+import {
+  getStripeCustomerId,
+  stripe,
+  getSupabaseClient,
 } from "../_shared/stripe-utils.ts";
 import { verifyUser } from "../_shared/auth-utils.ts";
 
@@ -83,20 +83,36 @@ async function handleCreateSubscription(
     });
 
     // Store subscription in database
-    await supabase.from("subscriptions").insert({
-      user_id: user.id,
-      stripe_subscription_id: subscription.id,
-      stripe_customer_id: customer.stripe_customer_id,
-      status: subscription.status,
-      price_id: priceId,
-      created_at: new Date().toISOString(),
-    });
+    await supabase.from("subscriptions").upsert(
+      {
+        user_id: user.id,
+        stripe_subscription_id: subscription.id,
+        stripe_customer_id: customer.stripe_customer_id,
+        status: subscription.status,
+        price_id: subscription.items.data[0].price.id,
+        current_period_start: new Date(
+          subscription.current_period_start * 1000
+        ).toISOString(),
+        current_period_end: new Date(
+          subscription.current_period_end * 1000
+        ).toISOString(),
+        canceled_at: subscription.canceled_at
+          ? new Date(subscription.canceled_at * 1000).toISOString()
+          : null,
+        created_at: new Date().toISOString(),
+      },
+      { onConflict: "stripe_subscription_id" }
+    );
 
-    return createSuccessResponse({
-      subscriptionId: subscription.id,
-      status: subscription.status,
-      clientSecret: subscription.latest_invoice?.payment_intent?.client_secret,
-    }, headers);
+    return createSuccessResponse(
+      {
+        subscriptionId: subscription.id,
+        status: subscription.status,
+        clientSecret:
+          subscription.latest_invoice?.payment_intent?.client_secret,
+      },
+      headers
+    );
   } catch (error) {
     console.error("Error creating subscription:", error);
     return createErrorResponse((error as Error).message, 400, headers);
@@ -114,7 +130,7 @@ async function handleCancelSubscription(
     // Verify the subscription belongs to the user (optional but recommended)
     const customerId = await getStripeCustomerId(user.id);
     const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-    
+
     // @ts-ignore - TypeScript might complain about comparing string vs object
     if (subscription.customer !== customerId) {
       throw new Error("Subscription does not belong to this user.");
@@ -145,7 +161,7 @@ async function handleListInvoices(
 ) {
   const { limit = 10, starting_after, customer } = body;
   try {
-    const customerId = customer ?? await getStripeCustomerId(user.id);
+    const customerId = customer ?? (await getStripeCustomerId(user.id));
 
     const invoices = await stripe.invoices.list({
       customer: customerId,
@@ -184,7 +200,9 @@ serve(async (req) => {
       return createErrorResponse("Unauthorized", 401);
     }
 
-    console.log(`stripe-subscription-api called: path=${routePath}, user=${user.id}`);
+    console.log(
+      `stripe-subscription-api called: path=${routePath}, user=${user.id}`
+    );
 
     // Route the request based on the path from the body
     switch (routePath) {

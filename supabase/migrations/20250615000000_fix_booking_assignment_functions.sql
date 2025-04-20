@@ -51,7 +51,7 @@ BEGIN
   UPDATE bookings 
   SET 
     technician_id = p_technician_id,
-    status = CASE WHEN status = 'pending' THEN 'scheduled' ELSE status END,
+    status = 'scheduled',
     updated_at = NOW()
   WHERE id = p_booking_id;
   

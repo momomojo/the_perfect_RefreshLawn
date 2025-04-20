@@ -14,19 +14,19 @@ export default function BillingScreen() {
     {
       name: "Payments",
       icon: <CreditCard size={24} color="#4b5563" />,
-      route: "payments",
+      route: "/(admin_stack)/payments",
       description: "View all payment transactions",
     },
     {
       name: "Customers",
       icon: <Users size={24} color="#4b5563" />,
-      route: "customers",
+      route: "/(admin_stack)/customers",
       description: "View and manage Stripe customers",
     },
     {
       name: "Invoices",
       icon: <FileText size={24} color="#4b5563" />,
-      route: "invoices",
+      route: "/(admin_stack)/invoices",
       description: "View Stripe invoices",
     },
     // Add other billing related items here (e.g., Subscriptions)

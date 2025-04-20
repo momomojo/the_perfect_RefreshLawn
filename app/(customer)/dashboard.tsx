@@ -46,7 +46,7 @@ interface FormattedAppointment {
   date: string;
   time: string;
   service: string;
-  status: "scheduled" | "in-progress" | "completed" | "pending" | "cancelled";
+  status: Booking["status"];
   price: string;
 }
 
@@ -114,16 +114,21 @@ const CustomerDashboard = () => {
 
       // Process upcoming appointments (scheduled or pending)
       const upcoming = bookingsData
-        .filter(
-          (booking: Booking) =>
-            booking.status === "scheduled" || booking.status === "pending"
+        .filter((booking: Booking) =>
+          [
+            "scheduled",
+            "pending",
+            "pending_payment",
+            "payment_processing",
+            "payment_confirmed",
+          ].includes(booking.status)
         )
         .map((booking: Booking) => ({
           id: booking.id,
           date: formatDate(booking.scheduled_date),
           time: booking.scheduled_time,
           service: booking.service?.name || "Unknown Service",
-          status: booking.status as "scheduled" | "pending",
+          status: booking.status,
           price: `$${booking.price}`,
         }));
       console.log(
