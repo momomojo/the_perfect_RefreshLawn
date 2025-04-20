@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
+  Linking,
 } from "react-native";
 import {
   ChevronDown,
@@ -18,6 +19,8 @@ import {
   Filter,
   RefreshCcw,
 } from "lucide-react-native";
+import { supabase } from "../../../lib/supabase";
+import { format } from "date-fns";
 
 interface Transaction {
   id: string;
@@ -27,17 +30,30 @@ interface Transaction {
   status: "completed" | "pending" | "refunded" | "failed";
   type: "one-time" | "subscription";
   service: string;
+  technician?: string;
 }
 
 interface PaymentManagementProps {
-  transactions?: Transaction[];
   onRefund?: (paymentId: string, amount: number) => void;
 }
 
-const PaymentManagement = ({
-  transactions = [],
-  onRefund = () => {},
-}: PaymentManagementProps) => {
+// Helper to map Stripe status to UI status
+const mapPaymentStatus = (paymentStatus: string): Transaction["status"] => {
+  if (paymentStatus === "succeeded") return "completed";
+  if (
+    [
+      "requires_payment_method",
+      "requires_action",
+      "processing",
+      "requires_capture",
+    ].includes(paymentStatus)
+  )
+    return "pending";
+  if (["failed", "canceled"].includes(paymentStatus)) return "failed";
+  return "pending";
+};
+
+const PaymentManagement = ({ onRefund = () => {} }: PaymentManagementProps) => {
   const [activeTab, setActiveTab] = useState<
     "transactions" | "subscriptions" | "refunds"
   >("transactions");
@@ -52,9 +68,56 @@ const PaymentManagement = ({
   const [typeFilter, setTypeFilter] = useState<
     "all" | "one-time" | "subscription"
   >("all");
+  const [items, setItems] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch data for payments or subscriptions when activeTab changes
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        let resp, err;
+        if (activeTab === "subscriptions") {
+          ({ data: resp, error: err } = await supabase.functions.invoke(
+            "stripe-admin-api",
+            { body: { path: "list-subscriptions", payload: { limit: 20 } } }
+          ));
+        } else {
+          ({ data: resp, error: err } = await supabase.functions.invoke(
+            "stripe-admin-api",
+            { body: { path: "list-payments", payload: { limit: 20 } } }
+          ));
+        }
+        if (err) throw err;
+        const dataList = resp.data || [];
+        const mapped = dataList.map((item: any) => ({
+          id: item.id,
+          date: format(new Date((item.created || 0) * 1000), "yyyy-MM-dd"),
+          customer:
+            typeof item.customer === "string"
+              ? item.customer
+              : item.customer?.id || "",
+          amount: (item.amount || 0) / 100,
+          status: mapPaymentStatus(item.status),
+          type: activeTab === "subscriptions" ? "subscription" : "one-time",
+          service:
+            activeTab === "subscriptions"
+              ? item.plan?.nickname || item.plan?.id
+              : `Intent ${item.id}`,
+        }));
+        setItems(mapped);
+      } catch (e: any) {
+        console.error("Error fetching admin stripe data:", e);
+        setError(e.message || "Failed to fetch data");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [activeTab]);
 
   // Filter transactions based on search query and filters
-  const filteredTransactions = transactions.filter((transaction) => {
+  const filteredTransactions = items.filter((transaction) => {
     // Search filter
     const matchesSearch =
       transaction.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -111,6 +174,52 @@ const PaymentManagement = ({
         "Cannot Refund",
         `This payment already has status: ${transaction.status}`
       );
+    }
+  };
+
+  // Handle subscription cancellation
+  const handleCancelSubscription = async (subscriptionId: string) => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase.functions.invoke(
+        "stripe-admin-api",
+        {
+          body: { path: "cancel-subscription", payload: { subscriptionId } },
+        }
+      );
+      if (error) throw error;
+      Alert.alert("Success", `Subscription ${subscriptionId} cancelled`);
+      // Refresh data
+      setActiveTab(activeTab);
+    } catch (e: any) {
+      console.error("Error cancelling subscription:", e);
+      Alert.alert("Error", e.message || "Failed to cancel subscription");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle dashboard link
+  const handleViewDashboard = async (
+    resourceType: string,
+    resourceId: string
+  ) => {
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "stripe-admin-api",
+        {
+          body: {
+            path: "get-dashboard-link",
+            payload: { resourceType, resourceId },
+          },
+        }
+      );
+      if (error) throw error;
+      const url = data.link;
+      Linking.openURL(url);
+    } catch (e: any) {
+      console.error("Error getting dashboard link:", e);
+      Alert.alert("Error", e.message || "Failed to get dashboard link");
     }
   };
 
@@ -354,14 +463,21 @@ const PaymentManagement = ({
 
               <View className="flex-row justify-between items-center mt-2">
                 <View>
-                  <Text className="text-gray-600 text-sm">
-                    {transaction.service}
+                  <Text className="text-sm text-gray-600">
+                    Service: {transaction.service}
                   </Text>
-                  <Text className="text-gray-500 text-xs">
-                    {transaction.date}
+                  {transaction.technician &&
+                    transaction.technician !== "N/A" && (
+                      <Text className="text-sm text-gray-600">
+                        Technician: {transaction.technician}
+                      </Text>
+                    )}
+                  <Text className="text-xs text-gray-500 mt-1">
+                    Payment ID: {transaction.id}
                   </Text>
                 </View>
 
+                {/* Status and Type Badges */}
                 <View className="flex-row items-center">
                   <View
                     className={`flex-row items-center px-2 py-1 rounded-full ${getStatusColor(
@@ -389,19 +505,47 @@ const PaymentManagement = ({
               </View>
 
               {/* Actions */}
-              {transaction.status !== "refunded" && (
-                <View className="flex-row justify-end mt-3 pt-2 border-t border-gray-100">
+              <View className="flex-row justify-end mt-3 pt-2 border-t border-gray-100 space-x-2">
+                {/* View in Stripe Dashboard */}
+                <TouchableOpacity
+                  className="flex-row items-center bg-gray-50 px-3 py-1 rounded-md"
+                  onPress={() =>
+                    handleViewDashboard(
+                      activeTab === "subscriptions"
+                        ? "subscription"
+                        : "payment",
+                      transaction.id
+                    )
+                  }
+                >
+                  <Text className="ml-1 text-blue-700 text-sm font-medium">
+                    View in Stripe
+                  </Text>
+                </TouchableOpacity>
+                {/* Refund or Cancel */}
+                {activeTab === "subscriptions" ? (
                   <TouchableOpacity
-                    className="flex-row items-center bg-blue-50 px-3 py-1 rounded-md"
-                    onPress={() => handleRefund(transaction)}
+                    className="flex-row items-center bg-red-50 px-3 py-1 rounded-md"
+                    onPress={() => handleCancelSubscription(transaction.id)}
                   >
-                    <RefreshCcw size={16} color="#2563eb" />
-                    <Text className="ml-1 text-blue-700 text-sm font-medium">
-                      Refund
+                    <Text className="ml-1 text-red-700 text-sm font-medium">
+                      Cancel
                     </Text>
                   </TouchableOpacity>
-                </View>
-              )}
+                ) : (
+                  transaction.status !== "refunded" && (
+                    <TouchableOpacity
+                      className="flex-row items-center bg-blue-50 px-3 py-1 rounded-md"
+                      onPress={() => handleRefund(transaction)}
+                    >
+                      <RefreshCcw size={16} color="#2563eb" />
+                      <Text className="ml-1 text-blue-700 text-sm font-medium">
+                        Refund
+                      </Text>
+                    </TouchableOpacity>
+                  )
+                )}
+              </View>
             </TouchableOpacity>
           ))
         )}
