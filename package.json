@@ -3,13 +3,19 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
+    "prestart": "node ./scripts/supabase-control.js auto",
     "start": "expo start",
+    "supabase:start": "node ./scripts/supabase-control.js start",
+    "supabase:stop": "node ./scripts/supabase-control.js stop",
+    "supabase:status": "node ./scripts/supabase-control.js status",
+    "supabase:restart": "node ./scripts/supabase-control.js restart",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
     "test": "jest --watchAll",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "validate-env": "node ./scripts/validate-env.js"
   },
   "dependencies": {
     "@expo/vector-icons": "^14.0.2",
@@ -20,6 +26,7 @@
     "@rneui/themed": "^4.0.0-rc.8",
     "@stripe/react-stripe-js": "^3.6.0",
     "@stripe/stripe-js": "^7.1.0",
+    "@stripe/stripe-react-native": "^0.54.1",
     "@supabase/supabase-js": "^2.49.4",
     "aes-js": "^3.1.2",
     "autoprefixer": "^10.4.20",

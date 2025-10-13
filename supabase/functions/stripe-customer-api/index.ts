@@ -105,7 +105,7 @@ async function handleCreateCustomer(
     const { data: customer, error: custError } = await supabase
       .from("customers")
       .upsert(
-        { user_id: user.id, stripe_customer_id, email: user.email },
+        { user_id: user.id, stripe_customer_id: customerId, email: user.email },
         { onConflict: "user_id" }
       )
       .select()
@@ -236,6 +236,32 @@ async function handleSetDefaultPayment(
   }
 }
 
+// Helper function to create a SetupIntent for saving payment methods
+async function handleCreateSetupIntent(user: User, headers: ResponseHeaders) {
+  try {
+    const customerId = await getStripeCustomerId(user.id);
+
+    const setupIntent = await stripe.setupIntents.create({
+      customer: customerId,
+      payment_method_types: ["card"],
+      metadata: {
+        supabase_user_id: user.id,
+      },
+    });
+
+    return createSuccessResponse(
+      {
+        clientSecret: setupIntent.client_secret,
+        setupIntentId: setupIntent.id,
+      },
+      headers
+    );
+  } catch (error) {
+    console.error("Error creating setup intent:", error);
+    return createErrorResponse((error as Error).message, 400, headers);
+  }
+}
+
 // Main function handler
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -272,6 +298,8 @@ serve(async (req) => {
           payload as CustomerRequest,
           corsHeaders
         );
+      case "create-setup-intent":
+        return await handleCreateSetupIntent(user, corsHeaders);
       case "list-payment-methods":
         return await handleListPaymentMethods(user, corsHeaders);
       case "attach-payment-method":

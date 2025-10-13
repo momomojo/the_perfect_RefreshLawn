@@ -56,34 +56,28 @@ describe("Stripe Edge Functions Integration", () => {
       }
     );
     expect(error).toBeNull();
-    expect(data.clientSecret).toBeDefined();
+    // Expect the shape returned by stripe-payment-api
+    expect(data.paymentIntentClientSecret).toBeDefined();
+    expect(data.ephemeralKeySecret).toBeDefined();
+    expect(data.customerId).toBeDefined();
+    expect(data.publishableKey).toBeDefined();
   });
 
-  it("should create a booking and charge via stripe-payment-api", async () => {
-    // Use a real serviceId and paymentMethodId in your test environment
-    const bookingPayload = {
-      serviceId: process.env.TEST_SERVICE_ID!,
-      date: "2025-01-01",
-      time: "12:00:00",
-      address: "123 Test St",
-      isRecurring: false,
-      recurringPlanId: null,
-      paymentMethodId: process.env.TEST_PAYMENT_METHOD_ID!,
-      price: 100,
-    };
+  it("should return payment details suitable for client confirmation", async () => {
     const { data, error } = await supabase.functions.invoke(
       "stripe-payment-api",
       {
         body: {
-          path: "create-booking-and-charge",
-          payload: bookingPayload,
+          path: "create-payment-intent",
+          payload: { amount: 2500, currency: "usd" },
         },
       }
     );
     expect(error).toBeNull();
-    expect(data.success).toBe(true);
-    expect(data.booking).toBeDefined();
-    expect(data.booking.id).toBeDefined();
+    expect(data.paymentIntentClientSecret).toBeDefined();
+    expect(data.ephemeralKeySecret).toBeDefined();
+    expect(data.customerId).toBeDefined();
+    expect(data.publishableKey).toBeDefined();
   });
 
   it("should handle webhook events idempotently", async () => {

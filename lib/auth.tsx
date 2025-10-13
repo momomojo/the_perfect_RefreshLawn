@@ -119,9 +119,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       window.__hasRefreshedToken = false;
     }
 
-    clearStoredSession().catch((err) =>
-      console.log("Failed to clear stored session:", err)
-    );
+    // NOTE: We do NOT clear stored sessions on mount - this allows persistent login.
+    // Sessions are only cleared during explicit sign-out (see signOut function).
 
     // Set up the deep linking handler
     const handleDeepLink = async (url: string) => {

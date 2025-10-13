@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import {
   Modal,
   View,
@@ -9,13 +9,14 @@ import {
   Alert,
   ActivityIndicator,
   Platform,
-} from 'react-native';
+} from "react-native";
 // Import from stripe-js for web platform
-import { loadStripe } from '@stripe/stripe-js';
-import { supabase } from '../../../lib/supabase';
+import { loadStripe } from "@stripe/stripe-js";
+import { supabase } from "../../../lib/supabase";
+import AddPaymentMethodNative from "../../../components/payment/AddPaymentMethodNative";
 
 // Check if platform is web
-const isWeb = Platform.OS === 'web';
+const isWeb = Platform.OS === "web";
 
 // Conditionally import web components
 let Elements: any = null;
@@ -26,7 +27,7 @@ let useElements: any = null;
 // Only import web components if running on web
 if (isWeb) {
   // This dynamic import approach prevents React Native from trying to import web-only modules
-  const stripeReactImport = require('@stripe/react-stripe-js');
+  const stripeReactImport = require("@stripe/react-stripe-js");
   Elements = stripeReactImport.Elements;
   CardElement = stripeReactImport.CardElement;
   useStripe = stripeReactImport.useStripe;
@@ -64,8 +65,16 @@ const WebCardForm = ({
   // Modify to use React Native's event system
   const handleSubmit = () => {
     // Basic validation - ensure all required fields are present
-    if (!stripe || !elements || !cardholderName || !addressLine1 || !city || !state || !country) {
-      console.error('Missing required billing details.');
+    if (
+      !stripe ||
+      !elements ||
+      !cardholderName ||
+      !addressLine1 ||
+      !city ||
+      !state ||
+      !country
+    ) {
+      console.error("Missing required billing details.");
       // Optionally set an error state here to inform the user
       return;
     }
@@ -83,9 +92,9 @@ const WebCardForm = ({
           options={{
             style: {
               base: {
-                fontSize: '16px',
-                color: '#424770',
-                fontFamily: 'sans-serif',
+                fontSize: "16px",
+                color: "#424770",
+                fontFamily: "sans-serif",
               },
             },
             // hidePostalCode: true, // Keep postal code in CardElement for simplicity
@@ -132,7 +141,6 @@ const WebCardForm = ({
         autoComplete="country" // Helps with autofill
       />
 
-
       <View style={styles.buttonRow}>
         <TouchableOpacity
           style={[styles.button, styles.buttonClose]}
@@ -162,24 +170,14 @@ const WebCardForm = ({
 };
 
 // React Native version for non-web platforms
-const NativeCardForm = ({ onCancel, loading, error }: any) => {
+const NativeCardForm = ({ onSaveSuccess, onCancel, error }: any) => {
   return (
     <View style={styles.formContainer}>
       {error && <Text style={styles.errorText}>{error}</Text>}
-      
-      <Text style={styles.platformWarning}>
-        Stripe card input is only available in web mode. Please use the web version to add a payment method.
-      </Text>
-      
-      <View style={styles.buttonRow}>
-        <TouchableOpacity
-          style={[styles.button, styles.buttonClose]}
-          onPress={onCancel}
-          disabled={loading}
-        >
-          <Text style={styles.textStyle}>Close</Text>
-        </TouchableOpacity>
-      </View>
+      <AddPaymentMethodNative
+        onSaveSuccess={onSaveSuccess}
+        onCancel={onCancel}
+      />
     </View>
   );
 };
@@ -190,31 +188,38 @@ const AddPaymentMethodModal: React.FC<AddPaymentMethodModalProps> = ({
   onSaveSuccess,
   stripePublishableKey,
 }) => {
-  const [cardholderName, setCardholderName] = useState<string>('');
-  const [addressLine1, setAddressLine1] = useState<string>('');
-  const [city, setCity] = useState<string>('');
-  const [state, setState] = useState<string>('');
-  const [country, setCountry] = useState<string>(''); // Use 2-letter country code (e.g., 'US')
+  const [cardholderName, setCardholderName] = useState<string>("");
+  const [addressLine1, setAddressLine1] = useState<string>("");
+  const [city, setCity] = useState<string>("");
+  const [state, setState] = useState<string>("");
+  const [country, setCountry] = useState<string>(""); // Use 2-letter country code (e.g., 'US')
 
   const [loading, setLoading] = useState<boolean>(false);
   const [cardComplete, setCardComplete] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [stripePromise, setStripePromise] = useState<any>(null);
-  
+
   // Initialize Stripe when component mounts or publishable key changes
   React.useEffect(() => {
     if (isWeb) {
-      console.log('Stripe publishable key (AddPaymentMethodModal):', stripePublishableKey);
+      console.log(
+        "Stripe publishable key (AddPaymentMethodModal):",
+        stripePublishableKey
+      );
       if (!stripePublishableKey) {
-        console.error('Error: Missing Stripe publishable key in AddPaymentMethodModal');
-        setError('Payment system configuration error. Please contact support.');
+        console.error(
+          "Error: Missing Stripe publishable key in AddPaymentMethodModal"
+        );
+        setError("Payment system configuration error. Please contact support.");
         return;
       }
       try {
         setStripePromise(loadStripe(stripePublishableKey));
       } catch (err) {
-        console.error('Error initializing Stripe:', err);
-        setError('Unable to initialize payment system. Please try again later.');
+        console.error("Error initializing Stripe:", err);
+        setError(
+          "Unable to initialize payment system. Please try again later."
+        );
       }
     }
   }, [stripePublishableKey]);
@@ -242,11 +247,18 @@ const AddPaymentMethodModal: React.FC<AddPaymentMethodModalProps> = ({
       return error.message;
     }
     // If error is an object with useful fields
-    if (error.stripe_error_code || error.stripe_error_type || error.stripe_decline_code) {
+    if (
+      error.stripe_error_code ||
+      error.stripe_error_type ||
+      error.stripe_decline_code
+    ) {
       let msg = "Payment failed.";
-      if (error.stripe_error_code) msg += `\n(Code: ${error.stripe_error_code})`;
-      if (error.stripe_error_type) msg += `\n(Type: ${error.stripe_error_type})`;
-      if (error.stripe_decline_code) msg += `\n(Decline: ${error.stripe_decline_code})`;
+      if (error.stripe_error_code)
+        msg += `\n(Code: ${error.stripe_error_code})`;
+      if (error.stripe_error_type)
+        msg += `\n(Type: ${error.stripe_error_type})`;
+      if (error.stripe_decline_code)
+        msg += `\n(Decline: ${error.stripe_decline_code})`;
       return msg;
     }
     return JSON.stringify(error);
@@ -257,32 +269,36 @@ const AddPaymentMethodModal: React.FC<AddPaymentMethodModalProps> = ({
     setError(null);
     try {
       const cardElement = elements.getElement(CardElement);
-      const { error: stripeError, paymentMethod } = await stripe.createPaymentMethod({
-        type: 'card',
-        card: cardElement,
-        billing_details: {
-          name: cardholderName,
-          address: {
-            line1: addressLine1,
-            city: city,
-            state: state,
-            country: country,
-            // Postal code is handled by CardElement
+      const { error: stripeError, paymentMethod } =
+        await stripe.createPaymentMethod({
+          type: "card",
+          card: cardElement,
+          billing_details: {
+            name: cardholderName,
+            address: {
+              line1: addressLine1,
+              city: city,
+              state: state,
+              country: country,
+              // Postal code is handled by CardElement
+            },
           },
-        },
-      });
+        });
       if (stripeError) {
         setError(parseStripeError(stripeError));
         setLoading(false);
         return;
       }
       // Attach payment method to customer
-      const { data, error: attachError } = await supabase.functions.invoke('stripe-customer-api', {
-        body: {
-          path: 'attach-payment-method',
-          payload: { paymentMethodId: paymentMethod.id },
-        },
-      });
+      const { data, error: attachError } = await supabase.functions.invoke(
+        "stripe-customer-api",
+        {
+          body: {
+            path: "attach-payment-method",
+            payload: { paymentMethodId: paymentMethod.id },
+          },
+        }
+      );
       if (attachError) {
         setError(parseStripeError(attachError));
         setLoading(false);
@@ -306,11 +322,11 @@ const AddPaymentMethodModal: React.FC<AddPaymentMethodModalProps> = ({
   };
 
   const handleClose = () => {
-    setCardholderName('');
-    setAddressLine1('');
-    setCity('');
-    setState('');
-    setCountry('');
+    setCardholderName("");
+    setAddressLine1("");
+    setCity("");
+    setState("");
+    setCountry("");
     setCardComplete(false);
     setError(null);
     setLoading(false);
@@ -329,7 +345,7 @@ const AddPaymentMethodModal: React.FC<AddPaymentMethodModalProps> = ({
       <View style={styles.centeredView}>
         <View style={styles.modalView}>
           <Text style={styles.modalText}>Add New Payment Method</Text>
-          
+
           {isWeb ? (
             stripePromise && Elements ? (
               <Elements stripe={stripePromise}>
@@ -358,9 +374,9 @@ const AddPaymentMethodModal: React.FC<AddPaymentMethodModalProps> = ({
               </View>
             )
           ) : (
-            <NativeCardForm 
+            <NativeCardForm
+              onSaveSuccess={onSaveSuccess}
               onCancel={handleClose}
-              loading={loading}
               error={error}
             />
           )}
@@ -373,58 +389,58 @@ const AddPaymentMethodModal: React.FC<AddPaymentMethodModalProps> = ({
 const styles = StyleSheet.create({
   centeredView: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.5)",
   },
   modalView: {
     margin: 20,
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderRadius: 20,
     padding: 35,
-    alignItems: 'center',
-    shadowColor: '#000',
+    alignItems: "center",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 4,
     elevation: 5,
-    width: '90%',
+    width: "90%",
     maxWidth: 500,
   },
   formContainer: {
-    width: '100%',
+    width: "100%",
   },
   cardElementContainer: {
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: "#ccc",
     borderRadius: 5,
     padding: 10,
     marginBottom: 15, // Increased margin
-    backgroundColor: '#fff', // White background for card element
+    backgroundColor: "#fff", // White background for card element
   },
   modalText: {
     marginBottom: 20,
-    textAlign: 'center',
+    textAlign: "center",
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   input: {
     height: 40,
-    borderColor: '#ccc', // Lighter border
+    borderColor: "#ccc", // Lighter border
     borderWidth: 1,
     marginBottom: 15, // Increased margin
     paddingHorizontal: 10,
     borderRadius: 5, // Rounded corners
-    backgroundColor: '#fff', // White background
+    backgroundColor: "#fff", // White background
   },
   cardholderInput: {
     // Specific styles for cardholder name if needed
   },
   buttonRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
+    flexDirection: "row",
+    justifyContent: "space-around",
     marginTop: 25,
-    width: '100%',
+    width: "100%",
   },
   button: {
     borderRadius: 10,
@@ -433,40 +449,40 @@ const styles = StyleSheet.create({
     elevation: 2,
     minWidth: 100, // Minimum width for buttons
     marginHorizontal: 5, // Add spacing between buttons
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   buttonSave: {
-    backgroundColor: '#2196F3',
+    backgroundColor: "#2196F3",
   },
   buttonClose: {
-    backgroundColor: '#f44336', // Red for close/cancel
+    backgroundColor: "#f44336", // Red for close/cancel
   },
   buttonDisabled: {
     opacity: 0.6,
   },
   textStyle: {
-    color: 'white',
-    fontWeight: 'bold',
-    textAlign: 'center',
+    color: "white",
+    fontWeight: "bold",
+    textAlign: "center",
   },
   platformWarning: {
-    textAlign: 'center',
-    color: '#888',
+    textAlign: "center",
+    color: "#888",
     marginVertical: 20,
   },
   errorText: {
-    color: 'red',
+    color: "red",
     marginBottom: 10,
-    textAlign: 'center',
+    textAlign: "center",
   },
   loadingContainer: {
     padding: 20,
-    alignItems: 'center',
+    alignItems: "center",
   },
   loadingText: {
     marginTop: 10,
-    color: '#4b5563',
+    color: "#4b5563",
   },
 });
 

@@ -9,10 +9,22 @@ import "../global.css";
 import { Platform } from "react-native";
 import { AuthProvider } from "../lib/auth";
 import { ConfirmationModalProvider } from "../lib/confirmation"; // Restore the provider
+import { StripeProviderWrapper } from "../lib/stripe-provider";
 import Toast from "react-native-toast-message";
+import { validateClientEnvironment } from "../lib/env-validation";
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
+
+// Validate environment variables at app startup (runtime validation)
+// This catches missing variables that might have been set at build time but are missing at runtime
+try {
+  validateClientEnvironment();
+} catch (error) {
+  console.error("[App] Environment validation failed:", error);
+  // Let the app continue but log the error prominently
+  // The individual components will fail gracefully with better error messages
+}
 
 export default function RootLayout() {
   const [loaded] = useFonts({
@@ -38,23 +50,34 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
-      <ConfirmationModalProvider>
-        <ThemeProvider value={DefaultTheme}>
-          <Stack
-            screenOptions={({ route }) => ({
-              headerShown: !route.name.startsWith("tempobook"),
-            })}
-          >
-            <Stack.Screen name="index" options={{ headerShown: false }} />
-            <Stack.Screen name="(admin)" options={{ headerShown: false }} />
-            <Stack.Screen name="(admin_stack)" options={{ headerShown: false }} />
-            <Stack.Screen name="(customer)" options={{ headerShown: false }} />
-            <Stack.Screen name="(technician)" options={{ headerShown: false }} />
-          </Stack>
-          <StatusBar style="auto" />
-          <Toast />
-        </ThemeProvider>
-      </ConfirmationModalProvider>
+      <StripeProviderWrapper>
+        <ConfirmationModalProvider>
+          <ThemeProvider value={DefaultTheme}>
+            <Stack
+              screenOptions={({ route }) => ({
+                headerShown: !route.name.startsWith("tempobook"),
+              })}
+            >
+              <Stack.Screen name="index" options={{ headerShown: false }} />
+              <Stack.Screen name="(admin)" options={{ headerShown: false }} />
+              <Stack.Screen
+                name="(admin_stack)"
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                name="(customer)"
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                name="(technician)"
+                options={{ headerShown: false }}
+              />
+            </Stack>
+            <StatusBar style="auto" />
+            <Toast />
+          </ThemeProvider>
+        </ConfirmationModalProvider>
+      </StripeProviderWrapper>
     </AuthProvider>
   );
 }

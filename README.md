@@ -31,14 +31,23 @@ npm install
 ```
 EXPO_PUBLIC_SUPABASE_URL=your_supabase_project_url
 EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_your_stripe_publishable_key
 ```
 
-4. Set up Supabase:
+> 📚 **See [ENVIRONMENT_SETUP.md](ENVIRONMENT_SETUP.md) for detailed environment variable setup instructions**
+
+4. Validate your environment setup:
+
+```bash
+npm run validate-env
+```
+
+5. Set up Supabase:
 
    - Import the migrations from the `supabase/migrations` directory
    - Run migrations in order, starting with the initial schema
 
-5. Start the development server:
+6. Start the development server:
 
 ```bash
 npx expo start
@@ -124,6 +133,15 @@ Update the `.env` file with your custom values:
 ```
 EXPO_PUBLIC_SUPABASE_URL=your_supabase_project_url
 EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_your_stripe_publishable_key
+```
+
+> 📚 **For complete environment variable documentation, see [ENVIRONMENT_SETUP.md](ENVIRONMENT_SETUP.md)**
+
+To validate your environment configuration:
+
+```bash
+npm run validate-env
 ```
 
 ### Supabase Schema Changes

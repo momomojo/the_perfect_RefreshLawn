@@ -8,7 +8,7 @@ import {
 } from "react-native";
 import { Stack, useRouter, useLocalSearchParams } from "expo-router";
 import BookingForm from "../components/customer/BookingForm";
-import StripePaymentWeb from "../../components/payment/StripePaymentWeb";
+import StripePayment from "../../components/payment/StripePayment";
 import {
   getService,
   getProfile,
@@ -39,8 +39,12 @@ interface BookingFormData {
 
 export default function BookingScreen() {
   // ...existing state
-  const [paymentClientSecret, setPaymentClientSecret] = useState<string | null>(null);
-  const [ephemeralKeySecret, setEphemeralKeySecret] = useState<string | null>(null); // Add state for ephemeral key
+  const [paymentClientSecret, setPaymentClientSecret] = useState<string | null>(
+    null
+  );
+  const [ephemeralKeySecret, setEphemeralKeySecret] = useState<string | null>(
+    null
+  ); // Add state for ephemeral key
   const [customerId, setCustomerId] = useState<string | null>(null); // Add state for customer ID
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -119,15 +123,20 @@ export default function BookingScreen() {
     try {
       console.log("Fetching payment secrets...");
       // Get the current session token
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
       if (sessionError || !session) {
-        throw new Error("Authentication session not found: " + (sessionError?.message || "No session"));
+        throw new Error(
+          "Authentication session not found: " +
+            (sessionError?.message || "No session")
+        );
       }
 
       // Call the 'create-payment-intent' endpoint
-      const { data: paymentData, error: paymentError } = await supabase.functions.invoke(
-        "stripe-payment-api",
-        {
+      const { data: paymentData, error: paymentError } =
+        await supabase.functions.invoke("stripe-payment-api", {
           body: {
             path: "create-payment-intent",
             payload: {
@@ -147,16 +156,28 @@ export default function BookingScreen() {
               areaType: bookingData.areaType,
             },
           },
-        }
-      );
+        });
 
       if (paymentError) {
-        console.error("Error invoking stripe-payment-api (create-payment-intent):", paymentError);
-        throw new Error(paymentError.message || "Failed to initialize payment.");
+        console.error(
+          "Error invoking stripe-payment-api (create-payment-intent):",
+          paymentError
+        );
+        throw new Error(
+          paymentError.message || "Failed to initialize payment."
+        );
       }
 
-      if (!paymentData || !paymentData.paymentIntentClientSecret || !paymentData.ephemeralKeySecret || !paymentData.customerId) {
-        console.error("Invalid response from create-payment-intent:", paymentData);
+      if (
+        !paymentData ||
+        !paymentData.paymentIntentClientSecret ||
+        !paymentData.ephemeralKeySecret ||
+        !paymentData.customerId
+      ) {
+        console.error(
+          "Invalid response from create-payment-intent:",
+          paymentData
+        );
         throw new Error("Received incomplete payment details from server.");
       }
 
@@ -166,14 +187,14 @@ export default function BookingScreen() {
       setEphemeralKeySecret(paymentData.ephemeralKeySecret);
       setCustomerId(paymentData.customerId);
       setShowPayment(true); // Show the payment component
-
     } catch (err: any) {
       console.error("Error initiating payment:", err);
       setError(err.message || "Failed to initialize payment");
       setShowPayment(false); // Ensure payment component is hidden on error
       showNotification({
         title: "Error",
-        message: err.message || "Failed to initialize payment. Please try again.",
+        message:
+          err.message || "Failed to initialize payment. Please try again.",
         type: "error",
       });
     } finally {
@@ -186,7 +207,11 @@ export default function BookingScreen() {
     if (!pendingBooking || !user) {
       console.error("Missing pending booking data or user session.");
       setError("Failed to save booking details after payment.");
-      showNotification({ title: "Error", message: "Could not save booking details. Please contact support.", type: "error" });
+      showNotification({
+        title: "Error",
+        message: "Could not save booking details. Please contact support.",
+        type: "error",
+      });
       return false; // Indicate failure
     }
 
@@ -195,15 +220,17 @@ export default function BookingScreen() {
 
     try {
       // Get the current session token again (optional, but good practice)
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
       if (sessionError || !session) {
         throw new Error("Authentication session lost before saving booking.");
       }
 
       // Call the 'create-booking-and-charge' endpoint (now just creates the booking)
-      const { data: bookingResult, error: bookingError } = await supabase.functions.invoke(
-        "stripe-payment-api",
-        {
+      const { data: bookingResult, error: bookingError } =
+        await supabase.functions.invoke("stripe-payment-api", {
           body: {
             path: "create-booking-and-charge", // Path to create the booking record
             payload: {
@@ -217,26 +244,41 @@ export default function BookingScreen() {
               // Note: We no longer need to pass paymentMethodId for processing here
             },
           },
-        }
-      );
+        });
 
       if (bookingError) {
-        console.error("Error invoking stripe-payment-api (create-booking):", bookingError);
-        throw new Error(bookingError.message || "Failed to create booking record.");
+        console.error(
+          "Error invoking stripe-payment-api (create-booking):",
+          bookingError
+        );
+        throw new Error(
+          bookingError.message || "Failed to create booking record."
+        );
       }
 
       if (!bookingResult || !bookingResult.booking) {
-        console.error("Invalid response from create-booking-and-charge:", bookingResult);
+        console.error(
+          "Invalid response from create-booking-and-charge:",
+          bookingResult
+        );
         throw new Error("Server did not confirm booking creation.");
       }
 
-      console.log("Booking record created successfully:", bookingResult.booking.id);
+      console.log(
+        "Booking record created successfully:",
+        bookingResult.booking.id
+      );
       return true; // Indicate success
-
     } catch (err: any) {
       console.error("Error creating booking record:", err);
       setError(err.message || "Failed to save booking after payment.");
-      showNotification({ title: "Booking Creation Error", message: err.message || "Could not save booking details. Please contact support.", type: "error" });
+      showNotification({
+        title: "Booking Creation Error",
+        message:
+          err.message ||
+          "Could not save booking details. Please contact support.",
+        type: "error",
+      });
       return false; // Indicate failure
     } finally {
       setSubmitting(false);
@@ -283,7 +325,9 @@ export default function BookingScreen() {
       // Optionally, provide specific guidance or keep the user on the page
       showConfirmation({
         title: "Action Required",
-        message: "Payment was successful, but saving the booking failed. Please contact support with Payment Intent ID: " + paymentIntentId,
+        message:
+          "Payment was successful, but saving the booking failed. Please contact support with Payment Intent ID: " +
+          paymentIntentId,
         confirmText: "OK",
         onConfirm: () => {},
       });
@@ -322,7 +366,7 @@ export default function BookingScreen() {
       onConfirm: () => {
         console.log("Booking cancelled by user.");
         router.back(); // Navigate back if confirmed
-      }
+      },
     });
   };
 
@@ -365,8 +409,11 @@ export default function BookingScreen() {
 
       <View className="flex-1">
         {showPayment && paymentClientSecret && pendingBooking ? (
-          <StripePaymentWeb
-            paymentIntentClientSecret={paymentClientSecret} // Pass correct prop name
+          <StripePayment
+            paymentIntentClientSecret={paymentClientSecret}
+            ephemeralKeySecret={ephemeralKeySecret || undefined}
+            customerId={customerId || undefined}
+            publishableKey={publishableKey || undefined}
             onPaymentSuccess={handlePaymentSuccess}
             onError={handlePaymentError}
             onBack={() => setShowPayment(false)}
