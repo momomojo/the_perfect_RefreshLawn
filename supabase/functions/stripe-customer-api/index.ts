@@ -18,6 +18,7 @@ import {
 } from "../shared/http-utils.ts";
 import {
   getStripeCustomerId,
+  getOrCreateStripeCustomer,
   stripe,
   getSupabaseClient,
 } from "../shared/stripe-utils.ts";
@@ -128,7 +129,9 @@ async function handleCreateCustomer(
 // Helper function to list payment methods
 async function handleListPaymentMethods(user: User, headers: ResponseHeaders) {
   try {
-    const customerId = await getStripeCustomerId(user.id);
+    // Get or create Stripe customer if one doesn't exist yet (fixes 400 error for new users)
+    const supabase = getSupabaseClient();
+    const customerId = await getOrCreateStripeCustomer(user, supabase);
 
     const paymentMethods = await stripe.paymentMethods.list({
       customer: customerId,
@@ -239,7 +242,9 @@ async function handleSetDefaultPayment(
 // Helper function to create a SetupIntent for saving payment methods
 async function handleCreateSetupIntent(user: User, headers: ResponseHeaders) {
   try {
-    const customerId = await getStripeCustomerId(user.id);
+    // Get or create Stripe customer if one doesn't exist yet (fixes 400 error for new users)
+    const supabase = getSupabaseClient();
+    const customerId = await getOrCreateStripeCustomer(user, supabase);
 
     const setupIntent = await stripe.setupIntents.create({
       customer: customerId,
@@ -264,68 +269,143 @@ async function handleCreateSetupIntent(user: User, headers: ResponseHeaders) {
 
 // Main function handler
 serve(async (req) => {
+  console.log("=== STRIPE-CUSTOMER-API REQUEST START ===");
+  console.log("Method:", req.method);
+  console.log("URL:", req.url);
+  console.log("Headers:", Object.fromEntries(req.headers.entries()));
+
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
+    console.log("Handling CORS preflight request");
     return handleCorsPreflightRequest();
   }
 
   // Only allow POST requests
   if (req.method !== "POST") {
+    console.error("Method not allowed:", req.method);
     return createErrorResponse("Method not allowed", 405, corsHeaders);
   }
 
   try {
+    // Validate environment variables first
+    const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+    console.log("Environment check:");
+    console.log("- STRIPE_SECRET_KEY:", stripeKey ? `Set (${stripeKey.substring(0, 7)}...)` : "NOT SET");
+    console.log("- SUPABASE_URL:", supabaseUrl ? "Set" : "NOT SET");
+    console.log("- SUPABASE_SERVICE_ROLE_KEY:", supabaseServiceKey ? "Set" : "NOT SET");
+
+    if (!stripeKey) {
+      console.error("FATAL: STRIPE_SECRET_KEY environment variable is not set");
+      console.error("Available env vars:", Object.keys(Deno.env.toObject()));
+      return createErrorResponse(
+        "Server configuration error: Stripe API key not configured",
+        500,
+        corsHeaders
+      );
+    }
+
     // Parse the request body FIRST to get the routing path and payload
-    const body = await parseRequestBody(req);
+    console.log("Parsing request body...");
+    let body;
+    try {
+      body = await parseRequestBody(req);
+      console.log("Request body parsed successfully:", JSON.stringify(body));
+    } catch (parseError) {
+      console.error("Failed to parse request body:", parseError);
+      return createErrorResponse(
+        `Invalid request body: ${(parseError as Error).message}`,
+        400,
+        corsHeaders
+      );
+    }
+
     const routePath = body.path;
     const payload = body.payload || {};
 
-    // Verify the user
-    const user = await verifyUser(req);
-    if (!user) {
-      return createErrorResponse("Unauthorized", 401, corsHeaders);
+    console.log("Extracted routePath:", routePath);
+    console.log("Extracted payload:", JSON.stringify(payload));
+
+    if (!routePath) {
+      console.error("Missing 'path' in request body. Body:", JSON.stringify(body));
+      return createErrorResponse(
+        "Bad request: 'path' field is required in request body",
+        400,
+        corsHeaders
+      );
     }
 
+    // Verify the user
+    console.log("Verifying user authentication...");
+    const authHeader = req.headers.get("Authorization");
+    console.log("Auth header present:", !!authHeader);
+
+    const user = await verifyUser(req);
+    if (!user) {
+      console.error("User verification failed - no valid user found");
+      return createErrorResponse("Unauthorized: Invalid or missing authentication token", 401, corsHeaders);
+    }
+
+    console.log(`User verified successfully: ${user.id} (${user.email})`);
     console.log(
-      `stripe-customer-api called: path=${routePath}, user=${user.id}`
+      `Routing to handler: path=${routePath}, user=${user.id}`
     );
 
     // Route the request based on the path from the body
     switch (routePath) {
       case "create-customer":
+        console.log("Routing to: handleCreateCustomer");
         return await handleCreateCustomer(
           user,
           payload as CustomerRequest,
           corsHeaders
         );
       case "create-setup-intent":
+        console.log("Routing to: handleCreateSetupIntent");
         return await handleCreateSetupIntent(user, corsHeaders);
       case "list-payment-methods":
+        console.log("Routing to: handleListPaymentMethods");
         return await handleListPaymentMethods(user, corsHeaders);
       case "attach-payment-method":
+        console.log("Routing to: handleAttachPaymentMethod");
         return await handleAttachPaymentMethod(
           user,
           payload as PaymentMethodRequest,
           corsHeaders
         );
       case "detach-payment-method":
+        console.log("Routing to: handleDetachPaymentMethod");
         return await handleDetachPaymentMethod(
           user,
           payload as PaymentMethodRequest,
           corsHeaders
         );
       case "set-default-payment":
+        console.log("Routing to: handleSetDefaultPayment");
         return await handleSetDefaultPayment(
           user,
           payload as PaymentMethodRequest,
           corsHeaders
         );
       default:
-        return createErrorResponse("Invalid path", 404, corsHeaders);
+        console.error("Invalid path requested:", routePath);
+        return createErrorResponse(`Invalid path: ${routePath}`, 404, corsHeaders);
     }
   } catch (error) {
-    console.error("Error in main function handler:", error);
-    return createErrorResponse((error as Error).message, 500, corsHeaders);
+    console.error("=== UNHANDLED ERROR IN MAIN HANDLER ===");
+    console.error("Error type:", error?.constructor?.name);
+    console.error("Error message:", (error as Error).message);
+    console.error("Error stack:", (error as Error).stack);
+    console.error("Full error object:", JSON.stringify(error, null, 2));
+    return createErrorResponse(
+      `Internal server error: ${(error as Error).message}`,
+      500,
+      corsHeaders
+    );
+  } finally {
+    console.log("=== STRIPE-CUSTOMER-API REQUEST END ===");
   }
 });
 

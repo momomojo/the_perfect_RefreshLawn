@@ -3,7 +3,6 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
-    "prestart": "node ./scripts/supabase-control.js auto",
     "start": "expo start",
     "supabase:start": "node ./scripts/supabase-control.js start",
     "supabase:stop": "node ./scripts/supabase-control.js stop",

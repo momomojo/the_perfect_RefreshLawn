@@ -39,6 +39,7 @@ interface BookingFormData {
 
 export default function BookingScreen() {
   // ...existing state
+  const publishableKey = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || "";
   const [paymentClientSecret, setPaymentClientSecret] = useState<string | null>(
     null
   );
@@ -113,6 +114,39 @@ export default function BookingScreen() {
       return;
     }
 
+    // Check if this is a cash payment - if so, skip Stripe and create booking directly
+    if (bookingData.paymentMethod === "cash") {
+      console.log("Cash on Delivery selected - creating booking directly");
+      setPendingBooking(bookingData);
+      setSubmitting(true);
+
+      const bookingCreated = await handleCreateBookingRecord(bookingData);
+
+      if (bookingCreated) {
+        if (Platform.OS === "web") {
+          showNotification({
+            title: "Booking Successful!",
+            message: "Your service has been booked. Payment will be collected on delivery.",
+            type: "success",
+          });
+          setTimeout(() => {
+            router.replace("/(customer)/dashboard");
+          }, 2500);
+        } else {
+          showConfirmation({
+            title: "Booking Successful!",
+            message: "Your service has been booked. Payment will be collected on delivery.",
+            confirmText: "OK",
+            onConfirm: () => router.replace("/(customer)/dashboard"),
+          });
+        }
+      }
+
+      setSubmitting(false);
+      return;
+    }
+
+    // For card payments, proceed with Stripe payment flow
     setPendingBooking(bookingData); // Store booking details for later
     setSubmitting(true);
     setError(null);
@@ -202,9 +236,12 @@ export default function BookingScreen() {
     }
   };
 
-  // Step 2: Create Booking Record After Successful Payment
-  const handleCreateBookingRecord = async () => {
-    if (!pendingBooking || !user) {
+  // Step 2: Create Booking Record (for cash payments or after successful card payment)
+  const handleCreateBookingRecord = async (bookingData?: BookingFormData) => {
+    // Use provided bookingData or fall back to pendingBooking state
+    const dataToUse = bookingData || pendingBooking;
+
+    if (!dataToUse || !user) {
       console.error("Missing pending booking data or user session.");
       setError("Failed to save booking details after payment.");
       showNotification({
@@ -215,11 +252,11 @@ export default function BookingScreen() {
       return false; // Indicate failure
     }
 
-    console.log("Creating booking record after successful payment...");
+    console.log("Creating booking record...");
     setSubmitting(true); // Indicate processing
 
     try {
-      // Get the current session token again (optional, but good practice)
+      // Get the current session token
       const {
         data: { session },
         error: sessionError,
@@ -228,50 +265,41 @@ export default function BookingScreen() {
         throw new Error("Authentication session lost before saving booking.");
       }
 
-      // Call the 'create-booking-and-charge' endpoint (now just creates the booking)
-      const { data: bookingResult, error: bookingError } =
-        await supabase.functions.invoke("stripe-payment-api", {
-          body: {
-            path: "create-booking-and-charge", // Path to create the booking record
-            payload: {
-              serviceId: pendingBooking.serviceId,
-              date: pendingBooking.date,
-              time: pendingBooking.time,
-              address: pendingBooking.address,
-              price: pendingBooking.price,
-              recurringPlanId: pendingBooking.recurringPlan,
-              // paymentMethodId: pendingBooking.paymentMethod // Optional: maybe store for reference?
-              // Note: We no longer need to pass paymentMethodId for processing here
-            },
-          },
-        });
+      // Insert booking directly into database
+      const bookingInsert = {
+        customer_id: user.id,
+        service_id: dataToUse.serviceId,
+        scheduled_date: dataToUse.date,
+        scheduled_time: dataToUse.time,
+        address: dataToUse.address,
+        price: dataToUse.price,
+        status: dataToUse.paymentMethod === "cash" ? "pending_payment" : "payment_confirmed",
+        notes: dataToUse.notes,
+        property_size: dataToUse.propertySize,
+        area_type: dataToUse.areaType,
+        recurring_plan_id: dataToUse.recurringPlan || null,
+      };
+
+      const { data: booking, error: bookingError } = await supabase
+        .from("bookings")
+        .insert(bookingInsert)
+        .select()
+        .single();
 
       if (bookingError) {
-        console.error(
-          "Error invoking stripe-payment-api (create-booking):",
-          bookingError
-        );
-        throw new Error(
-          bookingError.message || "Failed to create booking record."
-        );
+        console.error("Error inserting booking:", bookingError);
+        throw new Error(bookingError.message || "Failed to create booking record.");
       }
 
-      if (!bookingResult || !bookingResult.booking) {
-        console.error(
-          "Invalid response from create-booking-and-charge:",
-          bookingResult
-        );
-        throw new Error("Server did not confirm booking creation.");
+      if (!booking) {
+        throw new Error("Booking was not created.");
       }
 
-      console.log(
-        "Booking record created successfully:",
-        bookingResult.booking.id
-      );
+      console.log("Booking record created successfully:", booking.id);
       return true; // Indicate success
     } catch (err: any) {
       console.error("Error creating booking record:", err);
-      setError(err.message || "Failed to save booking after payment.");
+      setError(err.message || "Failed to save booking.");
       showNotification({
         title: "Booking Creation Error",
         message:

@@ -496,10 +496,14 @@ const JobStatusUpdater = ({
   const submitJobReport = async () => {
     try {
       setUploading(true);
-      onStatusUpdate("completed", { beforePhotos, afterPhotos, notes });
-      setBeforePhotos([]);
-      setAfterPhotos([]);
-      setNotes("");
+      // IMPORTANT: Must await this call to ensure database update completes
+      await onStatusUpdate("completed", { beforePhotos, afterPhotos, notes });
+      // Don't clear form state here - let the parent component handle navigation
+      // after successful update. Clearing here causes the form to reset before
+      // the update is confirmed.
+      // setBeforePhotos([]);
+      // setAfterPhotos([]);
+      // setNotes("");
     } catch (error) {
       console.error("Error submitting job report:", error);
       showNotification({

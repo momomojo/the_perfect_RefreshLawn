@@ -78,6 +78,7 @@ const BookingForm = ({
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [paymentMethodsLoading, setPaymentMethodsLoading] = useState(false);
+  const [hasLoadedPaymentMethods, setHasLoadedPaymentMethods] = useState(false);
   const [services, setServices] = useState<Service[]>([]);
   const [recurringPlans, setRecurringPlans] = useState<RecurringPlan[]>([]);
   const [availableDates, setAvailableDates] = useState<string[]>([]);
@@ -146,11 +147,11 @@ const BookingForm = ({
 
   // Load payment methods when needed
   useEffect(() => {
-    // Only load payment methods when on payment step or approaching it (step 5)
-    if (currentStep >= 5 && !paymentMethodsLoading && fetchedPaymentMethods.length === 0) {
+    // Only load payment methods when on payment step and haven't loaded yet
+    if (currentStep >= 5 && !hasLoadedPaymentMethods && !paymentMethodsLoading && user) {
       loadPaymentMethods();
     }
-  }, [currentStep, user, paymentMethodsLoading, fetchedPaymentMethods]);
+  }, [currentStep, hasLoadedPaymentMethods, paymentMethodsLoading, user]);
 
   // Setup available dates and time slots
   useEffect(() => {
@@ -214,6 +215,7 @@ const BookingForm = ({
       });
     } finally {
       setPaymentMethodsLoading(false);
+      setHasLoadedPaymentMethods(true); // Mark as loaded regardless of success/failure
     }
   };
 
@@ -224,6 +226,7 @@ const BookingForm = ({
   const handleCardAdded = () => {
     setShowAddCardModal(false);
     // Refresh the payment methods list after adding a new card
+    setHasLoadedPaymentMethods(false); // Reset flag to allow reloading
     loadPaymentMethods();
   };
 

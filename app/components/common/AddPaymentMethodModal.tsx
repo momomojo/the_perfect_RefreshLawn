@@ -13,16 +13,16 @@ import {
 // Import from stripe-js for web platform
 import { loadStripe } from "@stripe/stripe-js";
 import { supabase } from "../../../lib/supabase";
-import AddPaymentMethodNative from "../../../components/payment/AddPaymentMethodNative";
 
 // Check if platform is web
 const isWeb = Platform.OS === "web";
 
-// Conditionally import web components
+// Conditionally import platform-specific components
 let Elements: any = null;
 let CardElement: any = null;
 let useStripe: any = null;
 let useElements: any = null;
+let AddPaymentMethodNative: any = null;
 
 // Only import web components if running on web
 if (isWeb) {
@@ -32,6 +32,10 @@ if (isWeb) {
   CardElement = stripeReactImport.CardElement;
   useStripe = stripeReactImport.useStripe;
   useElements = stripeReactImport.useElements;
+} else {
+  // Only import native components on non-web platforms
+  // This prevents Metro from trying to bundle @stripe/stripe-react-native on web
+  AddPaymentMethodNative = require("../../../components/payment/AddPaymentMethodNative").default;
 }
 
 interface AddPaymentMethodModalProps {

@@ -131,6 +131,7 @@ export interface Notification {
     | "booking_created"
     | "booking_updated"
     | "booking_cancelled"
+    | "booking_completed"
     | "review_received"
     | "payment_processed"
     | "message";
@@ -1019,11 +1020,20 @@ export async function createNotification(
  * @param callback Function to call when notifications are received
  * @returns The subscription channel
  */
-export function subscribeToNotifications(callback: (payload: any) => void) {
-  // Get the current user id
-  const userId = supabase.auth
-    .getSession()
-    .then(({ data }) => data.session?.user.id);
+export async function subscribeToNotifications(
+  callback: (payload: any) => void
+): Promise<RealtimeChannel> {
+  // Get the current user id synchronously
+  const { data } = await supabase.auth.getSession();
+  const userId = data.session?.user.id;
+
+  if (!userId) {
+    console.warn('[subscribeToNotifications] No user ID found, returning empty channel');
+    // Return a no-op channel if no user is logged in
+    return supabase.channel('notifications-changes-empty');
+  }
+
+  console.log(`[subscribeToNotifications] Setting up subscription for user: ${userId}`);
 
   const channel = supabase
     .channel("notifications-changes")

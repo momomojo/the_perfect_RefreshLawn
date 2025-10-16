@@ -6,10 +6,31 @@ const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
 
+// Validate critical environment variables
+console.log("=== STRIPE-UTILS INITIALIZATION ===");
+console.log("Environment variables check:");
+console.log("- STRIPE_SECRET_KEY:", stripeSecretKey ? `Set (starts with ${stripeSecretKey.substring(0, 7)}...)` : "NOT SET");
+console.log("- SUPABASE_URL:", supabaseUrl ? `Set (${supabaseUrl})` : "NOT SET");
+console.log("- SUPABASE_SERVICE_ROLE_KEY:", supabaseServiceKey ? "Set" : "NOT SET");
+
+if (!stripeSecretKey) {
+  console.error("CRITICAL ERROR: STRIPE_SECRET_KEY is not set!");
+  console.error("Available env vars:", Object.keys(Deno.env.toObject()));
+}
+if (!supabaseUrl) {
+  console.error("CRITICAL ERROR: SUPABASE_URL is not set!");
+}
+if (!supabaseServiceKey) {
+  console.error("CRITICAL ERROR: SUPABASE_SERVICE_ROLE_KEY is not set!");
+}
+
 // Create and export a Stripe instance
+console.log("Creating Stripe client instance...");
 export const stripe = new Stripe(stripeSecretKey, {
   apiVersion: "2024-06-20",
+  httpClient: Stripe.createFetchHttpClient(),
 });
+console.log("Stripe client created successfully");
 
 // Helper to get a Supabase client
 export function getSupabaseClient() {

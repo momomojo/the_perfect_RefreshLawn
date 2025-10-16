@@ -1,6 +1,5 @@
 import React, { useEffect } from "react";
 import { Platform } from "react-native";
-import { StripeProvider as NativeStripeProvider } from "@stripe/stripe-react-native";
 import Constants from "expo-constants";
 
 interface StripeProviderWrapperProps {
@@ -12,6 +11,14 @@ const STRIPE_PUBLISHABLE_KEY =
   process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ||
   Constants.expoConfig?.extra?.stripePublishableKey ||
   "";
+
+// Dynamically import StripeProvider only for native platforms
+let NativeStripeProvider: any = null;
+if (Platform.OS !== "web") {
+  // Dynamic require to prevent Metro from bundling native module on web
+  const stripeNative = require("@stripe/stripe-react-native");
+  NativeStripeProvider = stripeNative.StripeProvider;
+}
 
 /**
  * Platform-aware Stripe provider wrapper
@@ -37,6 +44,11 @@ export const StripeProviderWrapper: React.FC<StripeProviderWrapperProps> = ({
   }
 
   // Native platforms (iOS/Android) use the Stripe React Native provider
+  if (!NativeStripeProvider) {
+    console.error("[StripeProvider] Native Stripe provider not available");
+    return <>{children}</>;
+  }
+
   return (
     <NativeStripeProvider
       publishableKey={STRIPE_PUBLISHABLE_KEY}
