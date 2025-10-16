@@ -236,7 +236,8 @@ export default function BookingScreen() {
     }
   };
 
-  // Step 2: Create Booking Record (for cash payments or after successful card payment)
+  // Step 2: Create Booking Record (CASH PAYMENTS ONLY)
+  // For card payments, the webhook creates the booking after payment_intent.succeeded
   const handleCreateBookingRecord = async (bookingData?: BookingFormData) => {
     // Use provided bookingData or fall back to pendingBooking state
     const dataToUse = bookingData || pendingBooking;
@@ -314,50 +315,110 @@ export default function BookingScreen() {
   };
 
   const handlePaymentSuccess = async (paymentIntentId: string) => {
-    console.log(`Payment successful for PaymentIntent: ${paymentIntentId}`);
+    console.log(`✅ Payment successful for PaymentIntent: ${paymentIntentId}`);
+    console.log(`⏳ Waiting for webhook to create booking...`);
 
-    // Now that payment is confirmed client-side, create the actual booking record
-    const bookingCreated = await handleCreateBookingRecord();
+    // Hide payment UI immediately
+    setShowPayment(false);
+    setSubmitting(true);
 
-    if (bookingCreated) {
-      // Booking record saved, proceed with success flow
-      setShowPayment(false);
-      setPendingBooking(null);
-      setPaymentClientSecret(null); // Clear secrets
-      setEphemeralKeySecret(null);
-      setCustomerId(null);
+    // Show processing message
+    if (Platform.OS === "web") {
+      showNotification({
+        title: "Payment Successful!",
+        message: "Processing your booking... Please wait.",
+        type: "success",
+      });
+    } else {
+      showNotification({
+        title: "Payment Successful!",
+        message: "Processing your booking... Please wait.",
+        type: "success",
+      });
+    }
 
-      if (Platform.OS === "web") {
-        showNotification({
-          title: "Booking Successful!",
-          message:
-            "Your service has been booked and payment processed. You will receive a confirmation soon.",
-          type: "success",
-        });
-        setTimeout(() => {
-          router.replace("/(customer)/dashboard");
-        }, 2500);
-      } else {
+    try {
+      // Setup real-time subscription to wait for booking creation
+      // The webhook will create the booking with stripe_payment_intent_id = paymentIntentId
+      let bookingFound = false;
+      let attemptCount = 0;
+      const maxAttempts = 30; // 30 seconds max wait (30 attempts * 1 second polling)
+      const pollInterval = 1000; // Check every 1 second
+
+      // Use polling approach for simplicity (alternatively could use real-time subscriptions)
+      while (!bookingFound && attemptCount < maxAttempts) {
+        attemptCount++;
+        console.log(`📡 Checking for booking (attempt ${attemptCount}/${maxAttempts})...`);
+
+        const { data: bookingData, error: bookingError } = await supabase
+          .from("bookings")
+          .select("id, status")
+          .eq("stripe_payment_intent_id", paymentIntentId)
+          .maybeSingle();
+
+        if (bookingError) {
+          console.error("Error checking for booking:", bookingError);
+          // Continue polling despite error
+        }
+
+        if (bookingData) {
+          bookingFound = true;
+          console.log(
+            `✅ Booking created by webhook! Booking ID: ${bookingData.id}, Status: ${bookingData.status}`
+          );
+
+          // Success! Booking created by webhook
+          setPendingBooking(null);
+          setPaymentClientSecret(null);
+          setEphemeralKeySecret(null);
+          setCustomerId(null);
+          setSubmitting(false);
+
+          if (Platform.OS === "web") {
+            showNotification({
+              title: "Booking Confirmed!",
+              message: "Your service has been successfully booked!",
+              type: "success",
+            });
+            setTimeout(() => {
+              router.replace("/(customer)/dashboard");
+            }, 1500);
+          } else {
+            showConfirmation({
+              title: "Booking Confirmed!",
+              message: "Your service has been successfully booked!",
+              confirmText: "View My Bookings",
+              onConfirm: () => router.replace("/(customer)/dashboard"),
+            });
+          }
+          return; // Exit function - success!
+        }
+
+        // Wait before next attempt
+        await new Promise((resolve) => setTimeout(resolve, pollInterval));
+      }
+
+      // If we get here, booking was not created within timeout
+      if (!bookingFound) {
+        console.error(
+          `❌ Timeout: Booking not created after ${maxAttempts} seconds`
+        );
+        setSubmitting(false);
         showConfirmation({
-          title: "Booking Successful!",
-          message:
-            "Your service has been booked and payment processed. You will receive a confirmation soon.",
-          confirmText: "OK",
+          title: "Booking Delayed",
+          message: `Your payment was successful (ID: ${paymentIntentId}), but your booking is taking longer than expected to process. Please check your dashboard in a few moments or contact support if the booking doesn't appear.`,
+          confirmText: "Go to Dashboard",
           onConfirm: () => router.replace("/(customer)/dashboard"),
         });
       }
-    } else {
-      // Booking creation failed after payment - this is a critical error state
-      // Keep payment UI hidden, error state is already set by handleCreateBookingRecord
-      setShowPayment(false);
-      // Optionally, provide specific guidance or keep the user on the page
+    } catch (error) {
+      console.error("Error waiting for booking creation:", error);
+      setSubmitting(false);
       showConfirmation({
-        title: "Action Required",
-        message:
-          "Payment was successful, but saving the booking failed. Please contact support with Payment Intent ID: " +
-          paymentIntentId,
-        confirmText: "OK",
-        onConfirm: () => {},
+        title: "Booking Status Unknown",
+        message: `Your payment was successful (ID: ${paymentIntentId}), but we couldn't confirm your booking status. Please check your dashboard or contact support.`,
+        confirmText: "Go to Dashboard",
+        onConfirm: () => router.replace("/(customer)/dashboard"),
       });
     }
   };

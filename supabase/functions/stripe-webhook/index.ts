@@ -201,7 +201,7 @@ async function handlePaymentIntentSucceeded(
     // return;
   }
 
-  // --- 2. Create Booking Record (New Logic) ---
+  // --- 2. Create Booking Record (Webhook-Only with Idempotency) ---
   if (
     supabaseUserId &&
     serviceId &&
@@ -213,10 +213,45 @@ async function handlePaymentIntentSucceeded(
       `Attempting to create booking for payment intent ${paymentIntent.id}`
     );
     try {
-      // FIXED: Make sure we're using the correct table name "services" (plural) everywhere
-      // Optional: Verify service exists before creating booking
+      // IDEMPOTENCY CHECK: Prevent duplicate booking creation
+      // Check if booking already exists for this payment intent
+      const { data: existingBooking, error: checkError } = await supabase
+        .from("bookings")
+        .select("id")
+        .eq("stripe_payment_intent_id", paymentIntent.id)
+        .maybeSingle(); // Use maybeSingle to avoid error if not found
+
+      if (checkError) {
+        console.error(
+          `Error checking for existing booking:`,
+          checkError
+        );
+        throw checkError;
+      }
+
+      if (existingBooking) {
+        console.log(
+          `Booking already exists for payment intent ${paymentIntent.id} (ID: ${existingBooking.id}). Skipping creation (idempotency).`
+        );
+        // Update payment record with existing booking_id if not already linked
+        const { error: paymentUpdateError } = await supabase
+          .from("payments")
+          .update({ booking_id: existingBooking.id })
+          .eq("stripe_payment_id", paymentIntent.id)
+          .is("booking_id", null); // Only update if not already set
+
+        if (paymentUpdateError) {
+          console.error(
+            `Failed to link payment to existing booking:`,
+            paymentUpdateError
+          );
+        }
+        return; // Exit early - booking already exists
+      }
+
+      // Verify service exists before creating booking
       const { data: serviceData, error: serviceError } = await supabase
-        .from("services") // FIXED: Changed from "service" to "services"
+        .from("services")
         .select("id")
         .eq("id", serviceId)
         .single();
@@ -231,6 +266,7 @@ async function handlePaymentIntentSucceeded(
         );
       }
 
+      // Create new booking
       const { data: newBooking, error: bookingError } = await supabase
         .from("bookings")
         .insert({
@@ -244,7 +280,7 @@ async function handlePaymentIntentSucceeded(
           notes: notes, // Optional
           property_size: propertySize, // Optional
           area_type: areaType, // Optional
-          stripe_payment_intent_id: paymentIntent.id, // Link to payment
+          stripe_payment_intent_id: paymentIntent.id, // Link to payment (ensures uniqueness)
         })
         .select("id") // Select the new booking ID
         .single(); // Expect only one row
@@ -254,37 +290,56 @@ async function handlePaymentIntentSucceeded(
           `Failed to create booking for payment intent ${paymentIntent.id}:`,
           bookingError
         );
-        // Consider adding retry logic or alerting
-      } else if (newBooking) {
-        console.log(
-          `Successfully created booking ${newBooking.id} for payment intent ${paymentIntent.id}`
+        // This is a critical error - payment succeeded but booking failed
+        throw bookingError;
+      }
+
+      if (!newBooking) {
+        throw new Error("Booking creation returned no data");
+      }
+
+      console.log(
+        `✅ Successfully created booking ${newBooking.id} for payment intent ${paymentIntent.id}`
+      );
+
+      // Update payment record with booking_id
+      const { error: paymentUpdateError } = await supabase
+        .from("payments")
+        .update({ booking_id: newBooking.id })
+        .eq("stripe_payment_id", paymentIntent.id);
+
+      if (paymentUpdateError) {
+        console.error(
+          `Failed to update payment record ${paymentIntent.id} with booking ID ${newBooking.id}:`,
+          paymentUpdateError
         );
-
-        // --- 3. Update Payment Record with Booking ID (Optional but good practice) ---
-        const { error: paymentUpdateError } = await supabase
-          .from("payments")
-          .update({ booking_id: newBooking.id })
-          .eq("stripe_payment_id", paymentIntent.id);
-
-        if (paymentUpdateError) {
-          console.error(
-            `Failed to update payment record ${paymentIntent.id} with booking ID ${newBooking.id}:`,
-            paymentUpdateError
-          );
-        }
+        // Non-critical error - booking exists, payment record just not linked
+      } else {
+        console.log(
+          `✅ Linked payment ${paymentIntent.id} to booking ${newBooking.id}`
+        );
       }
     } catch (insertError) {
       console.error(
-        `Exception during booking insertion for payment intent ${paymentIntent.id}:`,
+        `❌ Exception during booking creation for payment intent ${paymentIntent.id}:`,
         insertError
       );
+      // Log this error prominently - manual intervention may be needed
+      // Payment succeeded but booking failed - need to reconcile manually
     }
   } else {
     // Log missing required metadata for booking creation
     console.warn(
-      `Payment intent ${paymentIntent.id} succeeded but missing required metadata for booking creation (supabase_user_id, service_id, booking_price, scheduled_date, scheduled_time). Booking not created.`
+      `⚠️ Payment intent ${paymentIntent.id} succeeded but missing required metadata for booking creation. Booking not created.`,
+      {
+        hasUserId: !!supabaseUserId,
+        hasServiceId: !!serviceId,
+        hasPrice: !!bookingPrice,
+        hasDate: !!scheduledDate,
+        hasTime: !!scheduledTime,
+      }
     );
-    // Consider alerting if this happens unexpectedly
+    // This could indicate a client-side issue or metadata not being passed correctly
   }
 
   // --- 4. Old Booking Update Logic REMOVED ---
