@@ -7,14 +7,17 @@ import Account from "./components/auth/Account";
 import { useAuth } from "../lib/auth";
 
 export default function AppEntry() {
-  const { user, session, loading, isAdmin, isTechnician, isCustomer } = useAuth();
+  const { user, session, loading, rolesLoading, isAdmin, isTechnician, isCustomer } = useAuth();
 
-  // Show loading spinner while checking auth state
-  if (loading) {
+  // Show loading spinner while checking auth state AND determining roles
+  if (loading || rolesLoading) {
     return (
       <View className="flex-1 justify-center items-center bg-white">
         <StatusBar barStyle="dark-content" />
         <ActivityIndicator size="large" color="#16a34a" />
+        <Text className="mt-4 text-gray-600">
+          {loading ? "Checking authentication..." : "Loading your dashboard..."}
+        </Text>
       </View>
     );
   }

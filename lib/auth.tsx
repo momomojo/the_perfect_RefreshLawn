@@ -26,6 +26,7 @@ type AuthContextType = {
   user: User | null;
   session: Session | null;
   loading: boolean;
+  rolesLoading: boolean; // NEW: Track role determination
   signUp: (
     email: string,
     password: string,
@@ -59,6 +60,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [rolesLoading, setRolesLoading] = useState(true); // NEW: Track role determination
   const [error, setError] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isTechnician, setIsTechnician] = useState(false);
@@ -67,6 +69,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
 
   const hasRefreshedTokenRef = React.useRef(false);
+  const roleCheckInProgressRef = React.useRef(false); // Prevent concurrent role checks
   const segments = useSegments();
   const pathname = usePathname();
 
@@ -141,7 +144,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           } else if (data.session) {
             setSession(data.session);
             setUser(data.session.user);
-            checkUserRole(data.session.user);
+            checkUserRole(data.session.user, data.session);
           }
         }
       }
@@ -177,13 +180,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // Mark initial load as complete AFTER session check and role check (if applicable)
         setInitialLoadComplete(true);
         setLoading(false);
+        setRolesLoading(false); // Reset rolesLoading even if no user session exists
       });
 
     // Subscribe to auth state changes
     const {
       data: { subscription: authSubscription },
     } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
-      console.log(`Supabase auth event: ${event}`);
+      console.log(`Supabase auth event: ${event}`, {
+        hasUser: !!currentSession?.user,
+        userId: currentSession?.user?.id,
+        timestamp: new Date().toISOString()
+      });
+
+      // Skip INITIAL_SESSION - it was already handled by getSession()
+      if (event === "INITIAL_SESSION") {
+        console.log('[Auth] INITIAL_SESSION - Skipping role check (already handled)');
+        return;
+      }
 
       if (event === "TOKEN_REFRESHED") {
         console.log("Token refreshed event received");
@@ -219,7 +233,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setSession(currentSession);
         // Potentially re-check role if claims might change after refresh
         if (currentSession?.user) {
-          await checkUserRole(currentSession.user);
+          await checkUserRole(currentSession.user, currentSession);
         }
         return;
       }
@@ -228,14 +242,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setSession(currentSession);
       setUser(currentSession?.user ?? null);
 
-      // Check role AFTER setting user/session state
+      // Check role AFTER setting user/session state - PASS THE SESSION!
       if (currentSession?.user) {
-        await checkUserRole(currentSession.user);
+        console.log('[Auth] Calling checkUserRole with session from event');
+        await checkUserRole(currentSession.user, currentSession);
       } else {
         // Reset roles when user is null (SIGNED_OUT)
+        console.log('[Auth] No user, resetting roles');
         setIsAdmin(false);
         setIsTechnician(false);
         setIsCustomer(false);
+        setRolesLoading(false); // Reset rolesLoading when user logs out
       }
 
       // Remove loading indicator (initial load handled separately)
@@ -261,28 +278,59 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   // Check user role and update state (ensure it sets state reliably)
-  const checkUserRole = async (targetUser: User | null) => {
+  const checkUserRole = async (targetUser: User | null, providedSession?: Session | null) => {
+    // Prevent concurrent role checks
+    if (roleCheckInProgressRef.current) {
+      console.log('[checkUserRole] SKIP - Role check already in progress');
+      return;
+    }
+
+    console.log('[checkUserRole] ENTRY - Starting role determination', {
+      userId: targetUser?.id,
+      hasProvidedSession: !!providedSession,
+      timestamp: new Date().toISOString()
+    });
+
+    roleCheckInProgressRef.current = true;
+    setRolesLoading(true); // START: Role determination begins
+
     if (!targetUser) {
+      console.log('[checkUserRole] EXIT - No user provided');
       setIsAdmin(false);
       setIsTechnician(false);
       setIsCustomer(false);
-      console.log("[checkUserRole] No user provided, roles reset.");
+      roleCheckInProgressRef.current = false;
+      setRolesLoading(false); // COMPLETE: No user = no roles
       return;
     }
     try {
-      // First try to get the role from custom claims
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      // Use provided session if available, otherwise fetch it
+      let session = providedSession;
 
       if (!session) {
-        console.log("No active session found");
+        console.log('[checkUserRole] Step 1 - Getting session (no session provided)...');
+        const { data: { session: fetchedSession } } = await supabase.auth.getSession();
+        session = fetchedSession;
+      } else {
+        console.log('[checkUserRole] Step 1 - Using provided session');
+      }
+
+      console.log('[checkUserRole] Step 2 - Session retrieved', {
+        hasSession: !!session,
+        userId: session?.user?.id
+      });
+
+      if (!session) {
+        console.log('[checkUserRole] EXIT - No active session');
         setIsAdmin(false);
         setIsTechnician(false);
         setIsCustomer(true); // Default to customer role
+        roleCheckInProgressRef.current = false;
+        setRolesLoading(false);
         return;
       }
 
+      console.log('[checkUserRole] Step 3 - Decoding JWT...');
       // Decode the JWT to check for the user_role claim at the root level
       let userRoleClaim = null;
       if (session.access_token) {
@@ -301,6 +349,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             );
             const decodedToken = JSON.parse(jsonPayload);
 
+            console.log('[checkUserRole] Step 4 - JWT decoded', {
+              hasRoleClaim: !!decodedToken.user_role,
+              roleClaim: decodedToken.user_role
+            });
+
             // Check for user_role claim at root level (set by custom hook)
             if (decodedToken.user_role) {
               console.log(
@@ -311,7 +364,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             }
           }
         } catch (error) {
-          console.error("Error decoding JWT:", error);
+          console.error('[checkUserRole] Error decoding JWT:', error);
         }
       }
 
@@ -377,26 +430,33 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
 
       // Set state *once* after determining roles
-      console.log(
-        `[checkUserRole] Setting roles: Admin=${finalIsAdmin}, Tech=${finalIsTechnician}, Cust=${finalIsCustomer}`
-      );
+      console.log('[checkUserRole] Step 5 - Setting role states...', {
+        admin: finalIsAdmin,
+        technician: finalIsTechnician,
+        customer: finalIsCustomer
+      });
       setIsAdmin(finalIsAdmin);
       setIsTechnician(finalIsTechnician);
       setIsCustomer(finalIsCustomer);
     } catch (error) {
-      console.error("Error in checkUserRole:", error);
+      console.error('[checkUserRole] EXCEPTION:', error);
       // Set default roles on error
       setIsAdmin(false);
       setIsTechnician(false);
       setIsCustomer(true);
+    } finally {
+      console.log('[checkUserRole] FINALLY - Cleanup and setting rolesLoading to false');
+      roleCheckInProgressRef.current = false;
+      setRolesLoading(false); // COMPLETE: Role determination finished
+      console.log('[checkUserRole] Role determination complete');
     }
   };
 
   // Effect for Handling Navigation based on Auth State & Role (REVISED LOGIC)
   useEffect(() => {
-    // Only run navigation logic after the initial session check is complete
-    if (!initialLoadComplete || loading) {
-      // Also check loading state just in case
+    // Only run navigation logic after BOTH session check AND role determination are complete
+    if (!initialLoadComplete || loading || rolesLoading) {
+      console.log(`[Navigation Effect] Waiting: initialLoadComplete=${initialLoadComplete}, loading=${loading}, rolesLoading=${rolesLoading}`);
       return;
     }
 
@@ -477,6 +537,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     isTechnician,
     isCustomer,
     loading,
+    rolesLoading, // NEW: Wait for role determination
     initialLoadComplete,
     segments,
     pathname,
@@ -623,7 +684,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       setSession(data.session);
       setUser(data.user);
-      checkUserRole(data.user);
+      checkUserRole(data.user, data.session);
     } catch (error: any) {
       handleAuthError(error, "sign in");
     } finally {
@@ -771,6 +832,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     user,
     session,
     loading,
+    rolesLoading, // NEW: Expose role loading state
     signUp,
     signIn,
     signOut,
