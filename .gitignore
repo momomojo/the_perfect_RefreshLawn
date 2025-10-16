@@ -48,3 +48,6 @@ app-example
 # Supabase bundled functions output
 supabase/functions_bundled/
 nul
+
+# Do not track production audit log
+PRODUCTION_AUDIT_LOG.md
