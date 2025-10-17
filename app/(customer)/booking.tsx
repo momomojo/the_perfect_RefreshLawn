@@ -73,6 +73,17 @@ export default function BookingScreen() {
         onConfirm: () => router.replace("/(customer)/services"),
       });
     }
+
+    // Cleanup function: reset all state when component unmounts
+    return () => {
+      console.log("Booking screen unmounting - cleaning up state");
+      setPendingBooking(null);
+      setPaymentClientSecret(null);
+      setEphemeralKeySecret(null);
+      setCustomerId(null);
+      setShowPayment(false);
+      setSubmitting(false);
+    };
   }, [serviceId]);
 
   const fetchServiceAndUserData = async () => {
@@ -220,7 +231,19 @@ export default function BookingScreen() {
       setPaymentClientSecret(paymentData.paymentIntentClientSecret);
       setEphemeralKeySecret(paymentData.ephemeralKeySecret);
       setCustomerId(paymentData.customerId);
-      setShowPayment(true); // Show the payment component
+
+      // If using a saved payment method, the PaymentIntent is auto-confirmed on the backend
+      // Skip the payment UI and go straight to waiting for the webhook
+      if (bookingData.paymentMethod.startsWith("pm_")) {
+        console.log("Saved payment method used - PaymentIntent auto-confirmed. Waiting for webhook...");
+        setShowPayment(false);
+        // Extract PaymentIntent ID from client secret
+        const paymentIntentId = paymentData.paymentIntentClientSecret.split("_secret_")[0];
+        await handlePaymentSuccess(paymentIntentId);
+      } else {
+        // For new cards, show the payment UI
+        setShowPayment(true);
+      }
     } catch (err: any) {
       console.error("Error initiating payment:", err);
       setError(err.message || "Failed to initialize payment");
@@ -267,6 +290,8 @@ export default function BookingScreen() {
       }
 
       // Insert booking directly into database
+      console.log("[Booking] Date being inserted - RAW VALUE:", dataToUse.date);
+      console.log("[Booking] Date type:", typeof dataToUse.date);
       const bookingInsert = {
         customer_id: user.id,
         service_id: dataToUse.serviceId,
@@ -322,33 +347,24 @@ export default function BookingScreen() {
     setShowPayment(false);
     setSubmitting(true);
 
-    // Show processing message
-    if (Platform.OS === "web") {
-      showNotification({
-        title: "Payment Successful!",
-        message: "Processing your booking... Please wait.",
-        type: "success",
-      });
-    } else {
-      showNotification({
-        title: "Payment Successful!",
-        message: "Processing your booking... Please wait.",
-        type: "success",
-      });
-    }
+    // Show processing message (silent - user just sees loading state)
+    console.log("💳 Payment confirmed. Waiting for booking creation...");
 
     try {
-      // Setup real-time subscription to wait for booking creation
       // The webhook will create the booking with stripe_payment_intent_id = paymentIntentId
       let bookingFound = false;
       let attemptCount = 0;
-      const maxAttempts = 30; // 30 seconds max wait (30 attempts * 1 second polling)
+      const maxAttempts = 60; // 60 seconds max wait (increased from 30s)
       const pollInterval = 1000; // Check every 1 second
 
-      // Use polling approach for simplicity (alternatively could use real-time subscriptions)
+      // Silent polling - no visible timeout messages until truly failed
       while (!bookingFound && attemptCount < maxAttempts) {
         attemptCount++;
-        console.log(`📡 Checking for booking (attempt ${attemptCount}/${maxAttempts})...`);
+
+        // Only log every 5 attempts to reduce console noise
+        if (attemptCount % 5 === 0 || attemptCount === 1) {
+          console.log(`📡 Checking for booking (attempt ${attemptCount}/${maxAttempts})...`);
+        }
 
         const { data: bookingData, error: bookingError } = await supabase
           .from("bookings")
@@ -358,7 +374,7 @@ export default function BookingScreen() {
 
         if (bookingError) {
           console.error("Error checking for booking:", bookingError);
-          // Continue polling despite error
+          // Continue polling despite error - webhook might still succeed
         }
 
         if (bookingData) {
@@ -398,28 +414,49 @@ export default function BookingScreen() {
         await new Promise((resolve) => setTimeout(resolve, pollInterval));
       }
 
-      // If we get here, booking was not created within timeout
+      // If we get here, booking was not created within 60 seconds
+      // This is truly an error - redirect to dashboard silently and let them check
       if (!bookingFound) {
         console.error(
-          `❌ Timeout: Booking not created after ${maxAttempts} seconds`
+          `❌ Timeout: Booking not created after ${maxAttempts} seconds. Payment ID: ${paymentIntentId}`
         );
+        console.log("User will be redirected to dashboard to check booking status.");
+
+        setPendingBooking(null);
+        setPaymentClientSecret(null);
+        setEphemeralKeySecret(null);
+        setCustomerId(null);
         setSubmitting(false);
-        showConfirmation({
-          title: "Booking Delayed",
-          message: `Your payment was successful (ID: ${paymentIntentId}), but your booking is taking longer than expected to process. Please check your dashboard in a few moments or contact support if the booking doesn't appear.`,
-          confirmText: "Go to Dashboard",
-          onConfirm: () => router.replace("/(customer)/dashboard"),
-        });
+
+        // Silent redirect - no scary error message
+        // Most likely the booking will appear in dashboard shortly
+        if (Platform.OS === "web") {
+          showNotification({
+            title: "Processing Complete",
+            message: "Please check your dashboard for booking details.",
+            type: "success",
+          });
+          setTimeout(() => {
+            router.replace("/(customer)/dashboard");
+          }, 1500);
+        } else {
+          router.replace("/(customer)/dashboard");
+        }
       }
     } catch (error) {
       console.error("Error waiting for booking creation:", error);
       setSubmitting(false);
-      showConfirmation({
-        title: "Booking Status Unknown",
-        message: `Your payment was successful (ID: ${paymentIntentId}), but we couldn't confirm your booking status. Please check your dashboard or contact support.`,
-        confirmText: "Go to Dashboard",
-        onConfirm: () => router.replace("/(customer)/dashboard"),
+
+      // Only show error for true failures, not timeouts
+      showNotification({
+        title: "Please Check Dashboard",
+        message: "Your payment was successful. Please check your dashboard for booking status.",
+        type: "success",
       });
+
+      setTimeout(() => {
+        router.replace("/(customer)/dashboard");
+      }, 2000);
     }
   };
 
@@ -454,7 +491,15 @@ export default function BookingScreen() {
       confirmText: "Yes, Cancel",
       onConfirm: () => {
         console.log("Booking cancelled by user.");
-        router.back(); // Navigate back if confirmed
+        // Clear all pending state
+        setPendingBooking(null);
+        setPaymentClientSecret(null);
+        setEphemeralKeySecret(null);
+        setCustomerId(null);
+        setShowPayment(false);
+        setSubmitting(false);
+        // Use replace instead of back to prevent returning to partially completed booking
+        router.replace("/(customer)/services");
       },
     });
   };
@@ -500,6 +545,11 @@ export default function BookingScreen() {
         {showPayment && paymentClientSecret && pendingBooking ? (
           <StripePayment
             paymentIntentClientSecret={paymentClientSecret}
+            paymentMethodId={
+              pendingBooking.paymentMethod.startsWith("pm_")
+                ? pendingBooking.paymentMethod
+                : undefined
+            }
             ephemeralKeySecret={ephemeralKeySecret || undefined}
             customerId={customerId || undefined}
             publishableKey={publishableKey || undefined}

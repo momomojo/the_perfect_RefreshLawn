@@ -37,6 +37,7 @@ import {
 import { format, addDays } from "date-fns";
 import { showNotification } from "@/lib/notification"; // Import the utility
 import { TextInput } from 'react-native';
+import AddPaymentMethodModal from "../common/AddPaymentMethodModal";
 
 interface StripePaymentMethod {
   id: string;
@@ -90,6 +91,7 @@ const BookingForm = ({
   const [paymentMethodsLoading, setPaymentMethodsLoading] = useState(false);
   const [savedProperties, setSavedProperties] = useState<SavedProperty[]>([]);
   const [showPropertySelector, setShowPropertySelector] = useState(false);
+  const [isAddCardModalVisible, setIsAddCardModalVisible] = useState(false);
 
   const [bookingData, setBookingData] = useState<BookingFormData>({
     serviceId: service?.id || "",
@@ -252,6 +254,76 @@ const BookingForm = ({
 
     // Proceed to next step (confirmation)
     nextStep();
+  };
+
+  const handleAddCard = async (cardDetails: any) => {
+    console.log("New card added:", cardDetails);
+    setIsAddCardModalVisible(false);
+
+    try {
+      // Fetch fresh payment methods directly to get the newly added card
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+      if (sessionError || !session) {
+        throw new Error("Authentication required");
+      }
+
+      const { data, error } = await supabase.functions.invoke(
+        "stripe-customer-api",
+        {
+          body: { path: "list-payment-methods" },
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        }
+      );
+
+      if (error) {
+        console.error("Error loading payment methods:", error);
+        showNotification({
+          title: "Success",
+          message: "Card added successfully. Please select it from the list.",
+          type: "success",
+        });
+        await loadPaymentMethods(); // Still refresh the UI list
+        return;
+      }
+
+      const freshPaymentMethods = data?.paymentMethods || [];
+      setPaymentMethods(freshPaymentMethods);
+
+      // Find the newly added card by matching brand and last4
+      const newCard = freshPaymentMethods.find(
+        (pm: StripePaymentMethod) =>
+          pm.card.last4 === cardDetails.card_last4 &&
+          pm.card.brand === cardDetails.card_brand
+      );
+
+      if (newCard) {
+        // Auto-select the newly added card
+        handlePaymentMethodSelect(newCard.id, newCard);
+        showNotification({
+          title: "Success",
+          message: "Card added and selected for payment",
+          type: "success",
+        });
+      } else {
+        // If we couldn't find it immediately, just show success message
+        showNotification({
+          title: "Success",
+          message: "Card added successfully. Please select it from the list.",
+          type: "success",
+        });
+      }
+    } catch (error) {
+      console.error("Error in handleAddCard:", error);
+      showNotification({
+        title: "Success",
+        message: "Card added successfully. Please select it from the list.",
+        type: "success",
+      });
+      await loadPaymentMethods(); // Refresh the UI list as fallback
+    }
   };
 
   const nextStep = () => {
@@ -686,7 +758,7 @@ const BookingForm = ({
             {/* Add New Card Button */}
             <TouchableOpacity
               className="flex-row items-center justify-center bg-green-500 rounded-lg p-4 mb-3 shadow-sm"
-              onPress={() => handlePaymentMethodSelect("new_card", { id: "new_card", name: "New Card" })}
+              onPress={() => setIsAddCardModalVisible(true)}
             >
               <Plus size={20} color="#ffffff" />
               <Text className="text-white font-semibold text-lg ml-2">Add New Card</Text>
@@ -984,6 +1056,14 @@ const BookingForm = ({
           </View>
         </View>
       </Modal>
+
+      {/* Add Payment Method Modal */}
+      <AddPaymentMethodModal
+        visible={isAddCardModalVisible}
+        onClose={() => setIsAddCardModalVisible(false)}
+        onSaveSuccess={handleAddCard}
+        stripePublishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || ""}
+      />
     </View>
   );
 };
