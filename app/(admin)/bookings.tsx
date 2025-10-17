@@ -162,6 +162,12 @@ export default function BookingsScreen() {
           <Text className="text-gray-600 text-sm">{item.scheduled_time}</Text>
         </View>
 
+        <View className="mb-2">
+          <Text className="text-gray-500 text-xs">
+            Booked: {format(parseISO(item.created_at), "MMM d, yyyy 'at' h:mm a")}
+          </Text>
+        </View>
+
         {item.address && (
           <View className="mb-3 pb-3 border-b border-gray-100">
             <Text className="text-gray-500 text-sm">{item.address}</Text>

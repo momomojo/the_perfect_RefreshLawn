@@ -122,6 +122,24 @@ export interface PaymentMethod {
 }
 
 /**
+ * Saved Property related types and functions
+ */
+export interface SavedProperty {
+  id: string;
+  customer_id: string;
+  nickname: string;
+  address: string;
+  city?: string;
+  state?: string;
+  zip_code?: string;
+  property_size?: string; // small, medium, large, extra_large
+  area_type?: string; // front_yard, back_yard, both
+  is_default: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/**
  * Notification related types and functions
  */
 export interface Notification {
@@ -689,6 +707,75 @@ export async function removePaymentMethod(paymentMethodId: string) {
 
   if (error) throw error;
   return true;
+}
+
+/**
+ * Saved Property related functions
+ */
+export async function getSavedProperties(customerId: string) {
+  const { data, error } = await supabase
+    .from("saved_properties")
+    .select("*")
+    .eq("customer_id", customerId)
+    .order("is_default", { ascending: false })
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+  return data as SavedProperty[];
+}
+
+export async function createSavedProperty(
+  property: Omit<SavedProperty, "id" | "created_at" | "updated_at">
+) {
+  const { data, error } = await supabase
+    .from("saved_properties")
+    .insert(property)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as SavedProperty;
+}
+
+export async function updateSavedProperty(
+  propertyId: string,
+  updates: Partial<SavedProperty>
+) {
+  const { data, error } = await supabase
+    .from("saved_properties")
+    .update(updates)
+    .eq("id", propertyId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as SavedProperty;
+}
+
+export async function deleteSavedProperty(propertyId: string) {
+  const { error } = await supabase
+    .from("saved_properties")
+    .delete()
+    .eq("id", propertyId);
+
+  if (error) throw error;
+  return true;
+}
+
+export async function setDefaultProperty(propertyId: string, customerId: string) {
+  try {
+    // Use the RPC function to ensure only one default property
+    const { error } = await supabase.rpc("set_default_property", {
+      property_id: propertyId,
+      user_id: customerId,
+    });
+
+    if (error) throw error;
+    return true;
+  } catch (err) {
+    console.error("Error setting default property:", err);
+    throw err;
+  }
 }
 
 /**

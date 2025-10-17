@@ -7,6 +7,7 @@ import {
   Image,
   ActivityIndicator,
   Alert,
+  Modal,
 } from "react-native";
 import {
   ChevronRight,
@@ -17,10 +18,12 @@ import {
   Check,
   ArrowLeft,
   ArrowRight,
+  Plus,
+  Home,
+  X,
 } from "lucide-react-native";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../lib/auth"; // Correct import for user authentication
-import AddPaymentMethodModal from "../common/AddPaymentMethodModal";
 import BookingHeader from "./BookingHeader";
 import {
   getRecurringPlans,
@@ -28,6 +31,8 @@ import {
   RecurringPlan,
   Service,
   Profile,
+  getSavedProperties,
+  SavedProperty,
 } from "../../../lib/data";
 import { format, addDays } from "date-fns";
 import { showNotification } from "@/lib/notification"; // Import the utility
@@ -77,16 +82,14 @@ const BookingForm = ({
   const { user } = useAuth(); // Get user from auth context
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
-  const [paymentMethodsLoading, setPaymentMethodsLoading] = useState(false);
-  const [hasLoadedPaymentMethods, setHasLoadedPaymentMethods] = useState(false);
   const [services, setServices] = useState<Service[]>([]);
   const [recurringPlans, setRecurringPlans] = useState<RecurringPlan[]>([]);
   const [availableDates, setAvailableDates] = useState<string[]>([]);
   const [timeSlots, setTimeSlots] = useState<string[]>([]);
-  const [fetchedPaymentMethods, setFetchedPaymentMethods] = useState<
-    StripePaymentMethod[]
-  >([]);
-  const [showAddCardModal, setShowAddCardModal] = useState(false);
+  const [paymentMethods, setPaymentMethods] = useState<StripePaymentMethod[]>([]);
+  const [paymentMethodsLoading, setPaymentMethodsLoading] = useState(false);
+  const [savedProperties, setSavedProperties] = useState<SavedProperty[]>([]);
+  const [showPropertySelector, setShowPropertySelector] = useState(false);
 
   const [bookingData, setBookingData] = useState<BookingFormData>({
     serviceId: service?.id || "",
@@ -145,13 +148,6 @@ const BookingForm = ({
     }
   }, [service, currentStep]);
 
-  // Load payment methods when needed
-  useEffect(() => {
-    // Only load payment methods when on payment step and haven't loaded yet
-    if (currentStep >= 5 && !hasLoadedPaymentMethods && !paymentMethodsLoading && user) {
-      loadPaymentMethods();
-    }
-  }, [currentStep, hasLoadedPaymentMethods, paymentMethodsLoading, user]);
 
   // Setup available dates and time slots
   useEffect(() => {
@@ -170,91 +166,91 @@ const BookingForm = ({
     ]);
   }, []);
 
+  // Load payment methods when reaching payment step
+  useEffect(() => {
+    if (currentStep === 6 && user) {
+      loadPaymentMethods();
+    }
+  }, [currentStep, user]);
+
+  // Load saved properties when reaching address step
+  useEffect(() => {
+    if (currentStep === 4 && user) {
+      loadSavedProperties();
+    }
+  }, [currentStep, user]);
+
   const loadPaymentMethods = async () => {
-    if (!user) return;
     setPaymentMethodsLoading(true);
     try {
-      console.log("Fetching payment methods for user:", user.id);
-      
-      // Get the current session token
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
+
       if (sessionError || !session) {
-        throw new Error("Authentication session not found");
+        throw new Error("Authentication required");
       }
-      
-      const { data, error } = await supabase.functions.invoke("stripe-customer-api", {
-        body: { path: "list-payment-methods" },
-        // Explicitly set the Authorization header with the access token
-        headers: {
-          Authorization: `Bearer ${session.access_token}`
+
+      const { data, error } = await supabase.functions.invoke(
+        "stripe-customer-api",
+        {
+          body: { path: "list-payment-methods" },
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
         }
-      });
+      );
 
       if (error) {
-        console.error("Supabase function error:", error);
-        throw error;
+        console.error("Error loading payment methods:", error);
+        setPaymentMethods([]);
+        return;
       }
 
-      console.log("Payment methods response:", data);
-
-      if (data && data.paymentMethods && Array.isArray(data.paymentMethods)) {
-        console.log(`Found ${data.paymentMethods.length} payment methods`);
-        setFetchedPaymentMethods(data.paymentMethods);
-      } else {
-        console.log("No payment methods found or invalid response format");
-        setFetchedPaymentMethods([]);
-      }
+      setPaymentMethods(data?.paymentMethods || []);
     } catch (error) {
-      console.error("Error fetching payment methods:", error);
-      setFetchedPaymentMethods([]); // Reset on error
-      showNotification({
-        title: "Payment Error",
-        message: parseStripeError(error),
-        type: "error",
-      });
+      console.error("Error loading payment methods:", error);
+      setPaymentMethods([]);
     } finally {
       setPaymentMethodsLoading(false);
-      setHasLoadedPaymentMethods(true); // Mark as loaded regardless of success/failure
     }
   };
 
-  const handleAddNewCard = () => {
-    setShowAddCardModal(true);
-  };
-
-  const handleCardAdded = () => {
-    setShowAddCardModal(false);
-    // Refresh the payment methods list after adding a new card
-    setHasLoadedPaymentMethods(false); // Reset flag to allow reloading
-    loadPaymentMethods();
-  };
-
-  // Make sure cash is always an option, and add card option is always last
-  const paymentOptions = [
-    { id: "cash", name: "Cash on Delivery", type: "static", details: { id: "cash", name: "Cash" } },
-    ...fetchedPaymentMethods.map((pm) => ({
-      id: pm.id,
-      name: `${pm.card?.brand || "Card"} ending in ${pm.card?.last4 || "????"}`,
-      type: "stripe",
-      details: pm,
-    })),
-    { id: "add_new", name: "Add New Credit/Debit Card", type: "action" },
-  ];
-
-  const handlePaymentMethodSelect = (
-    methodId: string,
-    details?: StripePaymentMethod | { id: "cash"; name: "Cash" }
-  ) => {
-    if (methodId === "add_new") {
-      handleAddNewCard();
-      return;
+  const loadSavedProperties = async () => {
+    if (!user) return;
+    try {
+      const properties = await getSavedProperties(user.id);
+      setSavedProperties(properties);
+    } catch (error) {
+      console.error("Error loading saved properties:", error);
+      setSavedProperties([]);
     }
+  };
+
+  const handlePropertySelect = (property: SavedProperty) => {
     setBookingData({
       ...bookingData,
-      paymentMethod: methodId,
+      address: property.address,
+      propertySize: property.property_size || "",
+      areaType: property.area_type || "",
+    });
+    setShowPropertySelector(false);
+    showNotification({
+      title: "Property Selected",
+      message: `Using "${property.nickname}" address`,
+      type: "success",
+    });
+  };
+
+  const handlePaymentMethodSelect = (paymentMethodId: string, details?: StripePaymentMethod | { id: "cash"; name: "Cash" }) => {
+    console.log("Payment method selected:", paymentMethodId);
+
+    // Set the payment method in booking data
+    setBookingData({
+      ...bookingData,
+      paymentMethod: paymentMethodId,
       paymentMethodDetails: details,
     });
+
+    // Proceed to next step (confirmation)
     nextStep();
   };
 
@@ -276,10 +272,19 @@ const BookingForm = ({
   const generateAvailableDates = () => {
     const dates = [];
     const today = new Date();
+    console.log("[generateAvailableDates] Today (before setHours):", today.toISOString());
+    // Set to noon to avoid timezone edge cases when converting to/from strings
+    today.setHours(12, 0, 0, 0);
+    console.log("[generateAvailableDates] Today (after setHours to noon):", today.toISOString());
     for (let i = 1; i <= 14; i++) {
       const date = addDays(today, i);
-      dates.push(format(date, "yyyy-MM-dd"));
+      const formatted = format(date, "yyyy-MM-dd");
+      if (i === 3) { // Log the 3rd date (which should be Oct 20)
+        console.log(`[generateAvailableDates] Date ${i}: ${formatted} (Date object: ${date.toISOString()})`);
+      }
+      dates.push(formatted);
     }
+    console.log("[generateAvailableDates] First 5 dates generated:", dates.slice(0, 5));
     return dates;
   };
 
@@ -294,6 +299,8 @@ const BookingForm = ({
   };
 
   const handleDateSelect = (date: string) => {
+    console.log("[BookingForm] Date selected - RAW VALUE:", date);
+    console.log("[BookingForm] Date type:", typeof date);
     setBookingData({ ...bookingData, date });
     nextStep();
   };
@@ -397,25 +404,31 @@ const BookingForm = ({
           </Text>
         </View>
         <ScrollView className="flex-1">
-          {availableDates.map((date) => (
-            <TouchableOpacity
-              key={date}
-              className="flex-row items-center justify-between bg-white rounded-lg p-4 mb-3 shadow-sm"
-              onPress={() => handleDateSelect(date)}
-            >
-              <View className="flex-row items-center">
-                <Calendar size={20} color="#10B981" className="mr-3" />
-                <Text className="text-lg">
-                  {new Date(date).toLocaleDateString("en-US", {
-                    weekday: "short",
-                    month: "short",
-                    day: "numeric",
-                  })}
-                </Text>
-              </View>
-              <ChevronRight size={20} color="#9CA3AF" />
-            </TouchableOpacity>
-          ))}
+          {availableDates.map((date) => {
+            // Parse date string as local date to avoid timezone shifts
+            const [year, month, day] = date.split('-').map(Number);
+            const localDate = new Date(year, month - 1, day);
+
+            return (
+              <TouchableOpacity
+                key={date}
+                className="flex-row items-center justify-between bg-white rounded-lg p-4 mb-3 shadow-sm"
+                onPress={() => handleDateSelect(date)}
+              >
+                <View className="flex-row items-center">
+                  <Calendar size={20} color="#10B981" className="mr-3" />
+                  <Text className="text-lg">
+                    {localDate.toLocaleDateString("en-US", {
+                      weekday: "short",
+                      month: "short",
+                      day: "numeric",
+                    })}
+                  </Text>
+                </View>
+                <ChevronRight size={20} color="#9CA3AF" />
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
       </View>
     );
@@ -431,11 +444,15 @@ const BookingForm = ({
           </Text>
           <Text className="text-gray-600">
             Date:{" "}
-            {new Date(bookingData.date).toLocaleDateString("en-US", {
-              weekday: "long",
-              month: "long",
-              day: "numeric",
-            })}
+            {(() => {
+              const [year, month, day] = bookingData.date.split('-').map(Number);
+              const localDate = new Date(year, month - 1, day);
+              return localDate.toLocaleDateString("en-US", {
+                weekday: "long",
+                month: "long",
+                day: "numeric",
+              });
+            })()}
           </Text>
         </View>
         <ScrollView className="flex-1">
@@ -460,7 +477,21 @@ const BookingForm = ({
     return (
       <View className="flex-1 px-4">
         <Text className="text-xl font-bold mb-4">Confirm Service Address</Text>
-        <Text className="text-gray-600 mb-2">Please confirm or update the address for your service.</Text>
+
+        {/* Saved Properties Button */}
+        {savedProperties.length > 0 && (
+          <TouchableOpacity
+            className="bg-green-100 border border-green-300 rounded-lg p-3 mb-4 flex-row items-center justify-center"
+            onPress={() => setShowPropertySelector(true)}
+          >
+            <Home size={20} color="#10b981" />
+            <Text className="text-green-700 font-semibold ml-2">
+              Select from Saved Properties
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        <Text className="text-gray-600 mb-2">Or enter address manually:</Text>
         <TextInput
           className="bg-white border border-gray-300 rounded-lg p-3 mb-4 text-gray-800"
           placeholder="Enter service address"
@@ -602,68 +633,66 @@ const BookingForm = ({
     return (
       <View className="flex-1 px-4">
         <Text className="text-xl font-bold mb-4">Payment Method</Text>
-        <ScrollView className="flex-1">
-          {paymentMethodsLoading ? (
-            <View className="items-center justify-center py-10">
-              <ActivityIndicator size="large" color="#16a34a" />
-              <Text className="mt-2 text-gray-600">Loading cards...</Text>
-            </View>
-          ) : (
-            paymentOptions.map((method) => (
+        <Text className="text-gray-600 mb-4">Select how you'd like to pay</Text>
+
+        {paymentMethodsLoading ? (
+          <View className="flex-1 justify-center items-center">
+            <ActivityIndicator size="large" color="#16a34a" />
+            <Text className="mt-4 text-gray-600">Loading payment methods...</Text>
+          </View>
+        ) : (
+          <ScrollView className="flex-1">
+            {/* Cash on Delivery Option */}
+            <TouchableOpacity
+              className="flex-row items-center justify-between bg-white rounded-lg p-4 mb-3 shadow-sm border-2 border-gray-200"
+              onPress={() => handlePaymentMethodSelect("cash", { id: "cash", name: "Cash" })}
+            >
+              <View className="flex-row items-center">
+                <View className="bg-green-100 p-2 rounded-full mr-3">
+                  <CreditCard size={24} color="#16a34a" />
+                </View>
+                <View>
+                  <Text className="text-lg font-semibold">Cash on Delivery</Text>
+                  <Text className="text-gray-500 text-sm">Pay when service is completed</Text>
+                </View>
+              </View>
+              <ChevronRight size={20} color="#9CA3AF" />
+            </TouchableOpacity>
+
+            {/* Saved Payment Methods */}
+            {paymentMethods.map((method) => (
               <TouchableOpacity
                 key={method.id}
-                className="flex-row justify-between items-center bg-white p-4 rounded-lg shadow-sm mb-3"
-                onPress={() =>
-                  handlePaymentMethodSelect(
-                    method.id,
-                    method.details as StripePaymentMethod | { id: "cash"; name: "Cash" }
-                  )
-                }
+                className="flex-row items-center justify-between bg-white rounded-lg p-4 mb-3 shadow-sm border-2 border-gray-200"
+                onPress={() => handlePaymentMethodSelect(method.id, method)}
               >
                 <View className="flex-row items-center">
-                  <View className="bg-gray-100 p-2 rounded-full mr-3">
-                    <CreditCard
-                      size={24}
-                      color={method.type === "action" ? "#10B981" : "#4B5563"}
-                    />
+                  <View className="bg-blue-100 p-2 rounded-full mr-3">
+                    <CreditCard size={24} color="#3b82f6" />
                   </View>
                   <View>
-                    <Text
-                      className={`text-lg font-medium ${
-                        method.type === "action" ? "text-green-600" : ""
-                      }`}
-                    >
-                      {method.name}
+                    <Text className="text-lg font-semibold">
+                      {method.card?.brand ? method.card.brand.charAt(0).toUpperCase() + method.card.brand.slice(1) : "Card"} •••• {method.card?.last4}
+                    </Text>
+                    <Text className="text-gray-500 text-sm">
+                      Expires {method.card?.exp_month}/{method.card?.exp_year}
                     </Text>
                   </View>
                 </View>
-                <ChevronRight
-                  size={20}
-                  color={method.type === "action" ? "#10B981" : "#9CA3AF"}
-                />
+                <ChevronRight size={20} color="#9CA3AF" />
               </TouchableOpacity>
-            ))
-          )}
-        </ScrollView>
+            ))}
 
-        <View className="mt-auto">
-          <TouchableOpacity
-            className="bg-gray-100 rounded-lg py-3 px-4 mb-3"
-            onPress={prevStep}
-          >
-            <Text className="text-center text-gray-600 font-semibold">
-              Back
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Add Card Modal */}
-        <AddPaymentMethodModal
-          visible={showAddCardModal}
-          onClose={() => setShowAddCardModal(false)}
-          onSaveSuccess={handleCardAdded} // Changed from onSuccess to onSaveSuccess
-          stripePublishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || ''} // Added required prop
-        />
+            {/* Add New Card Button */}
+            <TouchableOpacity
+              className="flex-row items-center justify-center bg-green-500 rounded-lg p-4 mb-3 shadow-sm"
+              onPress={() => handlePaymentMethodSelect("new_card", { id: "new_card", name: "New Card" })}
+            >
+              <Plus size={20} color="#ffffff" />
+              <Text className="text-white font-semibold text-lg ml-2">Add New Card</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        )}
       </View>
     );
   };
@@ -703,11 +732,15 @@ const BookingForm = ({
             <View className="flex-row mb-2">
               <Text className="text-gray-600 w-1/3">Date:</Text>
               <Text className="font-medium flex-1">
-                {new Date(bookingData.date).toLocaleDateString("en-US", {
-                  weekday: "long",
-                  month: "long",
-                  day: "numeric",
-                })}
+                {(() => {
+                  const [year, month, day] = bookingData.date.split('-').map(Number);
+                  const localDate = new Date(year, month - 1, day);
+                  return localDate.toLocaleDateString("en-US", {
+                    weekday: "long",
+                    month: "long",
+                    day: "numeric",
+                  });
+                })()}
               </Text>
             </View>
             <View className="flex-row mb-2">
@@ -855,6 +888,102 @@ const BookingForm = ({
         })()}
       />
       {renderCurrentStep()}
+
+      {/* Property Selector Modal */}
+      <Modal
+        visible={showPropertySelector}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowPropertySelector(false)}
+      >
+        <View className="flex-1 justify-end bg-black/50">
+          <View className="bg-white rounded-t-3xl p-6 max-h-3/4">
+            <View className="flex-row justify-between items-center mb-4">
+              <Text className="text-xl font-bold text-gray-800">
+                Select Property
+              </Text>
+              <TouchableOpacity onPress={() => setShowPropertySelector(false)}>
+                <X size={24} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {savedProperties.length === 0 ? (
+                <View className="py-8 items-center">
+                  <Home size={48} color="#9CA3AF" />
+                  <Text className="text-gray-500 text-center mt-4">
+                    No saved properties yet
+                  </Text>
+                </View>
+              ) : (
+                savedProperties.map((property) => (
+                  <TouchableOpacity
+                    key={property.id}
+                    className={`bg-white border rounded-lg p-4 mb-3 shadow-sm ${
+                      property.is_default
+                        ? "border-green-500 border-2"
+                        : "border-gray-200"
+                    }`}
+                    onPress={() => handlePropertySelect(property)}
+                  >
+                    <View className="flex-row justify-between items-start mb-2">
+                      <View className="flex-row items-center flex-1">
+                        <Home
+                          size={20}
+                          color={property.is_default ? "#10b981" : "#6b7280"}
+                        />
+                        <Text className="text-lg font-semibold text-gray-800 ml-2">
+                          {property.nickname}
+                        </Text>
+                        {property.is_default && (
+                          <View className="ml-2 bg-green-100 px-2 py-1 rounded-full">
+                            <Text className="text-xs text-green-800 font-medium">
+                              Default
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+
+                    <View className="flex-row items-start mt-2">
+                      <MapPin size={16} color="#6b7280" className="mt-1" />
+                      <View className="flex-1 ml-2">
+                        <Text className="text-gray-600">{property.address}</Text>
+                        {(property.city || property.state || property.zip_code) && (
+                          <Text className="text-gray-500 text-sm">
+                            {[property.city, property.state, property.zip_code]
+                              .filter(Boolean)
+                              .join(", ")}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+
+                    {(property.property_size || property.area_type) && (
+                      <View className="flex-row mt-2 space-x-2">
+                        {property.property_size && (
+                          <View className="bg-gray-100 px-2 py-1 rounded">
+                            <Text className="text-xs text-gray-600 capitalize">
+                              {property.property_size.replace("_", " ")}
+                            </Text>
+                          </View>
+                        )}
+                        {property.area_type && (
+                          <View className="bg-gray-100 px-2 py-1 rounded ml-2">
+                            <Text className="text-xs text-gray-600 capitalize">
+                              {property.area_type.replace("_", " ")}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };

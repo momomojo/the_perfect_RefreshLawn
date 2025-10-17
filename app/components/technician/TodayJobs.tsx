@@ -20,6 +20,7 @@ interface Job {
   serviceType: string;
   status: Booking["status"];
   propertyImage?: string;
+  createdAt: string;
 }
 
 interface TodayJobsProps {
@@ -71,6 +72,7 @@ const TodayJobs = ({
           status: booking.status as Booking["status"],
           propertyImage:
             "https://images.unsplash.com/photo-1560749003-f4b1e17e2dfd?w=400&q=80", // Default image
+          createdAt: booking.created_at,
         }));
 
         setJobs(mappedJobs);
@@ -278,6 +280,11 @@ const TodayJobs = ({
                     <Clock size={14} color="#6b7280" />
                     <Text className="text-gray-500 text-xs ml-1">
                       {job.time}
+                    </Text>
+                  </View>
+                  <View className="mt-1">
+                    <Text className="text-gray-400 text-xs">
+                      Booked: {format(parseISO(job.createdAt), "MMM d 'at' h:mm a")}
                     </Text>
                   </View>
                 </View>
