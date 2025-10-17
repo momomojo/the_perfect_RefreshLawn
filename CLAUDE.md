@@ -277,3 +277,4 @@ The database includes performance optimizations:
 8. **Migration Order**: Migrations run alphabetically by filename - use timestamp prefixes
 9. **Booking Images**: Before/after photos stored in Supabase Storage `booking-images` bucket with RLS policies
 10. **Notification Types**: Must match enum constraint in database - see `lib/data.ts` Notification type definition
+11. **Payment Testing Workflow**: When testing payments, always verify: (1) booking was inserted correctly in database using Supabase MCP, and check edge function invocation logs via Supabase CLI/MCP; (2) Stripe webhook event logs via Stripe CLI/MCP to confirm all edge functions executed successfully
