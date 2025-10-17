@@ -14,7 +14,12 @@
     "web": "expo start --web",
     "test": "jest --watchAll",
     "lint": "expo lint",
-    "validate-env": "node ./scripts/validate-env.js"
+    "validate-env": "node ./scripts/validate-env.js",
+    "logs:prod": "bash scripts/logs/tail-production.sh",
+    "logs:webhook": "bash scripts/logs/tail-stripe-webhook.sh",
+    "logs:payment": "bash scripts/logs/tail-stripe-payment.sh",
+    "logs:receiver": "bash scripts/logs/start-webhook-receiver.sh",
+    "logs:launch": "node scripts/logs/launch-dev.js"
   },
   "dependencies": {
     "@expo/vector-icons": "^14.0.2",

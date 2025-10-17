@@ -25,6 +25,11 @@ npm-debug.*
 yarn-debug.*
 yarn-error.*
 
+# Logs (only root logs/ directory, not scripts/logs/)
+/logs/
+*.ndjson
+.env.logs
+
 # macOS
 .DS_Store
 *.pem

@@ -123,6 +123,45 @@ Real-time features are implemented using Supabase's PostgreSQL real-time via `li
 
 Always unsubscribe using `unsubscribeFromChannel()` in cleanup (useEffect return).
 
+### Log Monitoring System
+
+  A comprehensive logging system captures Supabase Edge Function logs and Stripe webhook payloads for debugging and analysis.
+
+  **Quick Start:**
+  
+  ```bash
+  npm run logs:launch    # Auto-opens 3 terminals: webhook receiver, Stripe forwarding, production logs
+
+  Configuration:
+  - Project ref auto-loaded from .env.logs (already configured: iqxdatlqgvdcvyfdxywf)
+  - No manual setup required
+
+  Individual Commands:
+  npm run logs:prod      # Tail all Edge Functions
+  npm run logs:webhook   # Tail stripe-webhook function only
+  npm run logs:payment   # Tail stripe-payment-api function only
+  npm run logs:receiver  # Start local webhook receiver (port 8787)
+
+  Log Files:
+  - Production: logs/production/*.ndjson - Edge Function invocations and console output
+  - Development: logs/development/webhooks.ndjson - Local webhook payloads
+  - Format: NDJSON (newline-delimited JSON)
+
+  Claude Code Integration:
+  Claude can directly read and analyze log files. Ask Claude to:
+  - "Show me recent webhook errors from logs/production/stripe-webhook.ndjson"
+  - "Find all payment_intent.succeeded events in the last hour"
+  - "Analyze why booking creation failed for payment intent pi_xxx"
+  - "Compare webhook timing between successful and failed bookings"
+
+  Detailed Documentation:
+  See scripts/logs/README.md for:
+  - Complete setup instructions
+  - Troubleshooting guide
+  - Advanced usage examples
+  - Platform-specific launcher details
+  - Log filtering and analysis techniques
+
 ### File & Folder Structure
 
 ```
@@ -277,4 +316,4 @@ The database includes performance optimizations:
 8. **Migration Order**: Migrations run alphabetically by filename - use timestamp prefixes
 9. **Booking Images**: Before/after photos stored in Supabase Storage `booking-images` bucket with RLS policies
 10. **Notification Types**: Must match enum constraint in database - see `lib/data.ts` Notification type definition
-11. **Payment Testing Workflow**: When testing payments, always verify: (1) booking was inserted correctly in database using Supabase MCP, and check edge function invocation logs via Supabase CLI/MCP; (2) Stripe webhook event logs via Stripe CLI/MCP to confirm all edge functions executed successfully
+- we are not using local supabase, use supabase mcp or cli when needing to interact with backend, query, or apply specific migrations using supabase mcp
