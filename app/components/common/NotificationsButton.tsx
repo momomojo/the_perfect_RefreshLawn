@@ -9,6 +9,7 @@ import {
 } from "../../../lib/data";
 import NotificationCenter from "./NotificationCenter";
 import { useAuth } from "../../../lib/auth";
+import { useRealtimeNotifications } from "../../../lib/hooks";
 
 interface NotificationsButtonProps {
   variant?: "light" | "dark";
@@ -17,18 +18,29 @@ interface NotificationsButtonProps {
 const NotificationsButton = ({
   variant = "dark",
 }: NotificationsButtonProps) => {
-  const [unreadCount, setUnreadCount] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
   const { user } = useAuth();
 
-  // Fetch unread notifications count on mount and when notifications are toggled
+  // Real-time subscription for notifications with live unread count
+  const {
+    unreadCount: realtimeUnreadCount,
+    isSubscribed,
+  } = useRealtimeNotifications({
+    userId: user?.id,
+    enabled: !!user?.id,
+  });
+
+  // Use real-time count (fallback to 0 if not subscribed yet)
+  const unreadCount = realtimeUnreadCount;
+
+  // Log subscription status for debugging
   useEffect(() => {
-    if (user) {
-      fetchUnreadCount();
+    if (isSubscribed) {
+      console.log("[NotificationsButton] Real-time subscription active, unread count:", unreadCount);
     }
-  }, [user, showNotifications]);
+  }, [isSubscribed, unreadCount]);
 
   const fetchUnreadCount = async () => {
     try {
@@ -80,8 +92,7 @@ const NotificationsButton = ({
     try {
       const success = await markNotificationRead(id);
 
-      // Even if the backend operation failed, update the UI optimistically
-      // since we have error handling in the markNotificationRead function
+      // Update the UI optimistically
       setNotifications(
         notifications.map((notification) =>
           notification.id === id
@@ -90,13 +101,10 @@ const NotificationsButton = ({
         )
       );
 
-      // Only update the count if backend reported success
-      if (success) {
-        setUnreadCount(Math.max(0, unreadCount - 1));
-      }
+      // Note: Unread count will automatically update via real-time subscription
+      // when the database record changes, so we don't need to manually decrement
     } catch (error) {
       console.error("Error marking notification as read:", error);
-      // No need to show alert as the UI already updated optimistically
     }
   };
 
@@ -104,18 +112,15 @@ const NotificationsButton = ({
     try {
       const success = await markAllNotificationsRead();
 
-      // Even if the backend operation failed, update the UI optimistically
+      // Update the UI optimistically
       setNotifications(
         notifications.map((notification) => ({ ...notification, read: true }))
       );
 
-      // Only update the count if backend reported success
-      if (success) {
-        setUnreadCount(0);
-      }
+      // Note: Unread count will automatically update via real-time subscription
+      // when the database records change, so we don't need to manually set to 0
     } catch (error) {
       console.error("Error marking all notifications as read:", error);
-      // No need to show alert as the UI already updated optimistically
     }
   };
 

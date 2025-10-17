@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   SafeAreaView,
   Image,
+  RefreshControl,
 } from "react-native";
 import { useLocalSearchParams, Stack, useRouter } from "expo-router";
 import {
@@ -25,6 +26,7 @@ import {
 } from "lucide-react-native";
 import { getBooking } from "../../../lib/data"; // Assuming getBooking fetches related data
 import { format } from "date-fns";
+import { useRealtimeBookings } from "../../../lib/hooks";
 
 // Helper function to get status color and icon
 const getStatusStyle = (status: string) => {
@@ -70,32 +72,53 @@ export default function BookingDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [booking, setBooking] = useState<any>(null); // Use a proper type/interface later
 
+  // Real-time subscription for this specific booking
+  const { bookings: realtimeBookings } = useRealtimeBookings({
+    bookingId: id as string,
+    enabled: !!id,
+  });
+
+  // Initial load
   useEffect(() => {
     if (!id) {
       setError("Booking ID not provided.");
       setLoading(false);
       return;
     }
-    (async () => {
+    const loadBooking = async () => {
       try {
-        setLoading(true);
+        if (!loading) setRefreshing(true);
+        if (loading) setLoading(true);
+
         const data = await getBooking(id as string);
         if (!data) {
           throw new Error("Booking not found.");
         }
         setBooking(data);
-        console.log("Booking data loaded:", data); // Log fetched data
+        console.log("Booking data loaded:", data);
       } catch (err: any) {
         console.error("Error loading booking details:", err);
         setError(err.message || "Failed to load booking details");
       } finally {
         setLoading(false);
+        setRefreshing(false);
       }
-    })();
+    };
+
+    loadBooking();
   }, [id]);
+
+  // Update booking when real-time changes occur
+  useEffect(() => {
+    if (realtimeBookings.length > 0 && realtimeBookings[0].id === id) {
+      console.log("Real-time update received for booking:", realtimeBookings[0]);
+      setBooking(realtimeBookings[0]);
+    }
+  }, [realtimeBookings, id]);
 
   if (loading) {
     return (
@@ -179,6 +202,24 @@ export default function BookingDetailsScreen() {
       <ScrollView
         className="flex-1"
         contentContainerStyle={{ paddingBottom: 32 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={async () => {
+              try {
+                setRefreshing(true);
+                const data = await getBooking(id as string);
+                if (data) setBooking(data);
+              } catch (err) {
+                console.error("Error refreshing:", err);
+              } finally {
+                setRefreshing(false);
+              }
+            }}
+            colors={["#16a34a"]}
+            tintColor="#16a34a"
+          />
+        }
       >
         {/* Service Details Card */}
         <View className="bg-white rounded-lg shadow-md m-4 p-4">

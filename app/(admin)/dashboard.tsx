@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   SafeAreaView,
   TouchableOpacity,
   ActivityIndicator,
+  RefreshControl,
 } from "react-native";
 import { Bell } from "lucide-react-native";
 import BusinessMetrics from "../components/admin/BusinessMetrics";
@@ -16,11 +17,13 @@ import { useRouter } from "expo-router";
 import { supabase } from "../../lib/supabase";
 import { getAllBookings, Booking, Profile } from "../../lib/data";
 import { format } from "date-fns";
+import { useRealtimeBookings } from "../../lib/hooks";
 
 const AdminDashboard = () => {
   const { refreshRole } = useUserRole();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [metricsData, setMetricsData] = useState({
     revenue: "$0",
     revenueChange: "+0%",
@@ -40,6 +43,7 @@ const AdminDashboard = () => {
   const [completedCount, setCompletedCount] = useState(0);
   const [inProgressCount, setInProgressCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [allBookings, setAllBookings] = useState<Booking[]>([]);
 
   // Format bookings to match the TodayOverview component's expectations
   const formatBookingsForDisplay = (bookings: Booking[]) => {
@@ -59,32 +63,33 @@ const AdminDashboard = () => {
     }));
   };
 
-  // Fetch metrics and bookings data on component mount
-  useEffect(() => {
-    const fetchDashboardData = async () => {
-      try {
-        setLoading(true);
+  // Fetch metrics and bookings data
+  const fetchDashboardData = useCallback(async () => {
+    try {
+      if (!loading) setRefreshing(true);
+      if (loading) setLoading(true);
 
-        // Get today's date in ISO format (YYYY-MM-DD)
-        const today = format(new Date(), "yyyy-MM-dd");
+      // Get today's date in ISO format (YYYY-MM-DD)
+      const today = format(new Date(), "yyyy-MM-dd");
 
-        // Fetch all bookings
-        const allBookings = await getAllBookings();
+      // Fetch all bookings
+      const bookingsData = await getAllBookings();
+      setAllBookings(bookingsData);
 
-        // Filter bookings for today
-        const todaysBookings = allBookings.filter(
-          (booking) => booking.scheduled_date === today
-        );
+      // Filter bookings for today
+      const todaysBookings = bookingsData.filter(
+        (booking) => booking.scheduled_date === today
+      );
 
-        // Calculate metrics
-        const totalRevenue = allBookings.reduce(
-          (sum, booking) => sum + Number(booking.price),
-          0
-        );
+      // Calculate metrics
+      const totalRevenue = bookingsData.reduce(
+        (sum, booking) => sum + Number(booking.price),
+        0
+      );
 
-        const completedBookings = allBookings.filter(
-          (booking) => booking.status === "completed"
-        );
+      const completedBookings = bookingsData.filter(
+        (booking) => booking.status === "completed"
+      );
 
         const completedTodayCount = todaysBookings.filter(
           (booking) => booking.status === "completed"
@@ -141,20 +146,46 @@ const AdminDashboard = () => {
           customersIsPositive: true,
         });
 
-        setUpcomingJobs(scheduledToday);
-        setCompletedCount(completedTodayCount);
-        setInProgressCount(inProgressTodayCount);
-        setIssuesCount(issuesCount);
-      } catch (err: any) {
-        console.error("Error fetching dashboard data:", err);
-        setError(err.message || "Failed to load dashboard data");
-      } finally {
-        setLoading(false);
-      }
-    };
+      setUpcomingJobs(scheduledToday);
+      setCompletedCount(completedTodayCount);
+      setInProgressCount(inProgressTodayCount);
+      setIssuesCount(issuesCount);
+    } catch (err: any) {
+      console.error("Error fetching dashboard data:", err);
+      setError(err.message || "Failed to load dashboard data");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [loading]);
 
+  // Subscribe to real-time booking updates (admin sees all bookings)
+  useEffect(() => {
+    const { data: channel } = supabase
+      .channel("admin-bookings-changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "bookings",
+        },
+        (payload) => {
+          console.log("Admin: Booking change detected", payload);
+          // Refresh dashboard data when any booking changes
+          fetchDashboardData();
+        }
+      )
+      .subscribe();
+
+    // Initial data fetch
     fetchDashboardData();
-  }, []);
+
+    return () => {
+      console.log("Cleaning up admin dashboard subscription");
+      supabase.removeChannel(channel);
+    };
+  }, [fetchDashboardData]);
 
   // Handler functions for quick actions
   const handleAddUser = () => {
@@ -198,7 +229,18 @@ const AdminDashboard = () => {
 
   return (
     <SafeAreaView className="flex-1 bg-gray-100">
-      <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
+      <ScrollView
+        className="flex-1"
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={fetchDashboardData}
+            colors={["#16a34a"]}
+            tintColor="#16a34a"
+          />
+        }
+      >
         <View className="p-4">
           {/* Header */}
           <View className="flex-row justify-between items-center mb-6">

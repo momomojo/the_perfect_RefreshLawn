@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   TextInput,
   ScrollView,
+  RefreshControl,
 } from "react-native";
 import { Stack, router } from "expo-router";
 import {
@@ -21,18 +22,44 @@ import {
 import { getAllBookings, Booking } from "../../lib/data";
 import { format, parseISO } from "date-fns";
 import { useIsFocused } from "@react-navigation/native";
+import { supabase } from "../../lib/supabase";
 
 export default function BookingsScreen() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [filteredBookings, setFilteredBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const isFocused = useIsFocused();
 
+  // Real-time subscription for booking changes
   useEffect(() => {
+    const { data: channel } = supabase
+      .channel("admin-bookings-list-changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "bookings",
+        },
+        (payload) => {
+          console.log("Admin Bookings: Real-time update", payload);
+          // Refresh bookings list when any booking changes
+          fetchBookings();
+        }
+      )
+      .subscribe();
+
+    // Initial fetch
     fetchBookings();
+
+    return () => {
+      console.log("Cleaning up admin bookings subscription");
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   useEffect(() => {
@@ -77,7 +104,9 @@ export default function BookingsScreen() {
 
   const fetchBookings = async () => {
     try {
-      setLoading(true);
+      if (!loading) setRefreshing(true);
+      if (loading) setLoading(true);
+
       const data = await getAllBookings();
 
       // Sort bookings by date, with most recent first
@@ -96,6 +125,7 @@ export default function BookingsScreen() {
       setError("Failed to load bookings");
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -270,6 +300,14 @@ export default function BookingsScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ padding: 16 }}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={fetchBookings}
+              colors={["#16a34a"]}
+              tintColor="#16a34a"
+            />
+          }
         />
       )}
     </SafeAreaView>

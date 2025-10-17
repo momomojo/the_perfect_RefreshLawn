@@ -10,7 +10,8 @@ import {
 import { MapPin, Clock, ChevronRight, CheckCircle } from "lucide-react-native";
 import { getTechnicianBookings, Booking } from "../../../lib/data";
 import { useAuth } from "../../../lib/auth";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
+import { useRealtimeBookings } from "../../../lib/hooks";
 
 interface Job {
   id: string;
@@ -39,6 +40,13 @@ const TodayJobs = ({
     "all"
   );
 
+  // Subscribe to real-time booking updates for this technician
+  const { bookings: realtimeBookings } = useRealtimeBookings({
+    technicianId: user?.id,
+    enabled: !!user?.id,
+  });
+
+  // Initial data load
   useEffect(() => {
     if (!user?.id) {
       console.log("[TodayJobs] No user ID yet—skipping load");
@@ -86,6 +94,53 @@ const TodayJobs = ({
 
     loadTodayJobs();
   }, [user?.id]);
+
+  // Update jobs when real-time updates come in (filter for today only)
+  useEffect(() => {
+    if (realtimeBookings.length === 0) return;
+
+    const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+
+    // Filter real-time bookings for today only
+    const todaysRealtimeBookings = realtimeBookings.filter(
+      (booking) => booking.scheduled_date === today
+    );
+
+    // Map real-time bookings to Job format
+    const mappedRealtimeJobs = todaysRealtimeBookings.map((booking) => ({
+      id: booking.id,
+      customerName:
+        booking.customer?.first_name + " " + booking.customer?.last_name,
+      address: booking.address || "",
+      time: `${format(
+        new Date(`2000-01-01T${booking.scheduled_time}`),
+        "h:mm a"
+      )}`,
+      serviceType: booking.service?.name || "",
+      status: booking.status as Booking["status"],
+      propertyImage:
+        "https://images.unsplash.com/photo-1560749003-f4b1e17e2dfd?w=400&q=80",
+      createdAt: booking.created_at,
+    }));
+
+    // Merge real-time updates with existing jobs
+    setJobs((prevJobs) => {
+      const jobMap = new Map(prevJobs.map((job) => [job.id, job]));
+
+      // Update or add real-time jobs
+      mappedRealtimeJobs.forEach((job) => {
+        jobMap.set(job.id, job);
+      });
+
+      // Remove jobs that are no longer for today
+      return Array.from(jobMap.values()).filter((job) => {
+        const matchingBooking = realtimeBookings.find((b) => b.id === job.id);
+        return matchingBooking
+          ? matchingBooking.scheduled_date === today
+          : true;
+      });
+    });
+  }, [realtimeBookings]);
 
   const filteredJobs =
     activeFilter === "all"

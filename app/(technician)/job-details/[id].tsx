@@ -9,6 +9,7 @@ import {
   Button,
   Alert,
   Platform,
+  RefreshControl,
 } from "react-native";
 import { useLocalSearchParams, Stack, router } from "expo-router";
 import {
@@ -29,16 +30,25 @@ import { supabase } from "../../../lib/supabase";
 import "react-native-get-random-values";
 import { v4 as uuidv4 } from "uuid";
 import { showNotification } from "../../../lib/notification";
+import { useRealtimeBookings } from "../../../lib/hooks";
+import { optimisticValueUpdate } from "../../../lib/optimistic-updates";
 
 export default function JobDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [jobData, setJobData] = useState<any>(null);
   const [currentStatus, setCurrentStatus] = useState<
     "pending" | "scheduled" | "in_progress" | "completed" | "cancelled"
   >("scheduled");
+
+  // Real-time subscription for this specific job
+  const { bookings: realtimeBookings } = useRealtimeBookings({
+    bookingId: id as string,
+    enabled: !!id,
+  });
 
   useEffect(() => {
     (async () => {
@@ -120,56 +130,107 @@ export default function JobDetailsScreen() {
     fetchBookingDetails();
   }, [id]);
 
-  const handleStatusUpdate = async (status: string, data?: any) => {
-    try {
-      if (!user || !user.id) {
-        throw new Error("No authenticated user found.");
-      }
+  // Update job when real-time changes occur
+  useEffect(() => {
+    if (realtimeBookings.length > 0 && realtimeBookings[0].id === id) {
+      const booking = realtimeBookings[0];
+      console.log("Real-time update received for job:", booking);
 
-      // Extract notes if status is completed
-      const reportNotes = status === "completed" ? data?.notes : undefined;
-
-      // Pass notes to the update function
-      await updateBookingStatus(
-        id as string,
-        status as any,
-        user.id,
-        reportNotes
-      );
-
-      setCurrentStatus(status as any);
-      if (jobData) {
-        setJobData({
-          ...jobData,
-          status,
-        });
-      }
-
-      if (status === "completed") {
-        // Show success notification
-        showNotification({
-          title: "Job Completed Successfully",
-          message: "Your job report has been submitted.",
-          type: "success",
-        });
-        // Immediately redirect to the jobs list
-        router.replace("/(technician)/jobs");
-      } else {
-        // Optional: Show notification for other status updates if needed
-        showNotification({
-          title: "Status Updated",
-          message: `Job status changed to ${status}.`,
-          type: "info",
-        });
-      }
-    } catch (err) {
-      console.error("Error updating booking status:", err);
-      let errorMessage = "Failed to update job status. Please try again.";
-      if (err instanceof Error) {
-        errorMessage = `Failed to update job status: ${err.message}`;
-      }
-      Alert.alert("Error", errorMessage);
+      setCurrentStatus(booking.status as any);
+      setJobData({
+        jobId: booking.id,
+        customerName: `${booking.customer?.first_name} ${booking.customer?.last_name}`,
+        customerPhone: booking.customer?.phone || "",
+        address:
+          booking.address ||
+          (booking.customer?.address
+            ? `${booking.customer.address}, ${booking.customer.city}, ${booking.customer.state} ${booking.customer.zip_code}`
+            : ""),
+        serviceType: booking.service?.name || "",
+        scheduledDate: format(
+          new Date(booking.scheduled_date),
+          "MMMM d, yyyy"
+        ),
+        scheduledTime: format(
+          new Date(`2000-01-01T${booking.scheduled_time}`),
+          "h:mm a"
+        ),
+        estimatedDuration: booking.service?.duration_minutes
+          ? `${booking.service.duration_minutes} minutes`
+          : "Not specified",
+        propertySize: "Not specified",
+        specialInstructions: booking.notes || "",
+        propertyImage:
+          "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=600&q=80",
+        status: booking.status,
+      });
     }
+  }, [realtimeBookings, id]);
+
+  const handleStatusUpdate = async (status: string, data?: any) => {
+    if (!user || !user.id) {
+      Alert.alert("Error", "No authenticated user found.");
+      return;
+    }
+
+    if (!jobData) {
+      Alert.alert("Error", "Job data not available.");
+      return;
+    }
+
+    // Extract notes if status is completed
+    const reportNotes = status === "completed" ? data?.notes : undefined;
+
+    // Use optimistic update for instant UI feedback
+    await optimisticValueUpdate({
+      currentValue: jobData,
+      setValue: setJobData,
+      optimisticValue: {
+        ...jobData,
+        status,
+      },
+      operation: async () => {
+        // Also update currentStatus immediately
+        setCurrentStatus(status as any);
+
+        // Perform the actual status update
+        await updateBookingStatus(
+          id as string,
+          status as any,
+          user.id,
+          reportNotes
+        );
+      },
+      onSuccess: () => {
+        console.log(`[OptimisticUpdate] Status updated to ${status}`);
+
+        if (status === "completed") {
+          // Show success notification
+          showNotification({
+            title: "Job Completed Successfully",
+            message: "Your job report has been submitted.",
+            type: "success",
+          });
+          // Immediately redirect to the jobs list
+          router.replace("/(technician)/jobs");
+        } else {
+          // Show notification for other status updates
+          showNotification({
+            title: "Status Updated",
+            message: `Job status changed to ${status}.`,
+            type: "info",
+          });
+        }
+      },
+      onError: (error) => {
+        console.error("Error updating booking status:", error);
+        Alert.alert(
+          "Error",
+          `Failed to update job status: ${error.message}. Please try again.`
+        );
+        // Status will automatically rollback to previous value
+      },
+    });
   };
 
   if (loading) {
@@ -213,7 +274,56 @@ export default function JobDetailsScreen() {
           ),
         }}
       />
-      <ScrollView className="flex-1">
+      <ScrollView
+        className="flex-1"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={async () => {
+              try {
+                setRefreshing(true);
+                const booking = await getBooking(id as string);
+                if (booking) {
+                  setCurrentStatus(booking.status as any);
+                  setJobData({
+                    jobId: booking.id,
+                    customerName: `${booking.customer?.first_name} ${booking.customer?.last_name}`,
+                    customerPhone: booking.customer?.phone || "",
+                    address:
+                      booking.address ||
+                      (booking.customer?.address
+                        ? `${booking.customer.address}, ${booking.customer.city}, ${booking.customer.state} ${booking.customer.zip_code}`
+                        : ""),
+                    serviceType: booking.service?.name || "",
+                    scheduledDate: format(
+                      new Date(booking.scheduled_date),
+                      "MMMM d, yyyy"
+                    ),
+                    scheduledTime: format(
+                      new Date(`2000-01-01T${booking.scheduled_time}`),
+                      "h:mm a"
+                    ),
+                    estimatedDuration: booking.service?.duration_minutes
+                      ? `${booking.service.duration_minutes} minutes`
+                      : "Not specified",
+                    propertySize: "Not specified",
+                    specialInstructions: booking.notes || "",
+                    propertyImage:
+                      "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=600&q=80",
+                    status: booking.status,
+                  });
+                }
+              } catch (err) {
+                console.error("Error refreshing job:", err);
+              } finally {
+                setRefreshing(false);
+              }
+            }}
+            colors={["#16a34a"]}
+            tintColor="#16a34a"
+          />
+        }
+      >
         <View className="p-4">
           {/* Navigation indicator */}
           <View className="flex-row items-center mb-4">

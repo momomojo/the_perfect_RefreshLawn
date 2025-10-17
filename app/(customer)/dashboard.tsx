@@ -221,7 +221,7 @@ const CustomerDashboard = () => {
         unsubscribeFromChannel(profileChannelRef.current);
       }
     };
-  }, [user, fetchData]);
+  }, [user]); // Only re-subscribe when user changes, not when fetchData changes
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -411,7 +411,10 @@ const CustomerDashboard = () => {
                 (booking) =>
                   booking.status === "scheduled" ||
                   booking.status === "pending" ||
-                  booking.status === "in_progress"
+                  booking.status === "in_progress" ||
+                  booking.status === "pending_payment" ||
+                  booking.status === "payment_processing" ||
+                  booking.status === "payment_confirmed"
               )}
               onViewAppointment={handleViewAppointment}
             />

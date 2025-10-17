@@ -20,6 +20,7 @@ import {
 import { getTechnicianBookings } from "../../../lib/data";
 import { useAuth } from "../../../lib/auth";
 import { format, parseISO } from "date-fns";
+import { useRealtimeBookings } from "../../../lib/hooks";
 
 interface Job {
   id: string;
@@ -52,6 +53,13 @@ const JobsList = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Subscribe to real-time booking updates
+  const { bookings: realtimeBookings } = useRealtimeBookings({
+    technicianId: user?.id,
+    enabled: !!user?.id,
+  });
+
+  // Initial data load
   useEffect(() => {
     if (!user?.id) return;
 
@@ -87,6 +95,38 @@ const JobsList = () => {
 
     loadJobs();
   }, [user?.id]);
+
+  // Update jobs when real-time updates come in
+  useEffect(() => {
+    if (realtimeBookings.length === 0) return;
+
+    // Map real-time bookings to Job format and merge with existing jobs
+    const mappedRealtimeJobs = realtimeBookings.map((booking) => ({
+      id: booking.id,
+      customerName:
+        booking.customer?.first_name + " " + booking.customer?.last_name,
+      address: booking.address || "",
+      date: booking.scheduled_date,
+      time: format(
+        new Date(`2000-01-01T${booking.scheduled_time}`),
+        "h:mm a"
+      ),
+      serviceType: booking.service?.name || "",
+      status: booking.status as any,
+    }));
+
+    // Merge real-time updates with existing jobs
+    setJobs((prevJobs) => {
+      const jobMap = new Map(prevJobs.map((job) => [job.id, job]));
+
+      // Update or add real-time jobs
+      mappedRealtimeJobs.forEach((job) => {
+        jobMap.set(job.id, job);
+      });
+
+      return Array.from(jobMap.values());
+    });
+  }, [realtimeBookings]);
 
   // Filter jobs based on search query and status filter
   const filteredJobs = jobs.filter((job) => {
