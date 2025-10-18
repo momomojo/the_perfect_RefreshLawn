@@ -52,19 +52,79 @@ serve(async (req) => {
 
     console.log("Stripe refund successful:", refund.id);
 
-    // 3. (Optional but Recommended) Update your Supabase Database
-    // Example: Update booking status and/or payment record
-    /*
-    const { error: updateError } = await supabaseAdmin
-      .from('bookings') // Or your payments table
-      .update({ status: 'refunded' }) // Or payment_status
-      .eq('stripe_payment_intent_id', payment_intent_id);
+    // 3. Update Supabase Database
+    try {
+      // Update booking status to 'payment_refunded'
+      const { data: booking, error: bookingFetchError } = await supabaseAdmin
+        .from('bookings')
+        .select('id')
+        .eq('stripe_payment_intent_id', payment_intent_id)
+        .single();
 
-    if (updateError) {
-      console.error("Error updating database after refund:", updateError);
-      // Decide if this should cause the function to fail overall
+      if (bookingFetchError) {
+        console.error("Error fetching booking for refund update:", bookingFetchError);
+        throw new Error(`Failed to find booking for payment intent ${payment_intent_id}`);
+      }
+
+      if (!booking) {
+        console.warn(`No booking found for payment intent ${payment_intent_id}`);
+      } else {
+        // Update booking status
+        const { error: bookingUpdateError } = await supabaseAdmin
+          .from('bookings')
+          .update({
+            status: 'payment_refunded',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', booking.id);
+
+        if (bookingUpdateError) {
+          console.error("Error updating booking status after refund:", bookingUpdateError);
+          throw bookingUpdateError;
+        }
+
+        console.log(`Booking ${booking.id} status updated to 'payment_refunded'`);
+
+        // Check if there's a related refund_request and update it
+        const { data: refundRequest, error: refundRequestFetchError } = await supabaseAdmin
+          .from('refund_requests')
+          .select('id, status')
+          .eq('booking_id', booking.id)
+          .maybeSingle();
+
+        if (refundRequestFetchError) {
+          console.error("Error fetching refund request:", refundRequestFetchError);
+          // Don't throw - this is optional
+        }
+
+        if (refundRequest && refundRequest.status === 'pending') {
+          // Update refund_request to approved if it was pending
+          const { error: refundRequestUpdateError } = await supabaseAdmin
+            .from('refund_requests')
+            .update({
+              status: 'approved',
+              approved_amount: refundAmount ? (refundAmount / 100) : refund.amount / 100, // Convert cents to dollars
+              reviewed_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', refundRequest.id);
+
+          if (refundRequestUpdateError) {
+            console.error("Error updating refund request status:", refundRequestUpdateError);
+            // Don't throw - booking update succeeded, this is secondary
+          } else {
+            console.log(`Refund request ${refundRequest.id} status updated to 'approved'`);
+          }
+        }
+      }
+    } catch (dbError) {
+      console.error("Database update error after refund:", dbError);
+      // Refund succeeded in Stripe, but DB update failed
+      // Return success but log the database error
+      const dbErrorMessage = dbError instanceof Error ? dbError.message : "Unknown database error";
+      console.warn(`Stripe refund ${refund.id} succeeded but database update failed: ${dbErrorMessage}`);
+      // Continue to return success since the refund itself worked
     }
-    */
 
     // 4. Return success response
     return new Response(

@@ -1256,3 +1256,197 @@ export async function refundPayment(paymentIntentId: string, amount?: number) {
   console.log("Refund function returned successfully:", data);
   return data; // Should contain { refundId, status }
 }
+
+/**
+ * Refund Request related types and functions
+ */
+export interface RefundRequest {
+  id: string;
+  booking_id: string;
+  customer_id: string;
+  payment_intent_id: string;
+  requested_amount: number;
+  approved_amount?: number;
+  reason: string;
+  status: "pending" | "approved" | "rejected";
+  admin_notes?: string;
+  reviewed_by?: string;
+  requested_at: string;
+  reviewed_at?: string;
+
+  // Joined data
+  booking?: Booking;
+  customer?: Profile;
+  reviewer?: Profile;
+}
+
+/**
+ * Check if a booking is eligible for refund request
+ */
+export async function checkRefundEligibility(bookingId: string) {
+  const { data, error } = await supabase.rpc("check_refund_eligibility", {
+    p_booking_id: bookingId,
+  });
+
+  if (error) throw error;
+  return data as { eligible: boolean; reason: string | null };
+}
+
+/**
+ * Create a refund request for a booking
+ */
+export async function createRefundRequest(bookingId: string, reason: string) {
+  console.log(`Creating refund request for booking: ${bookingId}`);
+
+  if (!reason || reason.length < 20) {
+    throw new Error("Refund reason must be at least 20 characters");
+  }
+
+  const { data, error } = await supabase.rpc("create_refund_request", {
+    p_booking_id: bookingId,
+    p_reason: reason,
+  });
+
+  if (error) {
+    console.error("Error creating refund request:", error);
+    throw error;
+  }
+
+  console.log("Refund request created successfully:", data);
+  return data as string; // Returns the refund request ID
+}
+
+/**
+ * Get a specific refund request by ID
+ */
+export async function getRefundRequest(requestId: string) {
+  const { data, error } = await supabase
+    .from("refund_requests")
+    .select(`
+      *,
+      booking:bookings(*),
+      customer:profiles!refund_requests_customer_id_fkey(*),
+      reviewer:profiles!refund_requests_reviewed_by_fkey(*)
+    `)
+    .eq("id", requestId)
+    .single();
+
+  if (error) throw error;
+  return data as RefundRequest;
+}
+
+/**
+ * Get all refund requests for a customer
+ */
+export async function getCustomerRefundRequests(customerId: string) {
+  const { data, error } = await supabase
+    .from("refund_requests")
+    .select(`
+      *,
+      booking:bookings(*)
+    `)
+    .eq("customer_id", customerId)
+    .order("requested_at", { ascending: false });
+
+  if (error) throw error;
+  return data as RefundRequest[];
+}
+
+/**
+ * Get refund request for a specific booking (if exists)
+ */
+export async function getBookingRefundRequest(bookingId: string) {
+  const { data, error } = await supabase
+    .from("refund_requests")
+    .select(`
+      *,
+      booking:bookings(*),
+      customer:profiles!refund_requests_customer_id_fkey(*),
+      reviewer:profiles!refund_requests_reviewed_by_fkey(*)
+    `)
+    .eq("booking_id", bookingId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data as RefundRequest | null;
+}
+
+/**
+ * Get all refund requests (admin function)
+ * @param status Optional filter by status
+ */
+export async function getAllRefundRequests(status?: "pending" | "approved" | "rejected") {
+  let query = supabase
+    .from("refund_requests")
+    .select(`
+      *,
+      booking:bookings(
+        *,
+        service:services(*)
+      ),
+      customer:profiles!refund_requests_customer_id_fkey(*),
+      reviewer:profiles!refund_requests_reviewed_by_fkey(*)
+    `)
+    .order("requested_at", { ascending: false });
+
+  if (status) {
+    query = query.eq("status", status);
+  }
+
+  const { data, error } = await query;
+
+  if (error) throw error;
+  return data as RefundRequest[];
+}
+
+/**
+ * Approve a refund request (admin only)
+ */
+export async function approveRefundRequest(
+  requestId: string,
+  approvedAmount: number,
+  adminNotes?: string
+) {
+  console.log(`Approving refund request: ${requestId}, Amount: $${approvedAmount}`);
+
+  const { data, error } = await supabase.rpc("approve_refund_request", {
+    p_request_id: requestId,
+    p_approved_amount: approvedAmount,
+    p_admin_notes: adminNotes,
+  });
+
+  if (error) {
+    console.error("Error approving refund request:", error);
+    throw error;
+  }
+
+  console.log("Refund request approved successfully");
+  return data as boolean;
+}
+
+/**
+ * Reject a refund request (admin only)
+ */
+export async function rejectRefundRequest(
+  requestId: string,
+  adminNotes: string
+) {
+  console.log(`Rejecting refund request: ${requestId}`);
+
+  if (!adminNotes || adminNotes.length < 10) {
+    throw new Error("Admin notes are required when rejecting (minimum 10 characters)");
+  }
+
+  const { data, error } = await supabase.rpc("reject_refund_request", {
+    p_request_id: requestId,
+    p_admin_notes: adminNotes,
+  });
+
+  if (error) {
+    console.error("Error rejecting refund request:", error);
+    throw error;
+  }
+
+  console.log("Refund request rejected successfully");
+  return data as boolean;
+}

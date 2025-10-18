@@ -23,10 +23,17 @@ import {
   ClipboardList,
   MessageSquare,
   Info,
+  RotateCcw,
 } from "lucide-react-native";
-import { getBooking } from "../../../lib/data"; // Assuming getBooking fetches related data
+import {
+  getBooking,
+  checkRefundEligibility,
+  getBookingRefundRequest,
+  RefundRequest
+} from "../../../lib/data";
 import { format } from "date-fns";
 import { useRealtimeBookings } from "../../../lib/hooks";
+import RefundRequestModal from "../../components/customer/RefundRequestModal";
 
 // Helper function to get status color and icon
 const getStatusStyle = (status: string) => {
@@ -76,6 +83,12 @@ export default function BookingDetailsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [booking, setBooking] = useState<any>(null); // Use a proper type/interface later
 
+  // Refund-related state
+  const [refundModalVisible, setRefundModalVisible] = useState(false);
+  const [refundEligible, setRefundEligible] = useState(false);
+  const [refundEligibilityReason, setRefundEligibilityReason] = useState<string | null>(null);
+  const [existingRefundRequest, setExistingRefundRequest] = useState<RefundRequest | null>(null);
+
   // Real-time subscription for this specific booking
   const { bookings: realtimeBookings } = useRealtimeBookings({
     bookingId: id as string,
@@ -119,6 +132,42 @@ export default function BookingDetailsScreen() {
       setBooking(realtimeBookings[0]);
     }
   }, [realtimeBookings, id]);
+
+  // Check refund eligibility and existing refund request
+  useEffect(() => {
+    if (!booking?.id) return;
+
+    const checkRefundStatus = async () => {
+      try {
+        // Check eligibility
+        const eligibility = await checkRefundEligibility(booking.id);
+        setRefundEligible(eligibility.eligible);
+        setRefundEligibilityReason(eligibility.reason || null);
+
+        // Check for existing refund request
+        const existingRequest = await getBookingRefundRequest(booking.id);
+        setExistingRefundRequest(existingRequest);
+      } catch (err) {
+        console.error("Error checking refund status:", err);
+      }
+    };
+
+    checkRefundStatus();
+  }, [booking?.id]);
+
+  const handleRefundRequestSuccess = async () => {
+    // Refresh booking data and refund status
+    try {
+      const data = await getBooking(id as string);
+      if (data) setBooking(data);
+
+      const existingRequest = await getBookingRefundRequest(id as string);
+      setExistingRefundRequest(existingRequest);
+      setRefundEligible(false); // No longer eligible after request submitted
+    } catch (err) {
+      console.error("Error refreshing after refund request:", err);
+    }
+  };
 
   if (loading) {
     return (
@@ -342,8 +391,111 @@ export default function BookingDetailsScreen() {
           </View>
         )}
 
-        {/* Add a "Leave Review" button if completed and NOT reviewed? (Future enhancement) */}
+        {/* Refund Status Tracker Card (Conditional) */}
+        {existingRefundRequest && (
+          <View className="bg-white rounded-lg shadow-md m-4 p-4">
+            <View className="flex-row items-center mb-3">
+              <RotateCcw size={18} color="#4b5563" className="mr-2" />
+              <Text className="text-base font-semibold text-gray-800">
+                Refund Request
+              </Text>
+            </View>
+
+            {/* Status Badge */}
+            <View
+              className={`flex-row items-center p-2 rounded-md mb-3 ${
+                existingRefundRequest.status === "approved"
+                  ? "bg-green-100"
+                  : existingRefundRequest.status === "rejected"
+                  ? "bg-red-100"
+                  : "bg-yellow-100"
+              } self-start`}
+            >
+              {existingRefundRequest.status === "approved" ? (
+                <CheckCircle size={16} color="#16a34a" />
+              ) : existingRefundRequest.status === "rejected" ? (
+                <AlertCircle size={16} color="#dc2626" />
+              ) : (
+                <Clock size={16} color="#ca8a04" />
+              )}
+              <Text
+                className={`ml-2 text-sm font-medium capitalize ${
+                  existingRefundRequest.status === "approved"
+                    ? "text-green-600"
+                    : existingRefundRequest.status === "rejected"
+                    ? "text-red-600"
+                    : "text-yellow-600"
+                }`}
+              >
+                {existingRefundRequest.status === "pending"
+                  ? "Under Review"
+                  : existingRefundRequest.status}
+              </Text>
+            </View>
+
+            {/* Request Details */}
+            <View className="mb-2">
+              <Text className="text-xs text-gray-500 mb-1">Requested Amount:</Text>
+              <Text className="text-gray-700 font-medium">
+                ${existingRefundRequest.requested_amount.toFixed(2)}
+              </Text>
+            </View>
+
+            {existingRefundRequest.approved_amount && (
+              <View className="mb-2">
+                <Text className="text-xs text-gray-500 mb-1">Approved Amount:</Text>
+                <Text className="text-green-700 font-medium">
+                  ${existingRefundRequest.approved_amount.toFixed(2)}
+                </Text>
+              </View>
+            )}
+
+            <View className="mb-2">
+              <Text className="text-xs text-gray-500 mb-1">Reason:</Text>
+              <Text className="text-gray-700">{existingRefundRequest.reason}</Text>
+            </View>
+
+            {existingRefundRequest.admin_notes && (
+              <View className="mt-3 pt-3 border-t border-gray-100">
+                <Text className="text-xs text-gray-500 mb-1">Admin Response:</Text>
+                <Text className="text-gray-700">{existingRefundRequest.admin_notes}</Text>
+              </View>
+            )}
+
+            <View className="mt-3">
+              <Text className="text-xs text-gray-500">
+                Submitted on {format(new Date(existingRefundRequest.requested_at), "MMM d, yyyy 'at' h:mm a")}
+              </Text>
+              {existingRefundRequest.reviewed_at && (
+                <Text className="text-xs text-gray-500 mt-1">
+                  Reviewed on {format(new Date(existingRefundRequest.reviewed_at), "MMM d, yyyy 'at' h:mm a")}
+                </Text>
+              )}
+            </View>
+          </View>
+        )}
+
+        {/* Request Refund Button (Conditional) */}
+        {refundEligible && !existingRefundRequest && (
+          <View className="m-4">
+            <TouchableOpacity
+              onPress={() => setRefundModalVisible(true)}
+              className="bg-red-500 py-3 rounded-lg flex-row items-center justify-center"
+            >
+              <RotateCcw size={18} color="white" className="mr-2" />
+              <Text className="text-white font-semibold">Request Refund</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </ScrollView>
+
+      {/* Refund Request Modal */}
+      <RefundRequestModal
+        visible={refundModalVisible}
+        onClose={() => setRefundModalVisible(false)}
+        booking={booking}
+        onSuccess={handleRefundRequestSuccess}
+      />
     </SafeAreaView>
   );
 }
