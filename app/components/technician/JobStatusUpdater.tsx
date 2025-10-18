@@ -171,6 +171,12 @@ const JobStatusUpdater = ({
       .then(({ data, error }) => {
         if (error) {
           console.error("Storage access error:", error.message);
+          // Show notification to user if storage is inaccessible
+          showNotification({
+            title: "Storage Warning",
+            message: "Photo storage may be unavailable. Contact support if you cannot upload photos.",
+            type: "error",
+          });
         } else {
           console.log(
             `Storage access success! Found ${
@@ -181,6 +187,11 @@ const JobStatusUpdater = ({
       })
       .catch((e) => {
         console.error("Storage test error:", e);
+        showNotification({
+          title: "Storage Error",
+          message: "Unable to connect to photo storage. Please check your connection.",
+          type: "error",
+        });
       });
 
     if (jobId) {
@@ -384,57 +395,45 @@ const JobStatusUpdater = ({
             uploadData.path
           );
 
-          // After successful storage.upload
-          if (!uploadError && uploadData?.path) {
-            // Persist record in booking_images table
-            const { data: dbData, error: dbError } = await supabase
-              .from("booking_images")
-              .insert({
-                booking_id: jobId,
-                storage_path: uploadData.path,
-                type: type,
-                uploaded_by: user?.id,
-                uploaded_at: new Date().toISOString(),
-              });
-            if (dbError) {
-              console.error(
-                `[pickImage] Error inserting booking_images record:`,
-                dbError
-              );
-            } else {
-              console.log(
-                `[pickImage] booking_images record inserted:`,
-                dbData
-              );
-            }
-            // Refresh photos to include the newly added one
-            await fetchPhotos();
-          }
-
-          // Add entry to booking_images table
+          // Persist record in booking_images table (SINGLE INSERT - duplicate removed)
           const { data: dbData, error: dbError } = await supabase
             .from("booking_images")
-            .insert([
-              {
-                booking_id: jobId,
-                storage_path: uploadData.path,
-                type: type,
-                uploaded_by: user?.id,
-              },
-            ]);
+            .insert({
+              booking_id: jobId,
+              storage_path: uploadData.path,
+              type: type,
+              uploaded_by: user?.id,
+              uploaded_at: new Date().toISOString(),
+            });
 
           if (dbError) {
-            console.error("Error saving to database:", dbError.message);
-            Alert.alert(
-              "Database Error",
-              "Image uploaded but failed to record in database."
+            console.error(
+              `[pickImage] Error inserting booking_images record:`,
+              dbError
             );
-          } else {
-            console.log("Image record saved to database");
-            // Refresh the images list
-            fetchPhotos();
-            Alert.alert("Success", "Photo uploaded successfully!");
+            showNotification({
+              title: "Database Error",
+              message: "Image uploaded but failed to record in database.",
+              type: "error",
+            });
+            setUploading(false);
+            return;
           }
+
+          console.log(
+            `[pickImage] booking_images record inserted:`,
+            dbData
+          );
+
+          // Refresh photos to include the newly added one
+          await fetchPhotos();
+
+          // Show success notification
+          showNotification({
+            title: "Success",
+            message: `${type === "before" ? "Before" : "After"} photo uploaded successfully!`,
+            type: "success",
+          });
         } catch (uploadError: any) {
           console.error("Error in file processing/upload:", uploadError);
           Alert.alert(
@@ -467,53 +466,120 @@ const JobStatusUpdater = ({
       Alert.alert("Error", "Cannot remove photo: invalid data.");
       return;
     }
-    setUploading(true);
-    console.log("[removePhoto] Removing from storage:", photo.storage_path);
-    const { error: storageError } = await supabase.storage
-      .from("booking-images") // Using exact bucket name with hyphen
-      .remove([photo.storage_path]);
-    console.log("[removePhoto] Removing from database, id:", photo.id);
-    const { error: dbError } = await supabase
-      .from("booking_images")
-      .delete()
-      .eq("id", photo.id);
-    console.log("[removePhoto] Re-fetching photos after removal.");
-    await fetchPhotos();
-    setUploading(false);
-    if (storageError) {
-      console.error("[removePhoto] Storage removal error:", storageError);
-      Alert.alert("Delete failed (Storage)", storageError.message);
-    }
-    if (dbError) {
-      console.error("[removePhoto] Database removal error:", dbError);
-      Alert.alert("Delete failed (Database)", dbError.message);
-    }
-    if (!storageError && !dbError) {
-      console.log("[removePhoto] Removal successful.");
-    }
+
+    // Add confirmation dialog before deleting
+    Alert.alert(
+      "Confirm Deletion",
+      `Are you sure you want to delete this ${type} photo? This action cannot be undone.`,
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            setUploading(true);
+            console.log("[removePhoto] Removing from storage:", photo.storage_path);
+            const { error: storageError } = await supabase.storage
+              .from("booking-images")
+              .remove([photo.storage_path]);
+
+            console.log("[removePhoto] Removing from database, id:", photo.id);
+            const { error: dbError } = await supabase
+              .from("booking_images")
+              .delete()
+              .eq("id", photo.id);
+
+            console.log("[removePhoto] Re-fetching photos after removal.");
+            await fetchPhotos();
+            setUploading(false);
+
+            if (storageError) {
+              console.error("[removePhoto] Storage removal error:", storageError);
+              showNotification({
+                title: "Delete Failed",
+                message: `Storage error: ${storageError.message}`,
+                type: "error",
+              });
+            }
+            if (dbError) {
+              console.error("[removePhoto] Database removal error:", dbError);
+              showNotification({
+                title: "Delete Failed",
+                message: `Database error: ${dbError.message}`,
+                type: "error",
+              });
+            }
+            if (!storageError && !dbError) {
+              console.log("[removePhoto] Removal successful.");
+              showNotification({
+                title: "Photo Deleted",
+                message: `${type === "before" ? "Before" : "After"} photo removed successfully.`,
+                type: "success",
+              });
+            }
+          },
+        },
+      ]
+    );
   };
 
   const submitJobReport = async () => {
-    try {
-      setUploading(true);
-      // IMPORTANT: Must await this call to ensure database update completes
-      await onStatusUpdate("completed", { beforePhotos, afterPhotos, notes });
-      // Don't clear form state here - let the parent component handle navigation
-      // after successful update. Clearing here causes the form to reset before
-      // the update is confirmed.
-      // setBeforePhotos([]);
-      // setAfterPhotos([]);
-      // setNotes("");
-    } catch (error) {
-      console.error("Error submitting job report:", error);
+    // Validate that required photos are present
+    if (beforePhotos.length === 0) {
       showNotification({
-        title: "Error",
-        message: "There was a problem submitting the job report",
+        title: "Missing Photos",
+        message: "Please upload at least one before photo to complete the job.",
         type: "error",
       });
-    } finally {
-      setUploading(false);
+      return;
     }
+
+    if (afterPhotos.length === 0) {
+      showNotification({
+        title: "Missing Photos",
+        message: "Please upload at least one after photo to complete the job.",
+        type: "error",
+      });
+      return;
+    }
+
+    // Add confirmation dialog before final submission
+    Alert.alert(
+      "Confirm Job Completion",
+      "Are you sure you want to submit this job report? This will mark the job as completed.",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Submit",
+          style: "default",
+          onPress: async () => {
+            try {
+              setUploading(true);
+              // IMPORTANT: Must await this call to ensure database update completes
+              await onStatusUpdate("completed", { beforePhotos, afterPhotos, notes });
+              // Don't clear form state here - let the parent component handle navigation
+              // after successful update. Clearing here causes the form to reset before
+              // the update is confirmed.
+            } catch (error) {
+              console.error("Error submitting job report:", error);
+              showNotification({
+                title: "Error",
+                message: "There was a problem submitting the job report",
+                type: "error",
+              });
+            } finally {
+              setUploading(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   return (
