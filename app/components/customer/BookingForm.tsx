@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
-} from "react-native";
+} from 'react-native';
 import {
   ChevronRight,
   Calendar,
@@ -21,10 +21,10 @@ import {
   Plus,
   Home,
   X,
-} from "lucide-react-native";
-import { supabase } from "../../../lib/supabase";
-import { useAuth } from "../../../lib/auth"; // Correct import for user authentication
-import BookingHeader from "./BookingHeader";
+} from 'lucide-react-native';
+import { supabase } from '../../../lib/supabase';
+import { useAuth } from '../../../lib/auth'; // Correct import for user authentication
+import BookingHeader from './BookingHeader';
 import {
   getRecurringPlans,
   getServices,
@@ -33,11 +33,14 @@ import {
   Profile,
   getSavedProperties,
   SavedProperty,
-} from "../../../lib/data";
-import { format, addDays } from "date-fns";
-import { showNotification } from "@/lib/notification"; // Import the utility
+  getAvailableDates,
+  getAvailableTimeSlots,
+  AvailableTimeSlot,
+} from '../../../lib/data';
+import { format, addDays } from 'date-fns';
+import { showNotification } from '@/lib/notification'; // Import the utility
 import { TextInput } from 'react-native';
-import AddPaymentMethodModal from "../common/AddPaymentMethodModal";
+import AddPaymentMethodModal from '../common/AddPaymentMethodModal';
 
 interface StripePaymentMethod {
   id: string;
@@ -68,7 +71,7 @@ export interface BookingFormData {
   recurringPlan?: string;
   paymentMethod: string;
   price: number;
-  paymentMethodDetails?: StripePaymentMethod | { id: "cash"; name: "Cash" };
+  paymentMethodDetails?: StripePaymentMethod | { id: 'cash'; name: 'Cash' };
   notes?: string;
   propertySize?: string; // e.g., "small", "medium", "large" or sq ft
   areaType?: string; // e.g., "front yard", "back yard", "full property"
@@ -85,28 +88,36 @@ const BookingForm = ({
   const [loading, setLoading] = useState(false);
   const [services, setServices] = useState<Service[]>([]);
   const [recurringPlans, setRecurringPlans] = useState<RecurringPlan[]>([]);
-  const [availableDates, setAvailableDates] = useState<string[]>([]);
-  const [timeSlots, setTimeSlots] = useState<string[]>([]);
-  const [paymentMethods, setPaymentMethods] = useState<StripePaymentMethod[]>([]);
+  const [availableDates, setAvailableDates] = useState<
+    { available_date: string; technician_count: number }[]
+  >([]);
+  const [availableTimeSlots, setAvailableTimeSlots] = useState<
+    AvailableTimeSlot[]
+  >([]);
+  const [loadingDates, setLoadingDates] = useState(false);
+  const [loadingTimeSlots, setLoadingTimeSlots] = useState(false);
+  const [paymentMethods, setPaymentMethods] = useState<StripePaymentMethod[]>(
+    []
+  );
   const [paymentMethodsLoading, setPaymentMethodsLoading] = useState(false);
   const [savedProperties, setSavedProperties] = useState<SavedProperty[]>([]);
   const [showPropertySelector, setShowPropertySelector] = useState(false);
   const [isAddCardModalVisible, setIsAddCardModalVisible] = useState(false);
 
   const [bookingData, setBookingData] = useState<BookingFormData>({
-    serviceId: service?.id || "",
-    serviceName: service?.name || "",
-    date: "",
-    time: "",
-    address: userProfile?.address || "",
+    serviceId: service?.id || '',
+    serviceName: service?.name || '',
+    date: '',
+    time: '',
+    address: userProfile?.address || '',
     isRecurring: false,
     recurringPlan: undefined,
-    paymentMethod: "",
+    paymentMethod: '',
     price: service?.base_price || 0,
     paymentMethodDetails: undefined,
-    notes: "",
-    propertySize: "",
-    areaType: "",
+    notes: '',
+    propertySize: '',
+    areaType: '',
   });
 
   // Get real data on component mount
@@ -124,7 +135,7 @@ const BookingForm = ({
         const plansData = await getRecurringPlans();
         setRecurringPlans(plansData);
       } catch (error) {
-        console.error("Error fetching data:", error);
+        console.error('Error fetching data:', error);
       } finally {
         setLoading(false);
       }
@@ -150,23 +161,70 @@ const BookingForm = ({
     }
   }, [service, currentStep]);
 
-
-  // Setup available dates and time slots
+  // Load available dates when reaching date selection step
   useEffect(() => {
-    setAvailableDates(generateAvailableDates());
-    setTimeSlots([
-      "8:00 AM",
-      "9:00 AM",
-      "10:00 AM",
-      "11:00 AM",
-      "12:00 PM",
-      "1:00 PM",
-      "2:00 PM",
-      "3:00 PM",
-      "4:00 PM",
-      "5:00 PM",
-    ]);
-  }, []);
+    if (currentStep === 2 && bookingData.serviceId) {
+      loadAvailableDates();
+    }
+  }, [currentStep, bookingData.serviceId]);
+
+  // Load available time slots when date is selected (happens in handleDateSelect)
+  const loadAvailableDates = async () => {
+    if (!bookingData.serviceId) return;
+
+    setLoadingDates(true);
+    try {
+      const today = new Date();
+      const currentYear = today.getFullYear();
+      const currentMonth = today.getMonth() + 1;
+
+      // Fetch this month and next month to ensure we have at least 30 days
+      const [thisMonthDates, nextMonthDates] = await Promise.all([
+        getAvailableDates(bookingData.serviceId, currentYear, currentMonth),
+        getAvailableDates(
+          bookingData.serviceId,
+          currentMonth === 12 ? currentYear + 1 : currentYear,
+          currentMonth === 12 ? 1 : currentMonth + 1
+        ),
+      ]);
+
+      const allDates = [...thisMonthDates, ...nextMonthDates];
+      setAvailableDates(allDates);
+    } catch (error) {
+      console.error('Error loading available dates:', error);
+      showNotification({
+        title: 'Error',
+        message: 'Failed to load available dates. Please try again.',
+        type: 'error',
+      });
+      setAvailableDates([]);
+    } finally {
+      setLoadingDates(false);
+    }
+  };
+
+  const loadAvailableTimeSlots = async (selectedDate: string) => {
+    if (!bookingData.serviceId) return;
+
+    setLoadingTimeSlots(true);
+    try {
+      const slots = await getAvailableTimeSlots(
+        bookingData.serviceId,
+        selectedDate
+      );
+      setAvailableTimeSlots(slots);
+    } catch (error) {
+      console.error('Error loading time slots:', error);
+      showNotification({
+        title: 'Error',
+        message: 'Failed to load available time slots. Please try again.',
+        type: 'error',
+      });
+      setAvailableTimeSlots([]);
+    } finally {
+      setLoadingTimeSlots(false);
+    }
+  };
 
   // Load payment methods when reaching payment step
   useEffect(() => {
@@ -185,16 +243,19 @@ const BookingForm = ({
   const loadPaymentMethods = async () => {
     setPaymentMethodsLoading(true);
     try {
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
 
       if (sessionError || !session) {
-        throw new Error("Authentication required");
+        throw new Error('Authentication required');
       }
 
       const { data, error } = await supabase.functions.invoke(
-        "stripe-customer-api",
+        'stripe-customer-api',
         {
-          body: { path: "list-payment-methods" },
+          body: { path: 'list-payment-methods' },
           headers: {
             Authorization: `Bearer ${session.access_token}`,
           },
@@ -202,14 +263,14 @@ const BookingForm = ({
       );
 
       if (error) {
-        console.error("Error loading payment methods:", error);
+        console.error('Error loading payment methods:', error);
         setPaymentMethods([]);
         return;
       }
 
       setPaymentMethods(data?.paymentMethods || []);
     } catch (error) {
-      console.error("Error loading payment methods:", error);
+      console.error('Error loading payment methods:', error);
       setPaymentMethods([]);
     } finally {
       setPaymentMethodsLoading(false);
@@ -222,7 +283,7 @@ const BookingForm = ({
       const properties = await getSavedProperties(user.id);
       setSavedProperties(properties);
     } catch (error) {
-      console.error("Error loading saved properties:", error);
+      console.error('Error loading saved properties:', error);
       setSavedProperties([]);
     }
   };
@@ -231,19 +292,22 @@ const BookingForm = ({
     setBookingData({
       ...bookingData,
       address: property.address,
-      propertySize: property.property_size || "",
-      areaType: property.area_type || "",
+      propertySize: property.property_size || '',
+      areaType: property.area_type || '',
     });
     setShowPropertySelector(false);
     showNotification({
-      title: "Property Selected",
+      title: 'Property Selected',
       message: `Using "${property.nickname}" address`,
-      type: "success",
+      type: 'success',
     });
   };
 
-  const handlePaymentMethodSelect = (paymentMethodId: string, details?: StripePaymentMethod | { id: "cash"; name: "Cash" }) => {
-    console.log("Payment method selected:", paymentMethodId);
+  const handlePaymentMethodSelect = (
+    paymentMethodId: string,
+    details?: StripePaymentMethod | { id: 'cash'; name: 'Cash' }
+  ) => {
+    console.log('Payment method selected:', paymentMethodId);
 
     // Set the payment method in booking data
     setBookingData({
@@ -257,21 +321,24 @@ const BookingForm = ({
   };
 
   const handleAddCard = async (cardDetails: any) => {
-    console.log("New card added:", cardDetails);
+    console.log('New card added:', cardDetails);
     setIsAddCardModalVisible(false);
 
     try {
       // Fetch fresh payment methods directly to get the newly added card
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
 
       if (sessionError || !session) {
-        throw new Error("Authentication required");
+        throw new Error('Authentication required');
       }
 
       const { data, error } = await supabase.functions.invoke(
-        "stripe-customer-api",
+        'stripe-customer-api',
         {
-          body: { path: "list-payment-methods" },
+          body: { path: 'list-payment-methods' },
           headers: {
             Authorization: `Bearer ${session.access_token}`,
           },
@@ -279,11 +346,11 @@ const BookingForm = ({
       );
 
       if (error) {
-        console.error("Error loading payment methods:", error);
+        console.error('Error loading payment methods:', error);
         showNotification({
-          title: "Success",
-          message: "Card added successfully. Please select it from the list.",
-          type: "success",
+          title: 'Success',
+          message: 'Card added successfully. Please select it from the list.',
+          type: 'success',
         });
         await loadPaymentMethods(); // Still refresh the UI list
         return;
@@ -303,24 +370,24 @@ const BookingForm = ({
         // Auto-select the newly added card
         handlePaymentMethodSelect(newCard.id, newCard);
         showNotification({
-          title: "Success",
-          message: "Card added and selected for payment",
-          type: "success",
+          title: 'Success',
+          message: 'Card added and selected for payment',
+          type: 'success',
         });
       } else {
         // If we couldn't find it immediately, just show success message
         showNotification({
-          title: "Success",
-          message: "Card added successfully. Please select it from the list.",
-          type: "success",
+          title: 'Success',
+          message: 'Card added successfully. Please select it from the list.',
+          type: 'success',
         });
       }
     } catch (error) {
-      console.error("Error in handleAddCard:", error);
+      console.error('Error in handleAddCard:', error);
       showNotification({
-        title: "Success",
-        message: "Card added successfully. Please select it from the list.",
-        type: "success",
+        title: 'Success',
+        message: 'Card added successfully. Please select it from the list.',
+        type: 'success',
       });
       await loadPaymentMethods(); // Refresh the UI list as fallback
     }
@@ -341,25 +408,6 @@ const BookingForm = ({
   };
 
   // --- Step Navigation and Utility Handlers ---
-  const generateAvailableDates = () => {
-    const dates = [];
-    const today = new Date();
-    console.log("[generateAvailableDates] Today (before setHours):", today.toISOString());
-    // Set to noon to avoid timezone edge cases when converting to/from strings
-    today.setHours(12, 0, 0, 0);
-    console.log("[generateAvailableDates] Today (after setHours to noon):", today.toISOString());
-    for (let i = 1; i <= 14; i++) {
-      const date = addDays(today, i);
-      const formatted = format(date, "yyyy-MM-dd");
-      if (i === 3) { // Log the 3rd date (which should be Oct 20)
-        console.log(`[generateAvailableDates] Date ${i}: ${formatted} (Date object: ${date.toISOString()})`);
-      }
-      dates.push(formatted);
-    }
-    console.log("[generateAvailableDates] First 5 dates generated:", dates.slice(0, 5));
-    return dates;
-  };
-
   const handleServiceSelect = (id: string, name: string, price: number) => {
     setBookingData({
       ...bookingData,
@@ -370,27 +418,20 @@ const BookingForm = ({
     nextStep();
   };
 
-  const handleDateSelect = (date: string) => {
-    console.log("[BookingForm] Date selected - RAW VALUE:", date);
-    console.log("[BookingForm] Date type:", typeof date);
+  const handleDateSelect = async (date: string) => {
+    console.log('[BookingForm] Date selected - RAW VALUE:', date);
+    console.log('[BookingForm] Date type:', typeof date);
     setBookingData({ ...bookingData, date });
+
+    // Load available time slots for this date
+    await loadAvailableTimeSlots(date);
     nextStep();
   };
 
-  const handleTimeSelect = (time: string) => {
-    let timeValue = time;
-    try {
-      const [timePart, meridiem] = time.split(" ");
-      let [hours, minutes] = timePart.split(":");
-      let hoursInt = parseInt(hours);
-      if (meridiem === "PM" && hoursInt < 12) hoursInt += 12;
-      if (meridiem === "AM" && hoursInt === 12) hoursInt = 0;
-      const formattedHours = hoursInt.toString().padStart(2, "0");
-      timeValue = `${formattedHours}:${minutes}:00`;
-    } catch (err) {
-      console.error("Error formatting time:", time, err);
-    }
-    setBookingData({ ...bookingData, time: timeValue });
+  const handleTimeSelect = (timeSlot: string) => {
+    // timeSlot comes as HH:MM:SS from database
+    // Store it directly (no conversion needed)
+    setBookingData({ ...bookingData, time: timeSlot });
     nextStep();
   };
 
@@ -415,7 +456,7 @@ const BookingForm = ({
   const renderServiceTypeStep = () => {
     if (loading) {
       return (
-        <View className="flex-1 justify-center items-center">
+        <View className="flex-1 items-center justify-center">
           <ActivityIndicator size="large" color="#16a34a" />
           <Text className="mt-4 text-gray-600">Loading services...</Text>
         </View>
@@ -424,12 +465,12 @@ const BookingForm = ({
 
     return (
       <View className="flex-1">
-        <Text className="text-xl font-bold mb-4 px-4">Select Service Type</Text>
+        <Text className="mb-4 px-4 text-xl font-bold">Select Service Type</Text>
         <ScrollView className="flex-1">
           {services.map((service) => (
             <TouchableOpacity
               key={service.id}
-              className="flex-row items-center bg-white rounded-lg p-4 mb-3 mx-4 shadow-sm"
+              className="mx-4 mb-3 flex-row items-center rounded-lg bg-white p-4 shadow-sm"
               onPress={() =>
                 handleServiceSelect(
                   service.id,
@@ -442,16 +483,16 @@ const BookingForm = ({
                 source={{
                   uri:
                     service.image_url ||
-                    "https://images.unsplash.com/photo-1589428473816-b2b7632082df?w=400&q=80",
+                    'https://images.unsplash.com/photo-1589428473816-b2b7632082df?w=400&q=80',
                 }}
-                className="w-16 h-16 rounded-md mr-4"
+                className="mr-4 h-16 w-16 rounded-md"
               />
               <View className="flex-1">
                 <Text className="text-lg font-semibold">{service.name}</Text>
                 <Text className="text-gray-600">${service.base_price}</Text>
                 {service.description && (
                   <Text
-                    className="text-gray-500 text-sm mt-1"
+                    className="mt-1 text-sm text-gray-500"
                     numberOfLines={2}
                   >
                     {service.description}
@@ -467,80 +508,151 @@ const BookingForm = ({
   };
 
   const renderDateSelectionStep = () => {
+    if (loadingDates) {
+      return (
+        <View className="flex-1 items-center justify-center px-4">
+          <ActivityIndicator size="large" color="#16a34a" />
+          <Text className="mt-4 text-gray-600">Loading available dates...</Text>
+        </View>
+      );
+    }
+
     return (
       <View className="flex-1 px-4">
-        <Text className="text-xl font-bold mb-4">Select Date</Text>
-        <View className="bg-white rounded-lg p-4 shadow-sm mb-4">
-          <Text className="text-lg font-semibold mb-2">
+        <Text className="mb-4 text-xl font-bold">Select Date</Text>
+        <View className="mb-4 rounded-lg bg-white p-4 shadow-sm">
+          <Text className="mb-2 text-lg font-semibold">
             Service: {bookingData.serviceName}
           </Text>
         </View>
-        <ScrollView className="flex-1">
-          {availableDates.map((date) => {
-            // Parse date string as local date to avoid timezone shifts
-            const [year, month, day] = date.split('-').map(Number);
-            const localDate = new Date(year, month - 1, day);
 
-            return (
-              <TouchableOpacity
-                key={date}
-                className="flex-row items-center justify-between bg-white rounded-lg p-4 mb-3 shadow-sm"
-                onPress={() => handleDateSelect(date)}
-              >
-                <View className="flex-row items-center">
-                  <Calendar size={20} color="#10B981" className="mr-3" />
-                  <Text className="text-lg">
-                    {localDate.toLocaleDateString("en-US", {
-                      weekday: "short",
-                      month: "short",
-                      day: "numeric",
-                    })}
-                  </Text>
-                </View>
-                <ChevronRight size={20} color="#9CA3AF" />
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+        {availableDates.length === 0 ? (
+          <View className="flex-1 items-center justify-center">
+            <Calendar size={48} color="#9CA3AF" />
+            <Text className="mt-4 text-center text-lg text-gray-500">
+              No available dates
+            </Text>
+            <Text className="mt-2 px-8 text-center text-gray-400">
+              No technicians have set their availability yet. Please check back
+              later.
+            </Text>
+          </View>
+        ) : (
+          <ScrollView className="flex-1">
+            {availableDates.map(({ available_date, technician_count }) => {
+              // Parse date string as local date to avoid timezone shifts
+              const [year, month, day] = available_date.split('-').map(Number);
+              const localDate = new Date(year, month - 1, day);
+
+              return (
+                <TouchableOpacity
+                  key={available_date}
+                  className="mb-3 flex-row items-center justify-between rounded-lg bg-white p-4 shadow-sm"
+                  onPress={() => handleDateSelect(available_date)}
+                >
+                  <View className="flex-1 flex-row items-center">
+                    <Calendar size={20} color="#10B981" className="mr-3" />
+                    <View className="flex-1">
+                      <Text className="text-lg">
+                        {localDate.toLocaleDateString('en-US', {
+                          weekday: 'short',
+                          month: 'short',
+                          day: 'numeric',
+                        })}
+                      </Text>
+                      <Text className="mt-1 text-xs text-gray-500">
+                        {technician_count}{' '}
+                        {technician_count === 1 ? 'technician' : 'technicians'}{' '}
+                        available
+                      </Text>
+                    </View>
+                  </View>
+                  <ChevronRight size={20} color="#9CA3AF" />
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
       </View>
     );
   };
 
   const renderTimeSelectionStep = () => {
+    // Helper to format time from HH:MM:SS to 12-hour format
+    const formatTimeSlot = (time: string) => {
+      const [hours, minutes] = time.split(':');
+      const hour = parseInt(hours);
+      const ampm = hour >= 12 ? 'PM' : 'AM';
+      const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+      return `${displayHour}:${minutes} ${ampm}`;
+    };
+
+    if (loadingTimeSlots) {
+      return (
+        <View className="flex-1 items-center justify-center px-4">
+          <ActivityIndicator size="large" color="#16a34a" />
+          <Text className="mt-4 text-gray-600">Loading available times...</Text>
+        </View>
+      );
+    }
+
     return (
       <View className="flex-1 px-4">
-        <Text className="text-xl font-bold mb-4">Select Time</Text>
-        <View className="bg-white rounded-lg p-4 shadow-sm mb-4">
-          <Text className="text-lg font-semibold mb-2">
+        <Text className="mb-4 text-xl font-bold">Select Time</Text>
+        <View className="mb-4 rounded-lg bg-white p-4 shadow-sm">
+          <Text className="mb-2 text-lg font-semibold">
             Service: {bookingData.serviceName}
           </Text>
           <Text className="text-gray-600">
-            Date:{" "}
+            Date:{' '}
             {(() => {
-              const [year, month, day] = bookingData.date.split('-').map(Number);
+              const [year, month, day] = bookingData.date
+                .split('-')
+                .map(Number);
               const localDate = new Date(year, month - 1, day);
-              return localDate.toLocaleDateString("en-US", {
-                weekday: "long",
-                month: "long",
-                day: "numeric",
+              return localDate.toLocaleDateString('en-US', {
+                weekday: 'long',
+                month: 'long',
+                day: 'numeric',
               });
             })()}
           </Text>
         </View>
-        <ScrollView className="flex-1">
-          <View className="flex-row flex-wrap justify-between">
-            {timeSlots.map((time) => (
-              <TouchableOpacity
-                key={time}
-                className="bg-white rounded-lg p-4 mb-3 shadow-sm w-[48%] flex-row items-center justify-center"
-                onPress={() => handleTimeSelect(time)}
-              >
-                <Clock size={18} color="#10B981" className="mr-2" />
-                <Text className="text-lg">{time}</Text>
-              </TouchableOpacity>
-            ))}
+
+        {availableTimeSlots.length === 0 ? (
+          <View className="flex-1 items-center justify-center">
+            <Clock size={48} color="#9CA3AF" />
+            <Text className="mt-4 text-center text-lg text-gray-500">
+              No available time slots
+            </Text>
+            <Text className="mt-2 px-8 text-center text-gray-400">
+              All technicians are fully booked on this date. Please choose
+              another date.
+            </Text>
           </View>
-        </ScrollView>
+        ) : (
+          <ScrollView className="flex-1">
+            <View className="flex-row flex-wrap justify-between">
+              {availableTimeSlots.map((slot) => (
+                <TouchableOpacity
+                  key={slot.time_slot}
+                  className="mb-3 w-[48%] rounded-lg bg-white p-4 shadow-sm"
+                  onPress={() => handleTimeSelect(slot.time_slot)}
+                >
+                  <View className="mb-2 flex-row items-center justify-center">
+                    <Clock size={18} color="#10B981" className="mr-2" />
+                    <Text className="text-lg font-semibold">
+                      {formatTimeSlot(slot.time_slot)}
+                    </Text>
+                  </View>
+                  <Text className="text-center text-xs text-gray-500">
+                    {slot.available_technician_count} available
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+        )}
       </View>
     );
   };
@@ -548,24 +660,24 @@ const BookingForm = ({
   const renderAddressStep = () => {
     return (
       <View className="flex-1 px-4">
-        <Text className="text-xl font-bold mb-4">Confirm Service Address</Text>
+        <Text className="mb-4 text-xl font-bold">Confirm Service Address</Text>
 
         {/* Saved Properties Button */}
         {savedProperties.length > 0 && (
           <TouchableOpacity
-            className="bg-green-100 border border-green-300 rounded-lg p-3 mb-4 flex-row items-center justify-center"
+            className="mb-4 flex-row items-center justify-center rounded-lg border border-green-300 bg-green-100 p-3"
             onPress={() => setShowPropertySelector(true)}
           >
             <Home size={20} color="#10b981" />
-            <Text className="text-green-700 font-semibold ml-2">
+            <Text className="ml-2 font-semibold text-green-700">
               Select from Saved Properties
             </Text>
           </TouchableOpacity>
         )}
 
-        <Text className="text-gray-600 mb-2">Or enter address manually:</Text>
+        <Text className="mb-2 text-gray-600">Or enter address manually:</Text>
         <TextInput
-          className="bg-white border border-gray-300 rounded-lg p-3 mb-4 text-gray-800"
+          className="mb-4 rounded-lg border border-gray-300 bg-white p-3 text-gray-800"
           placeholder="Enter service address"
           value={bookingData.address}
           onChangeText={(text) =>
@@ -573,11 +685,11 @@ const BookingForm = ({
           }
           placeholderTextColor="#9ca3af"
         />
-        
+
         {/* --- Add Property Size, Area Type, and Notes Inputs --- */}
-        <Text className="text-gray-600 mb-1 mt-2">Property Size</Text>
+        <Text className="mb-1 mt-2 text-gray-600">Property Size</Text>
         <TextInput
-          className="bg-white border border-gray-300 rounded-lg p-3 mb-4 text-gray-800"
+          className="mb-4 rounded-lg border border-gray-300 bg-white p-3 text-gray-800"
           placeholder="e.g., 1/4 acre, 5000 sq ft"
           value={bookingData.propertySize}
           onChangeText={(text) =>
@@ -586,9 +698,9 @@ const BookingForm = ({
           placeholderTextColor="#9ca3af"
         />
 
-        <Text className="text-gray-600 mb-1 mt-2">Area to Service</Text>
+        <Text className="mb-1 mt-2 text-gray-600">Area to Service</Text>
         <TextInput
-          className="bg-white border border-gray-300 rounded-lg p-3 mb-4 text-gray-800"
+          className="mb-4 rounded-lg border border-gray-300 bg-white p-3 text-gray-800"
           placeholder="e.g., Front Yard, Full Property"
           value={bookingData.areaType}
           onChangeText={(text) =>
@@ -597,9 +709,11 @@ const BookingForm = ({
           placeholderTextColor="#9ca3af"
         />
 
-        <Text className="text-gray-600 mb-1 mt-2">Additional Notes (Optional)</Text>
+        <Text className="mb-1 mt-2 text-gray-600">
+          Additional Notes (Optional)
+        </Text>
         <TextInput
-          className="bg-white border border-gray-300 rounded-lg p-3 mb-4 text-gray-800 h-24"
+          className="mb-4 h-24 rounded-lg border border-gray-300 bg-white p-3 text-gray-800"
           placeholder="Any specific instructions? Gate code?"
           value={bookingData.notes}
           onChangeText={(text) =>
@@ -613,10 +727,10 @@ const BookingForm = ({
         {/* --- End Added Inputs --- */}
 
         <TouchableOpacity
-          className="bg-green-500 rounded-lg py-3 px-4 mb-3 mt-auto"
+          className="mb-3 mt-auto rounded-lg bg-green-500 px-4 py-3"
           onPress={nextStep}
         >
-          <Text className="text-white font-bold text-lg">Next</Text>
+          <Text className="text-lg font-bold text-white">Next</Text>
         </TouchableOpacity>
       </View>
     );
@@ -625,62 +739,86 @@ const BookingForm = ({
   const renderRecurringStep = () => {
     return (
       <View className="flex-1 px-4">
-        <Text className="text-xl font-bold mb-4">Service Frequency</Text>
-        <View className="bg-white rounded-lg p-4 shadow-sm mb-4">
-          <Text className="text-lg font-semibold mb-2">
+        <Text className="mb-4 text-xl font-bold">Service Frequency</Text>
+        <View className="mb-4 rounded-lg bg-white p-4 shadow-sm">
+          <Text className="mb-2 text-lg font-semibold">
             How often would you like this service?
           </Text>
-          <View className="flex-col gap-3 mt-2">
+          <View className="mt-2 flex-col gap-3">
             {/* One-time option */}
             <TouchableOpacity
-              className={`flex-row items-center p-4 rounded-lg mb-2 ${!bookingData.isRecurring ? "bg-green-100 border-2 border-green-500" : "bg-gray-100 border-2 border-gray-200"}`}
+              className={`mb-2 flex-row items-center rounded-lg p-4 ${!bookingData.isRecurring ? 'border-2 border-green-500 bg-green-100' : 'border-2 border-gray-200 bg-gray-100'}`}
               onPress={() => handleRecurringToggle(false)}
               accessibilityRole="radio"
               accessibilityState={{ selected: !bookingData.isRecurring }}
             >
-              <View className={`w-6 h-6 rounded-full border-2 mr-3 ${!bookingData.isRecurring ? "border-green-600 bg-green-500" : "border-gray-400 bg-white"} items-center justify-center`}>
-                {!bookingData.isRecurring && <View className="w-3 h-3 rounded-full bg-white" />}
+              <View
+                className={`mr-3 h-6 w-6 rounded-full border-2 ${!bookingData.isRecurring ? 'border-green-600 bg-green-500' : 'border-gray-400 bg-white'} items-center justify-center`}
+              >
+                {!bookingData.isRecurring && (
+                  <View className="h-3 w-3 rounded-full bg-white" />
+                )}
               </View>
-              <Text className={`text-lg font-semibold ${!bookingData.isRecurring ? "text-green-700" : "text-gray-700"}`}>One-time Service</Text>
+              <Text
+                className={`text-lg font-semibold ${!bookingData.isRecurring ? 'text-green-700' : 'text-gray-700'}`}
+              >
+                One-time Service
+              </Text>
             </TouchableOpacity>
             {/* Recurring option */}
             <TouchableOpacity
-              className={`flex-row items-center p-4 rounded-lg ${bookingData.isRecurring ? "bg-green-100 border-2 border-green-500" : "bg-gray-100 border-2 border-gray-200"}`}
+              className={`flex-row items-center rounded-lg p-4 ${bookingData.isRecurring ? 'border-2 border-green-500 bg-green-100' : 'border-2 border-gray-200 bg-gray-100'}`}
               onPress={() => handleRecurringToggle(true)}
               accessibilityRole="radio"
               accessibilityState={{ selected: bookingData.isRecurring }}
             >
-              <View className={`w-6 h-6 rounded-full border-2 mr-3 ${bookingData.isRecurring ? "border-green-600 bg-green-500" : "border-gray-400 bg-white"} items-center justify-center`}>
-                {bookingData.isRecurring && <View className="w-3 h-3 rounded-full bg-white" />}
+              <View
+                className={`mr-3 h-6 w-6 rounded-full border-2 ${bookingData.isRecurring ? 'border-green-600 bg-green-500' : 'border-gray-400 bg-white'} items-center justify-center`}
+              >
+                {bookingData.isRecurring && (
+                  <View className="h-3 w-3 rounded-full bg-white" />
+                )}
               </View>
-              <Text className={`text-lg font-semibold ${bookingData.isRecurring ? "text-green-700" : "text-gray-700"}`}>Recurring Subscription</Text>
+              <Text
+                className={`text-lg font-semibold ${bookingData.isRecurring ? 'text-green-700' : 'text-gray-700'}`}
+              >
+                Recurring Subscription
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
         {/* If recurring, show plan selection */}
         {bookingData.isRecurring && (
-          <View className="bg-white rounded-lg p-4 shadow-sm mb-4">
-            <Text className="text-lg font-semibold mb-3">Select a Recurring Plan</Text>
+          <View className="mb-4 rounded-lg bg-white p-4 shadow-sm">
+            <Text className="mb-3 text-lg font-semibold">
+              Select a Recurring Plan
+            </Text>
             <ScrollView style={{ maxHeight: 180 }}>
               {recurringPlans.map((plan) => (
                 <TouchableOpacity
                   key={plan.id}
-                  className={`flex-row justify-between items-center bg-white p-4 rounded-lg shadow-sm mb-3 border-2 ${bookingData.recurringPlan === plan.id ? "border-green-500 bg-green-50" : "border-gray-200"}`}
+                  className={`mb-3 flex-row items-center justify-between rounded-lg border-2 bg-white p-4 shadow-sm ${bookingData.recurringPlan === plan.id ? 'border-green-500 bg-green-50' : 'border-gray-200'}`}
                   onPress={() => handleRecurringPlanSelect(plan.id)}
                   accessibilityRole="radio"
-                  accessibilityState={{ selected: bookingData.recurringPlan === plan.id }}
+                  accessibilityState={{
+                    selected: bookingData.recurringPlan === plan.id,
+                  }}
                 >
                   <View>
                     <Text className="text-lg font-medium">{plan.name}</Text>
                     <Text className="text-gray-600">{plan.description}</Text>
                     {Number(plan.discount_percentage) > 0 && (
-                      <Text className="text-green-600 mt-1">
+                      <Text className="mt-1 text-green-600">
                         Save {plan.discount_percentage}%
                       </Text>
                     )}
                   </View>
-                  <View className={`w-5 h-5 rounded-full border-2 ml-3 ${bookingData.recurringPlan === plan.id ? "border-green-500 bg-green-500" : "border-gray-300 bg-white"} items-center justify-center`}>
-                    {bookingData.recurringPlan === plan.id && <View className="w-2 h-2 rounded-full bg-white" />}
+                  <View
+                    className={`ml-3 h-5 w-5 rounded-full border-2 ${bookingData.recurringPlan === plan.id ? 'border-green-500 bg-green-500' : 'border-gray-300 bg-white'} items-center justify-center`}
+                  >
+                    {bookingData.recurringPlan === plan.id && (
+                      <View className="h-2 w-2 rounded-full bg-white" />
+                    )}
                   </View>
                 </TouchableOpacity>
               ))}
@@ -689,13 +827,15 @@ const BookingForm = ({
         )}
         {/* Continue button */}
         <TouchableOpacity
-          className={`bg-green-500 rounded-lg py-4 items-center mt-2 ${bookingData.isRecurring && !bookingData.recurringPlan ? "opacity-50" : ""}`}
+          className={`mt-2 items-center rounded-lg bg-green-500 py-4 ${bookingData.isRecurring && !bookingData.recurringPlan ? 'opacity-50' : ''}`}
           onPress={nextStep}
           disabled={bookingData.isRecurring && !bookingData.recurringPlan}
           accessibilityRole="button"
-          accessibilityState={{ disabled: bookingData.isRecurring && !bookingData.recurringPlan }}
+          accessibilityState={{
+            disabled: bookingData.isRecurring && !bookingData.recurringPlan,
+          }}
         >
-          <Text className="text-white font-bold text-lg">Continue</Text>
+          <Text className="text-lg font-bold text-white">Continue</Text>
         </TouchableOpacity>
       </View>
     );
@@ -704,28 +844,36 @@ const BookingForm = ({
   const renderPaymentStep = () => {
     return (
       <View className="flex-1 px-4">
-        <Text className="text-xl font-bold mb-4">Payment Method</Text>
-        <Text className="text-gray-600 mb-4">Select how you'd like to pay</Text>
+        <Text className="mb-4 text-xl font-bold">Payment Method</Text>
+        <Text className="mb-4 text-gray-600">Select how you'd like to pay</Text>
 
         {paymentMethodsLoading ? (
-          <View className="flex-1 justify-center items-center">
+          <View className="flex-1 items-center justify-center">
             <ActivityIndicator size="large" color="#16a34a" />
-            <Text className="mt-4 text-gray-600">Loading payment methods...</Text>
+            <Text className="mt-4 text-gray-600">
+              Loading payment methods...
+            </Text>
           </View>
         ) : (
           <ScrollView className="flex-1">
             {/* Cash on Delivery Option */}
             <TouchableOpacity
-              className="flex-row items-center justify-between bg-white rounded-lg p-4 mb-3 shadow-sm border-2 border-gray-200"
-              onPress={() => handlePaymentMethodSelect("cash", { id: "cash", name: "Cash" })}
+              className="mb-3 flex-row items-center justify-between rounded-lg border-2 border-gray-200 bg-white p-4 shadow-sm"
+              onPress={() =>
+                handlePaymentMethodSelect('cash', { id: 'cash', name: 'Cash' })
+              }
             >
               <View className="flex-row items-center">
-                <View className="bg-green-100 p-2 rounded-full mr-3">
+                <View className="mr-3 rounded-full bg-green-100 p-2">
                   <CreditCard size={24} color="#16a34a" />
                 </View>
                 <View>
-                  <Text className="text-lg font-semibold">Cash on Delivery</Text>
-                  <Text className="text-gray-500 text-sm">Pay when service is completed</Text>
+                  <Text className="text-lg font-semibold">
+                    Cash on Delivery
+                  </Text>
+                  <Text className="text-sm text-gray-500">
+                    Pay when service is completed
+                  </Text>
                 </View>
               </View>
               <ChevronRight size={20} color="#9CA3AF" />
@@ -735,18 +883,22 @@ const BookingForm = ({
             {paymentMethods.map((method) => (
               <TouchableOpacity
                 key={method.id}
-                className="flex-row items-center justify-between bg-white rounded-lg p-4 mb-3 shadow-sm border-2 border-gray-200"
+                className="mb-3 flex-row items-center justify-between rounded-lg border-2 border-gray-200 bg-white p-4 shadow-sm"
                 onPress={() => handlePaymentMethodSelect(method.id, method)}
               >
                 <View className="flex-row items-center">
-                  <View className="bg-blue-100 p-2 rounded-full mr-3">
+                  <View className="mr-3 rounded-full bg-blue-100 p-2">
                     <CreditCard size={24} color="#3b82f6" />
                   </View>
                   <View>
                     <Text className="text-lg font-semibold">
-                      {method.card?.brand ? method.card.brand.charAt(0).toUpperCase() + method.card.brand.slice(1) : "Card"} •••• {method.card?.last4}
+                      {method.card?.brand
+                        ? method.card.brand.charAt(0).toUpperCase() +
+                          method.card.brand.slice(1)
+                        : 'Card'}{' '}
+                      •••• {method.card?.last4}
                     </Text>
-                    <Text className="text-gray-500 text-sm">
+                    <Text className="text-sm text-gray-500">
                       Expires {method.card?.exp_month}/{method.card?.exp_year}
                     </Text>
                   </View>
@@ -757,11 +909,13 @@ const BookingForm = ({
 
             {/* Add New Card Button */}
             <TouchableOpacity
-              className="flex-row items-center justify-center bg-green-500 rounded-lg p-4 mb-3 shadow-sm"
+              className="mb-3 flex-row items-center justify-center rounded-lg bg-green-500 p-4 shadow-sm"
               onPress={() => setIsAddCardModalVisible(true)}
             >
               <Plus size={20} color="#ffffff" />
-              <Text className="text-white font-semibold text-lg ml-2">Add New Card</Text>
+              <Text className="ml-2 text-lg font-semibold text-white">
+                Add New Card
+              </Text>
             </TouchableOpacity>
           </ScrollView>
         )}
@@ -774,20 +928,21 @@ const BookingForm = ({
       (plan) => plan.id === bookingData.recurringPlan
     );
     const paymentDisplay =
-      bookingData.paymentMethodDetails?.id === "cash"
-        ? "Cash on Delivery"
-        : bookingData.paymentMethodDetails && "card" in bookingData.paymentMethodDetails
-        ? `${bookingData.paymentMethodDetails.card?.brand || "Card"} ending in ${
-            bookingData.paymentMethodDetails.card?.last4 || "????"
-          }`
-        : "N/A"; // Fallback
+      bookingData.paymentMethodDetails?.id === 'cash'
+        ? 'Cash on Delivery'
+        : bookingData.paymentMethodDetails &&
+            'card' in bookingData.paymentMethodDetails
+          ? `${bookingData.paymentMethodDetails.card?.brand || 'Card'} ending in ${
+              bookingData.paymentMethodDetails.card?.last4 || '????'
+            }`
+          : 'N/A'; // Fallback
 
     return (
       <View className="flex-1 px-4">
-        <Text className="text-xl font-bold mb-4">Booking Confirmation</Text>
-        <View className="bg-white rounded-lg p-5 shadow-sm mb-4">
-          <View className="items-center mb-4">
-            <View className="bg-green-100 rounded-full p-3 mb-2">
+        <Text className="mb-4 text-xl font-bold">Booking Confirmation</Text>
+        <View className="mb-4 rounded-lg bg-white p-5 shadow-sm">
+          <View className="mb-4 items-center">
+            <View className="mb-2 rounded-full bg-green-100 p-3">
               <Check size={32} color="#10B981" />
             </View>
             <Text className="text-xl font-bold text-green-500">
@@ -795,49 +950,53 @@ const BookingForm = ({
             </Text>
           </View>
 
-          <View className="border-t border-gray-200 pt-4 mt-2">
-            <Text className="text-lg font-semibold mb-3">Service Details:</Text>
-            <View className="flex-row mb-2">
-              <Text className="text-gray-600 w-1/3">Service:</Text>
-              <Text className="font-medium flex-1">{bookingData.serviceName}</Text>
+          <View className="mt-2 border-t border-gray-200 pt-4">
+            <Text className="mb-3 text-lg font-semibold">Service Details:</Text>
+            <View className="mb-2 flex-row">
+              <Text className="w-1/3 text-gray-600">Service:</Text>
+              <Text className="flex-1 font-medium">
+                {bookingData.serviceName}
+              </Text>
             </View>
-            <View className="flex-row mb-2">
-              <Text className="text-gray-600 w-1/3">Date:</Text>
-              <Text className="font-medium flex-1">
+            <View className="mb-2 flex-row">
+              <Text className="w-1/3 text-gray-600">Date:</Text>
+              <Text className="flex-1 font-medium">
                 {(() => {
-                  const [year, month, day] = bookingData.date.split('-').map(Number);
+                  const [year, month, day] = bookingData.date
+                    .split('-')
+                    .map(Number);
                   const localDate = new Date(year, month - 1, day);
-                  return localDate.toLocaleDateString("en-US", {
-                    weekday: "long",
-                    month: "long",
-                    day: "numeric",
+                  return localDate.toLocaleDateString('en-US', {
+                    weekday: 'long',
+                    month: 'long',
+                    day: 'numeric',
                   });
                 })()}
               </Text>
             </View>
-            <View className="flex-row mb-2">
-              <Text className="text-gray-600 w-1/3">Time:</Text>
-              <Text className="font-medium flex-1">{bookingData.time}</Text>
+            <View className="mb-2 flex-row">
+              <Text className="w-1/3 text-gray-600">Time:</Text>
+              <Text className="flex-1 font-medium">{bookingData.time}</Text>
             </View>
-            <View className="flex-row mb-2">
-              <Text className="text-gray-600 w-1/3">Address:</Text>
-              <Text className="font-medium flex-1">{bookingData.address}</Text>
+            <View className="mb-2 flex-row">
+              <Text className="w-1/3 text-gray-600">Address:</Text>
+              <Text className="flex-1 font-medium">{bookingData.address}</Text>
             </View>
             {bookingData.isRecurring && (
-              <View className="flex-row mb-2">
-                <Text className="text-gray-600 w-1/3">Plan:</Text>
-                <Text className="font-medium flex-1">
-                  {selectedPlan?.name || "Custom plan"}
+              <View className="mb-2 flex-row">
+                <Text className="w-1/3 text-gray-600">Plan:</Text>
+                <Text className="flex-1 font-medium">
+                  {selectedPlan?.name || 'Custom plan'}
                 </Text>
               </View>
             )}
-            <View className="flex-row mb-2">
-              <Text className="text-gray-600 w-1/3">Payment:</Text>
-              <Text className="font-medium flex-1">{paymentDisplay}</Text>
+            <View className="mb-2 flex-row">
+              <Text className="w-1/3 text-gray-600">Payment:</Text>
+              <Text className="flex-1 font-medium">{paymentDisplay}</Text>
             </View>
-            <View className="flex-row mb-2">
-              <Text className="text-gray-600 w-1/3">Total:</Text>
-              <Text className="font-medium flex-1 text-green-600">
+            <View className="mb-2 flex-row">
+              <Text className="w-1/3 text-gray-600">Total:</Text>
+              <Text className="flex-1 font-medium text-green-600">
                 ${bookingData.price.toFixed(2)}
                 {bookingData.isRecurring &&
                   selectedPlan?.discount_percentage &&
@@ -848,14 +1007,14 @@ const BookingForm = ({
         </View>
 
         <TouchableOpacity
-          className="bg-green-500 rounded-lg py-4 items-center"
+          className="items-center rounded-lg bg-green-500 py-4"
           onPress={() => handleBookingComplete(bookingData)}
           disabled={isSubmitting}
         >
           {isSubmitting ? (
             <ActivityIndicator color="#ffffff" />
           ) : (
-            <Text className="text-white font-bold text-lg">
+            <Text className="text-lg font-bold text-white">
               Confirm Booking
             </Text>
           )}
@@ -886,10 +1045,10 @@ const BookingForm = ({
   };
 
   const parseStripeError = (error: any): string => {
-    if (!error) return "An unexpected error occurred. Please try again.";
+    if (!error) return 'An unexpected error occurred. Please try again.';
 
     // If error is a string
-    if (typeof error === "string") return error;
+    if (typeof error === 'string') return error;
 
     // If error has a message
     if (error.message) {
@@ -907,11 +1066,18 @@ const BookingForm = ({
       return error.message;
     }
     // If error is an object with useful fields
-    if (error.stripe_error_code || error.stripe_error_type || error.stripe_decline_code) {
-      let msg = "Payment failed.";
-      if (error.stripe_error_code) msg += `\n(Code: ${error.stripe_error_code})`;
-      if (error.stripe_error_type) msg += `\n(Type: ${error.stripe_error_type})`;
-      if (error.stripe_decline_code) msg += `\n(Decline: ${error.stripe_decline_code})`;
+    if (
+      error.stripe_error_code ||
+      error.stripe_error_type ||
+      error.stripe_decline_code
+    ) {
+      let msg = 'Payment failed.';
+      if (error.stripe_error_code)
+        msg += `\n(Code: ${error.stripe_error_code})`;
+      if (error.stripe_error_type)
+        msg += `\n(Type: ${error.stripe_error_type})`;
+      if (error.stripe_decline_code)
+        msg += `\n(Decline: ${error.stripe_decline_code})`;
       return msg;
     }
     return JSON.stringify(error);
@@ -923,9 +1089,9 @@ const BookingForm = ({
       await onComplete(bookingData);
     } catch (error) {
       showNotification({
-        title: "Booking Failed",
+        title: 'Booking Failed',
         message: parseStripeError(error),
-        type: "error",
+        type: 'error',
       });
     } finally {
       setLoading(false);
@@ -941,19 +1107,19 @@ const BookingForm = ({
         title={(() => {
           switch (currentStep) {
             case 1:
-              return "Select Service Type";
+              return 'Select Service Type';
             case 2:
-              return "Select Date";
+              return 'Select Date';
             case 3:
-              return "Select Time";
+              return 'Select Time';
             case 4:
-              return "Confirm Address";
+              return 'Confirm Address';
             case 5:
-              return "Service Frequency";
+              return 'Service Frequency';
             case 6:
-              return "Payment Method";
+              return 'Payment Method';
             case 7:
-              return "Confirmation";
+              return 'Confirmation';
             default:
               return undefined;
           }
@@ -969,8 +1135,8 @@ const BookingForm = ({
         onRequestClose={() => setShowPropertySelector(false)}
       >
         <View className="flex-1 justify-end bg-black/50">
-          <View className="bg-white rounded-t-3xl p-6 max-h-3/4">
-            <View className="flex-row justify-between items-center mb-4">
+          <View className="max-h-3/4 rounded-t-3xl bg-white p-6">
+            <View className="mb-4 flex-row items-center justify-between">
               <Text className="text-xl font-bold text-gray-800">
                 Select Property
               </Text>
@@ -981,9 +1147,9 @@ const BookingForm = ({
 
             <ScrollView showsVerticalScrollIndicator={false}>
               {savedProperties.length === 0 ? (
-                <View className="py-8 items-center">
+                <View className="items-center py-8">
                   <Home size={48} color="#9CA3AF" />
-                  <Text className="text-gray-500 text-center mt-4">
+                  <Text className="mt-4 text-center text-gray-500">
                     No saved properties yet
                   </Text>
                 </View>
@@ -991,25 +1157,25 @@ const BookingForm = ({
                 savedProperties.map((property) => (
                   <TouchableOpacity
                     key={property.id}
-                    className={`bg-white border rounded-lg p-4 mb-3 shadow-sm ${
+                    className={`mb-3 rounded-lg border bg-white p-4 shadow-sm ${
                       property.is_default
-                        ? "border-green-500 border-2"
-                        : "border-gray-200"
+                        ? 'border-2 border-green-500'
+                        : 'border-gray-200'
                     }`}
                     onPress={() => handlePropertySelect(property)}
                   >
-                    <View className="flex-row justify-between items-start mb-2">
-                      <View className="flex-row items-center flex-1">
+                    <View className="mb-2 flex-row items-start justify-between">
+                      <View className="flex-1 flex-row items-center">
                         <Home
                           size={20}
-                          color={property.is_default ? "#10b981" : "#6b7280"}
+                          color={property.is_default ? '#10b981' : '#6b7280'}
                         />
-                        <Text className="text-lg font-semibold text-gray-800 ml-2">
+                        <Text className="ml-2 text-lg font-semibold text-gray-800">
                           {property.nickname}
                         </Text>
                         {property.is_default && (
-                          <View className="ml-2 bg-green-100 px-2 py-1 rounded-full">
-                            <Text className="text-xs text-green-800 font-medium">
+                          <View className="ml-2 rounded-full bg-green-100 px-2 py-1">
+                            <Text className="text-xs font-medium text-green-800">
                               Default
                             </Text>
                           </View>
@@ -1017,33 +1183,37 @@ const BookingForm = ({
                       </View>
                     </View>
 
-                    <View className="flex-row items-start mt-2">
+                    <View className="mt-2 flex-row items-start">
                       <MapPin size={16} color="#6b7280" className="mt-1" />
-                      <View className="flex-1 ml-2">
-                        <Text className="text-gray-600">{property.address}</Text>
-                        {(property.city || property.state || property.zip_code) && (
-                          <Text className="text-gray-500 text-sm">
+                      <View className="ml-2 flex-1">
+                        <Text className="text-gray-600">
+                          {property.address}
+                        </Text>
+                        {(property.city ||
+                          property.state ||
+                          property.zip_code) && (
+                          <Text className="text-sm text-gray-500">
                             {[property.city, property.state, property.zip_code]
                               .filter(Boolean)
-                              .join(", ")}
+                              .join(', ')}
                           </Text>
                         )}
                       </View>
                     </View>
 
                     {(property.property_size || property.area_type) && (
-                      <View className="flex-row mt-2 space-x-2">
+                      <View className="mt-2 flex-row space-x-2">
                         {property.property_size && (
-                          <View className="bg-gray-100 px-2 py-1 rounded">
-                            <Text className="text-xs text-gray-600 capitalize">
-                              {property.property_size.replace("_", " ")}
+                          <View className="rounded bg-gray-100 px-2 py-1">
+                            <Text className="text-xs capitalize text-gray-600">
+                              {property.property_size.replace('_', ' ')}
                             </Text>
                           </View>
                         )}
                         {property.area_type && (
-                          <View className="bg-gray-100 px-2 py-1 rounded ml-2">
-                            <Text className="text-xs text-gray-600 capitalize">
-                              {property.area_type.replace("_", " ")}
+                          <View className="ml-2 rounded bg-gray-100 px-2 py-1">
+                            <Text className="text-xs capitalize text-gray-600">
+                              {property.area_type.replace('_', ' ')}
                             </Text>
                           </View>
                         )}
@@ -1062,7 +1232,9 @@ const BookingForm = ({
         visible={isAddCardModalVisible}
         onClose={() => setIsAddCardModalVisible(false)}
         onSaveSuccess={handleAddCard}
-        stripePublishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || ""}
+        stripePublishableKey={
+          process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || ''
+        }
       />
     </View>
   );
