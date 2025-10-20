@@ -1,6 +1,6 @@
-import React from "react";
-import { Tabs } from "expo-router";
-import { View, Text } from "react-native";
+import React from 'react';
+import { Tabs } from 'expo-router';
+import { View, Text } from 'react-native';
 import {
   Home,
   Users,
@@ -10,8 +10,10 @@ import {
   Cog,
   Calendar,
   DollarSign,
-} from "lucide-react-native";
-import ProtectedRoute from "../components/common/ProtectedRoute";
+  MessageSquare,
+} from 'lucide-react-native';
+import ProtectedRoute from '../components/common/ProtectedRoute';
+import NotificationsButton from '../components/common/NotificationsButton';
 
 export default function AdminLayout() {
   return (
@@ -19,32 +21,37 @@ export default function AdminLayout() {
       <View className="flex-1 bg-white">
         <Tabs
           screenOptions={{
-            tabBarActiveTintColor: "#10b981",
-            tabBarInactiveTintColor: "#6b7280",
+            tabBarActiveTintColor: '#10b981',
+            tabBarInactiveTintColor: '#6b7280',
             tabBarStyle: {
-              backgroundColor: "white",
+              backgroundColor: 'white',
               borderTopWidth: 1,
-              borderTopColor: "#e5e7eb",
+              borderTopColor: '#e5e7eb',
               paddingTop: 5,
               height: 60,
             },
             headerStyle: {
-              backgroundColor: "white",
+              backgroundColor: 'white',
               elevation: 0,
               shadowOpacity: 0,
               borderBottomWidth: 1,
-              borderBottomColor: "#e5e7eb",
+              borderBottomColor: '#e5e7eb',
             },
             headerTitleStyle: {
-              color: "#111827",
-              fontWeight: "bold",
+              color: '#111827',
+              fontWeight: 'bold',
             },
+            headerRight: () => (
+              <View style={{ marginRight: 16 }}>
+                <NotificationsButton variant="light" />
+              </View>
+            ),
           }}
         >
           <Tabs.Screen
             name="dashboard"
             options={{
-              title: "Dashboard",
+              title: 'Dashboard',
               tabBarIcon: ({ color }) => <Home size={24} color={color} />,
               tabBarLabel: ({ color }) => (
                 <Text style={{ color, fontSize: 12, marginBottom: 5 }}>
@@ -56,7 +63,7 @@ export default function AdminLayout() {
           <Tabs.Screen
             name="bookings"
             options={{
-              title: "Bookings",
+              title: 'Bookings',
               tabBarIcon: ({ color }) => <Calendar size={24} color={color} />,
               tabBarLabel: ({ color }) => (
                 <Text style={{ color, fontSize: 12, marginBottom: 5 }}>
@@ -68,7 +75,7 @@ export default function AdminLayout() {
           <Tabs.Screen
             name="users"
             options={{
-              title: "Users",
+              title: 'Users',
               tabBarIcon: ({ color }) => <Users size={24} color={color} />,
               tabBarLabel: ({ color }) => (
                 <Text style={{ color, fontSize: 12, marginBottom: 5 }}>
@@ -80,7 +87,7 @@ export default function AdminLayout() {
           <Tabs.Screen
             name="services"
             options={{
-              title: "Services",
+              title: 'Services',
               tabBarIcon: ({ color }) => (
                 <SettingsIcon size={24} color={color} />
               ),
@@ -92,9 +99,23 @@ export default function AdminLayout() {
             }}
           />
           <Tabs.Screen
+            name="feedback"
+            options={{
+              title: 'Feedback',
+              tabBarIcon: ({ color }) => (
+                <MessageSquare size={24} color={color} />
+              ),
+              tabBarLabel: ({ color }) => (
+                <Text style={{ color, fontSize: 12, marginBottom: 5 }}>
+                  Feedback
+                </Text>
+              ),
+            }}
+          />
+          <Tabs.Screen
             name="analytics"
             options={{
-              title: "Analytics",
+              title: 'Analytics',
               tabBarIcon: ({ color }) => <BarChart3 size={24} color={color} />,
               tabBarLabel: ({ color }) => (
                 <Text style={{ color, fontSize: 12, marginBottom: 5 }}>
@@ -106,7 +127,7 @@ export default function AdminLayout() {
           <Tabs.Screen
             name="billing"
             options={{
-              title: "Billing",
+              title: 'Billing',
               tabBarIcon: ({ color }) => <DollarSign size={24} color={color} />,
               tabBarLabel: ({ color }) => (
                 <Text style={{ color, fontSize: 12, marginBottom: 5 }}>
@@ -118,13 +139,21 @@ export default function AdminLayout() {
           <Tabs.Screen
             name="settings"
             options={{
-              title: "Settings",
+              title: 'Settings',
               tabBarIcon: ({ color }) => <Cog size={24} color={color} />,
               tabBarLabel: ({ color }) => (
                 <Text style={{ color, fontSize: 12, marginBottom: 5 }}>
                   Settings
                 </Text>
               ),
+            }}
+          />
+          <Tabs.Screen
+            name="notifications"
+            options={{
+              href: null,
+              headerShown: true,
+              headerTitle: 'Notifications',
             }}
           />
           {/* Hidden screens removed from layout - let Expo Router discover them */}
