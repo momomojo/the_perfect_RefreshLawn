@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,17 +7,16 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-} from "react-native";
-import { Bell } from "lucide-react-native";
-import BusinessMetrics from "../components/admin/BusinessMetrics";
-import TodayOverview from "../components/admin/TodayOverview";
-import QuickActions from "../components/admin/QuickActions";
-import { useUserRole } from "../../hooks/useUserRole";
-import { useRouter } from "expo-router";
-import { supabase } from "../../lib/supabase";
-import { getAllBookings, Booking, Profile } from "../../lib/data";
-import { format } from "date-fns";
-import { useRealtimeBookings } from "../../lib/hooks";
+} from 'react-native';
+import BusinessMetrics from '../components/admin/BusinessMetrics';
+import TodayOverview from '../components/admin/TodayOverview';
+import QuickActions from '../components/admin/QuickActions';
+import { useUserRole } from '../../hooks/useUserRole';
+import { useRouter } from 'expo-router';
+import { supabase } from '../../lib/supabase';
+import { getAllBookings, Booking, Profile } from '../../lib/data';
+import { format } from 'date-fns';
+import { useRealtimeBookings } from '../../lib/hooks';
 
 const AdminDashboard = () => {
   const { refreshRole } = useUserRole();
@@ -25,17 +24,17 @@ const AdminDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [metricsData, setMetricsData] = useState({
-    revenue: "$0",
-    revenueChange: "+0%",
+    revenue: '$0',
+    revenueChange: '+0%',
     revenueIsPositive: true,
-    jobsCompleted: "0",
-    jobsChange: "+0%",
+    jobsCompleted: '0',
+    jobsChange: '+0%',
     jobsIsPositive: true,
-    customerSatisfaction: "0/5",
-    satisfactionChange: "+0",
+    customerSatisfaction: '0/5',
+    satisfactionChange: '+0',
     satisfactionIsPositive: true,
-    activeCustomers: "0",
-    customersChange: "+0%",
+    activeCustomers: '0',
+    customersChange: '+0%',
     customersIsPositive: true,
   });
   const [upcomingJobs, setUpcomingJobs] = useState<Booking[]>([]);
@@ -50,16 +49,16 @@ const AdminDashboard = () => {
     return bookings.map((booking) => ({
       id: booking.id,
       time: booking.scheduled_time,
-      address: booking.address || "No address provided",
-      service: booking.service?.name || "Unknown service",
+      address: booking.address || 'No address provided',
+      service: booking.service?.name || 'Unknown service',
       technician: booking.technician?.first_name
         ? `${booking.technician.first_name} ${booking.technician.last_name}`
-        : "Unassigned",
+        : 'Unassigned',
       status: booking.status as
-        | "scheduled"
-        | "in-progress"
-        | "completed"
-        | "issue",
+        | 'scheduled'
+        | 'in-progress'
+        | 'completed'
+        | 'issue',
     }));
   };
 
@@ -70,7 +69,7 @@ const AdminDashboard = () => {
       if (loading) setLoading(true);
 
       // Get today's date in ISO format (YYYY-MM-DD)
-      const today = format(new Date(), "yyyy-MM-dd");
+      const today = format(new Date(), 'yyyy-MM-dd');
 
       // Fetch all bookings
       const bookingsData = await getAllBookings();
@@ -88,71 +87,69 @@ const AdminDashboard = () => {
       );
 
       const completedBookings = bookingsData.filter(
-        (booking) => booking.status === "completed"
+        (booking) => booking.status === 'completed'
       );
 
-        const completedTodayCount = todaysBookings.filter(
-          (booking) => booking.status === "completed"
-        ).length;
+      const completedTodayCount = todaysBookings.filter(
+        (booking) => booking.status === 'completed'
+      ).length;
 
-        const inProgressTodayCount = todaysBookings.filter(
-          (booking) => booking.status === "in_progress"
-        ).length;
+      const inProgressTodayCount = todaysBookings.filter(
+        (booking) => booking.status === 'in_progress'
+      ).length;
 
-        const issuesCount = todaysBookings.filter(
-          (booking) => booking.status === "cancelled"
-        ).length;
+      const issuesCount = todaysBookings.filter(
+        (booking) => booking.status === 'cancelled'
+      ).length;
 
-        // Get scheduled bookings for today
-        const scheduledToday = todaysBookings.filter(
-          (booking) =>
-            booking.status === "scheduled" || booking.status === "pending"
-        );
+      // Get scheduled bookings for today
+      const scheduledToday = todaysBookings.filter(
+        (booking) =>
+          booking.status === 'scheduled' || booking.status === 'pending'
+      );
 
-        // Calculate customer satisfaction from reviews
-        const { data: reviews } = await supabase
-          .from("reviews")
-          .select("rating");
+      // Calculate customer satisfaction from reviews
+      const { data: reviews } = await supabase.from('reviews').select('rating');
 
-        const averageRating =
-          reviews && reviews.length > 0
-            ? (
-                reviews.reduce((sum, review) => sum + review.rating, 0) /
-                reviews.length
-              ).toFixed(1)
-            : "0.0";
+      const averageRating =
+        reviews && reviews.length > 0
+          ? (
+              reviews.reduce((sum, review) => sum + review.rating, 0) /
+              reviews.length
+            ).toFixed(1)
+          : '0.0';
 
-        // Get customer count
-        const { data: customers } = await supabase
-          .from("profiles")
-          .select("id")
-          .eq("role", "customer");
+      // Get customer count
+      const { data: customers } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('role', 'customer');
 
-        const customerCount = customers ? customers.length : 0;
+      const customerCount = customers ? customers.length : 0;
 
-        // Update state with real data
-        setMetricsData({
-          revenue: `$${totalRevenue.toFixed(2)}`,
-          revenueChange: "+12.5%", // Would need historical data for real calculation
-          revenueIsPositive: true,
-          jobsCompleted: completedBookings.length.toString(),
-          jobsChange: "+8.2%", // Would need historical data for real calculation
-          jobsIsPositive: true,
-          customerSatisfaction: `${averageRating}/5`,
-          satisfactionChange: "+0.3", // Would need historical data for real calculation
-          satisfactionIsPositive: true,
-          activeCustomers: customerCount.toString(),
-          customersChange: "+5.7%", // Would need historical data for real calculation
-          customersIsPositive: true,
-        });
+      // Update state with real data
+      setMetricsData({
+        revenue: `$${totalRevenue.toFixed(2)}`,
+        revenueChange: '+12.5%', // Would need historical data for real calculation
+        revenueIsPositive: true,
+        jobsCompleted: completedBookings.length.toString(),
+        jobsChange: '+8.2%', // Would need historical data for real calculation
+        jobsIsPositive: true,
+        customerSatisfaction: `${averageRating}/5`,
+        satisfactionChange: '+0.3', // Would need historical data for real calculation
+        satisfactionIsPositive: true,
+        activeCustomers: customerCount.toString(),
+        customersChange: '+5.7%', // Would need historical data for real calculation
+        customersIsPositive: true,
+      });
 
       setUpcomingJobs(scheduledToday);
       setCompletedCount(completedTodayCount);
       setInProgressCount(inProgressTodayCount);
       setIssuesCount(issuesCount);
     } catch (err: any) {
-      console.error("Error fetching dashboard data:", err);
-      setError(err.message || "Failed to load dashboard data");
+      console.error('Error fetching dashboard data:', err);
+      setError(err.message || 'Failed to load dashboard data');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -161,17 +158,17 @@ const AdminDashboard = () => {
 
   // Subscribe to real-time booking updates (admin sees all bookings)
   useEffect(() => {
-    const { data: channel } = supabase
-      .channel("admin-bookings-changes")
+    const channel = supabase
+      .channel('admin-bookings-changes')
       .on(
-        "postgres_changes",
+        'postgres_changes',
         {
-          event: "*",
-          schema: "public",
-          table: "bookings",
+          event: '*',
+          schema: 'public',
+          table: 'bookings',
         },
         (payload) => {
-          console.log("Admin: Booking change detected", payload);
+          console.log('Admin: Booking change detected', payload);
           // Refresh dashboard data when any booking changes
           fetchDashboardData();
         }
@@ -182,31 +179,31 @@ const AdminDashboard = () => {
     fetchDashboardData();
 
     return () => {
-      console.log("Cleaning up admin dashboard subscription");
+      console.log('Cleaning up admin dashboard subscription');
       supabase.removeChannel(channel);
     };
   }, [fetchDashboardData]);
 
   // Handler functions for quick actions
   const handleAddUser = () => {
-    router.push("/users");
+    router.push('/users');
   };
 
   const handleAddService = () => {
-    router.push("/services");
+    router.push('/services');
   };
 
   const handleGenerateReport = () => {
-    router.push("/analytics");
+    router.push('/analytics');
   };
 
   const handleManagePayments = () => {
-    router.push("/billing");
+    router.push('/billing');
   };
 
   if (loading) {
     return (
-      <SafeAreaView className="flex-1 bg-gray-100 justify-center items-center">
+      <SafeAreaView className="flex-1 items-center justify-center bg-gray-100">
         <ActivityIndicator size="large" color="#16a34a" />
         <Text className="mt-4 text-gray-600">Loading dashboard data...</Text>
       </SafeAreaView>
@@ -215,13 +212,13 @@ const AdminDashboard = () => {
 
   if (error) {
     return (
-      <SafeAreaView className="flex-1 bg-gray-100 justify-center items-center p-4">
-        <Text className="text-red-500 text-lg mb-4">{error}</Text>
+      <SafeAreaView className="flex-1 items-center justify-center bg-gray-100 p-4">
+        <Text className="mb-4 text-lg text-red-500">{error}</Text>
         <TouchableOpacity
-          className="bg-green-600 py-2 px-4 rounded-lg"
+          className="rounded-lg bg-green-600 px-4 py-2"
           onPress={() => window.location.reload()}
         >
-          <Text className="text-white font-semibold">Retry</Text>
+          <Text className="font-semibold text-white">Retry</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
@@ -236,22 +233,19 @@ const AdminDashboard = () => {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={fetchDashboardData}
-            colors={["#16a34a"]}
+            colors={['#16a34a']}
             tintColor="#16a34a"
           />
         }
       >
         <View className="p-4">
           {/* Header */}
-          <View className="flex-row justify-between items-center mb-6">
+          <View className="mb-6 flex-row items-center justify-between">
             <View>
               <Text className="text-2xl font-bold text-gray-800">
                 Admin Dashboard
               </Text>
               <Text className="text-gray-500">Welcome back, Admin</Text>
-            </View>
-            <View className="bg-white p-2 rounded-full">
-              <Bell size={24} color="#4b5563" />
             </View>
           </View>
 
@@ -280,8 +274,8 @@ const AdminDashboard = () => {
             />
           </View>
 
-          <View className="bg-purple-100 p-4 rounded-lg mb-6 border border-purple-300">
-            <Text className="text-purple-800 font-semibold mb-2">
+          <View className="mb-6 rounded-lg border border-purple-300 bg-purple-100 p-4">
+            <Text className="mb-2 font-semibold text-purple-800">
               This page is only accessible to administrators
             </Text>
             <Text className="text-purple-700">
@@ -291,10 +285,10 @@ const AdminDashboard = () => {
             </Text>
 
             <TouchableOpacity
-              className="bg-purple-600 py-2 px-4 rounded-lg mt-4 self-start"
+              className="mt-4 self-start rounded-lg bg-purple-600 px-4 py-2"
               onPress={refreshRole}
             >
-              <Text className="text-white font-semibold">
+              <Text className="font-semibold text-white">
                 Refresh Role Claims
               </Text>
             </TouchableOpacity>
