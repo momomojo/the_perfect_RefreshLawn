@@ -1,32 +1,88 @@
-import React from 'react';
-import { Tabs } from 'expo-router';
-import { View, Text } from 'react-native';
+import React, { useState } from 'react';
+import { Tabs, router, usePathname } from 'expo-router';
+import { View, Text, TouchableOpacity, Animated } from 'react-native';
 import {
   Home,
   Users,
-  Settings as SettingsIcon,
-  BarChart3,
-  CreditCard,
   Cog,
   Calendar,
-  DollarSign,
-  MessageSquare,
+  Menu,
+  ChevronLeft,
 } from 'lucide-react-native';
 import ProtectedRoute from '../components/common/ProtectedRoute';
 import NotificationsButton from '../components/common/NotificationsButton';
+import DrawerNavigation from '../components/common/DrawerNavigation';
 
 export default function AdminLayout() {
+  const [drawerVisible, setDrawerVisible] = useState(false);
+  const pathname = usePathname();
+
+  // Main tab routes that don't need back button
+  const mainTabs = ['/dashboard', '/bookings', '/users', '/services', '/more'];
+  const isMainTab = mainTabs.some(
+    (tab) => pathname === tab || pathname.endsWith(tab)
+  );
+
+  // Drawer routes that should keep More tab highlighted
+  const drawerRoutes = [
+    '/analytics',
+    '/billing',
+    '/feedback',
+    '/settings',
+    '/notification-preferences',
+  ];
+  const isDrawerRoute = drawerRoutes.some((route) => pathname.includes(route));
+
+  // Custom "More" tab component with active state
+  const MoreTabButton = ({
+    color,
+    focused,
+  }: {
+    color: string;
+    focused: boolean;
+  }) => {
+    // Keep More tab highlighted when on drawer routes
+    const isActive = focused || isDrawerRoute;
+
+    return (
+      <Animated.View
+        style={{
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingVertical: 5,
+          transform: [{ scale: isActive ? 1.1 : 1 }],
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: isActive ? 2 : 0 },
+          shadowOpacity: isActive ? 0.2 : 0,
+          shadowRadius: isActive ? 3 : 0,
+          elevation: isActive ? 4 : 0,
+        }}
+      >
+        <Menu size={24} color={isActive ? '#22c55e' : color} />
+        <Text
+          style={{
+            color: isActive ? '#22c55e' : color,
+            fontSize: 12,
+            marginTop: 2,
+          }}
+        >
+          More
+        </Text>
+      </Animated.View>
+    );
+  };
+
   return (
     <ProtectedRoute requiredRole="admin">
       <View className="flex-1 bg-white">
         <Tabs
           screenOptions={{
-            tabBarActiveTintColor: '#10b981',
-            tabBarInactiveTintColor: '#6b7280',
+            tabBarActiveTintColor: '#22c55e',
+            tabBarInactiveTintColor: '#737373',
             tabBarStyle: {
               backgroundColor: 'white',
               borderTopWidth: 1,
-              borderTopColor: '#e5e7eb',
+              borderTopColor: '#e5e5e5',
               paddingTop: 5,
               height: 60,
             },
@@ -35,12 +91,23 @@ export default function AdminLayout() {
               elevation: 0,
               shadowOpacity: 0,
               borderBottomWidth: 1,
-              borderBottomColor: '#e5e7eb',
+              borderBottomColor: '#e5e5e5',
             },
             headerTitleStyle: {
-              color: '#111827',
+              color: '#171717',
               fontWeight: 'bold',
             },
+            headerLeft: !isMainTab
+              ? () => (
+                  <TouchableOpacity
+                    onPress={() => router.back()}
+                    style={{ marginLeft: 16 }}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <ChevronLeft size={24} color="#22c55e" />
+                  </TouchableOpacity>
+                )
+              : undefined,
             headerRight: () => (
               <View style={{ marginRight: 16 }}>
                 <NotificationsButton variant="light" />
@@ -48,11 +115,26 @@ export default function AdminLayout() {
             ),
           }}
         >
+          {/* Primary Navigation - 5 Tabs Max */}
           <Tabs.Screen
             name="dashboard"
             options={{
               title: 'Dashboard',
-              tabBarIcon: ({ color }) => <Home size={24} color={color} />,
+              headerTitle: 'Admin Dashboard',
+              tabBarIcon: ({ color, focused }) => (
+                <Animated.View
+                  style={{
+                    transform: [{ scale: focused ? 1.1 : 1 }],
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: focused ? 2 : 0 },
+                    shadowOpacity: focused ? 0.2 : 0,
+                    shadowRadius: focused ? 3 : 0,
+                    elevation: focused ? 4 : 0,
+                  }}
+                >
+                  <Home size={24} color={color} />
+                </Animated.View>
+              ),
               tabBarLabel: ({ color }) => (
                 <Text style={{ color, fontSize: 12, marginBottom: 5 }}>
                   Dashboard
@@ -64,7 +146,21 @@ export default function AdminLayout() {
             name="bookings"
             options={{
               title: 'Bookings',
-              tabBarIcon: ({ color }) => <Calendar size={24} color={color} />,
+              headerTitle: 'All Bookings',
+              tabBarIcon: ({ color, focused }) => (
+                <Animated.View
+                  style={{
+                    transform: [{ scale: focused ? 1.1 : 1 }],
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: focused ? 2 : 0 },
+                    shadowOpacity: focused ? 0.2 : 0,
+                    shadowRadius: focused ? 3 : 0,
+                    elevation: focused ? 4 : 0,
+                  }}
+                >
+                  <Calendar size={24} color={color} />
+                </Animated.View>
+              ),
               tabBarLabel: ({ color }) => (
                 <Text style={{ color, fontSize: 12, marginBottom: 5 }}>
                   Bookings
@@ -76,7 +172,21 @@ export default function AdminLayout() {
             name="users"
             options={{
               title: 'Users',
-              tabBarIcon: ({ color }) => <Users size={24} color={color} />,
+              headerTitle: 'User Management',
+              tabBarIcon: ({ color, focused }) => (
+                <Animated.View
+                  style={{
+                    transform: [{ scale: focused ? 1.1 : 1 }],
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: focused ? 2 : 0 },
+                    shadowOpacity: focused ? 0.2 : 0,
+                    shadowRadius: focused ? 3 : 0,
+                    elevation: focused ? 4 : 0,
+                  }}
+                >
+                  <Users size={24} color={color} />
+                </Animated.View>
+              ),
               tabBarLabel: ({ color }) => (
                 <Text style={{ color, fontSize: 12, marginBottom: 5 }}>
                   Users
@@ -88,8 +198,20 @@ export default function AdminLayout() {
             name="services"
             options={{
               title: 'Services',
-              tabBarIcon: ({ color }) => (
-                <SettingsIcon size={24} color={color} />
+              headerTitle: 'Service Catalog',
+              tabBarIcon: ({ color, focused }) => (
+                <Animated.View
+                  style={{
+                    transform: [{ scale: focused ? 1.1 : 1 }],
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: focused ? 2 : 0 },
+                    shadowOpacity: focused ? 0.2 : 0,
+                    shadowRadius: focused ? 3 : 0,
+                    elevation: focused ? 4 : 0,
+                  }}
+                >
+                  <Cog size={24} color={color} />
+                </Animated.View>
               ),
               tabBarLabel: ({ color }) => (
                 <Text style={{ color, fontSize: 12, marginBottom: 5 }}>
@@ -98,54 +220,68 @@ export default function AdminLayout() {
               ),
             }}
           />
+
+          {/* More Tab - Opens Drawer */}
           <Tabs.Screen
-            name="feedback"
+            name="more"
             options={{
-              title: 'Feedback',
-              tabBarIcon: ({ color }) => (
-                <MessageSquare size={24} color={color} />
-              ),
-              tabBarLabel: ({ color }) => (
-                <Text style={{ color, fontSize: 12, marginBottom: 5 }}>
-                  Feedback
-                </Text>
+              title: 'More',
+              headerShown: false,
+              tabBarButton: (props) => (
+                <TouchableOpacity
+                  {...props}
+                  onPress={(e) => {
+                    e.preventDefault();
+                    setDrawerVisible(true);
+                  }}
+                  style={{
+                    flex: 1,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <MoreTabButton
+                    color={
+                      props.accessibilityState?.selected ? '#22c55e' : '#737373'
+                    }
+                    focused={props.accessibilityState?.selected || false}
+                  />
+                </TouchableOpacity>
               ),
             }}
           />
+
+          {/* Hidden Screens - Moved to Drawer or Detail Views */}
           <Tabs.Screen
             name="analytics"
             options={{
-              title: 'Analytics',
-              tabBarIcon: ({ color }) => <BarChart3 size={24} color={color} />,
-              tabBarLabel: ({ color }) => (
-                <Text style={{ color, fontSize: 12, marginBottom: 5 }}>
-                  Analytics
-                </Text>
-              ),
+              href: null,
+              headerShown: true,
+              headerTitle: 'Analytics & Reports',
             }}
           />
           <Tabs.Screen
             name="billing"
             options={{
-              title: 'Billing',
-              tabBarIcon: ({ color }) => <DollarSign size={24} color={color} />,
-              tabBarLabel: ({ color }) => (
-                <Text style={{ color, fontSize: 12, marginBottom: 5 }}>
-                  Billing
-                </Text>
-              ),
+              href: null,
+              headerShown: true,
+              headerTitle: 'Billing Hub',
+            }}
+          />
+          <Tabs.Screen
+            name="feedback"
+            options={{
+              href: null,
+              headerShown: true,
+              headerTitle: 'Customer Feedback',
             }}
           />
           <Tabs.Screen
             name="settings"
             options={{
-              title: 'Settings',
-              tabBarIcon: ({ color }) => <Cog size={24} color={color} />,
-              tabBarLabel: ({ color }) => (
-                <Text style={{ color, fontSize: 12, marginBottom: 5 }}>
-                  Settings
-                </Text>
-              ),
+              href: null,
+              headerShown: true,
+              headerTitle: 'App Settings',
             }}
           />
           <Tabs.Screen
@@ -156,11 +292,29 @@ export default function AdminLayout() {
               headerTitle: 'Notifications',
             }}
           />
-          {/* Hidden screens removed from layout - let Expo Router discover them */}
-          {/* <Tabs.Screen name="payments" options={{ href: null }} /> */}
-          {/* <Tabs.Screen name="customers" options={{ href: null }} /> */}
-          {/* <Tabs.Screen name="invoices" options={{ href: null }} /> */}
+          <Tabs.Screen
+            name="notification-preferences"
+            options={{
+              href: null,
+              headerShown: true,
+              headerTitle: 'Notification Settings',
+            }}
+          />
+          <Tabs.Screen
+            name="booking/[id]"
+            options={{
+              href: null,
+              headerShown: true,
+              headerTitle: 'Booking Details',
+            }}
+          />
         </Tabs>
+
+        {/* Drawer Navigation Component */}
+        <DrawerNavigation
+          visible={drawerVisible}
+          onClose={() => setDrawerVisible(false)}
+        />
       </View>
     </ProtectedRoute>
   );
