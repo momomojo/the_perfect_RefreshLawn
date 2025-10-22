@@ -1,0 +1,56 @@
+# Prettier ignore file
+# Files and directories that should not be formatted
+
+# Dependencies
+node_modules/
+package-lock.json
+yarn.lock
+
+# Build outputs
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native
+android/
+ios/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Logs
+logs/
+*.log
+*.ndjson
+
+# Environment files
+.env*
+!.env.example
+
+# Generated files
+*.tsbuildinfo
+coverage/
+
+# Supabase
+supabase/functions_bundled/
+
+# Documentation that should maintain specific formatting
+CHANGELOG.md
+LICENSE
+
+# Test artifacts
+e2e/screenshots/
+e2e/test-images/
+*.png
+*.jpg
+*.jpeg
+
+# Markdown files with specific formatting needs
+**/repomix-output*.xml
+
+# Cache directories
+.cache/
+.metro-health-check*

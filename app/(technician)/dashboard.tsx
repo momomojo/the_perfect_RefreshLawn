@@ -1,23 +1,23 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-} from "react-native";
-import { useRouter } from "expo-router";
-import { Bell, Settings, MapPin } from "lucide-react-native";
+} from 'react-native';
+import { useRouter } from 'expo-router';
+import { Settings, MapPin } from 'lucide-react-native';
 
-import TodayJobs from "../components/technician/TodayJobs";
-import WeeklySchedule from "../components/technician/WeeklySchedule";
-import { useAuth } from "../../lib/auth";
-import { getProfile } from "../../lib/data";
+import TodayJobs from '../components/technician/TodayJobs';
+import WeeklySchedule from '../components/technician/WeeklySchedule';
+import { useAuth } from '../../lib/auth';
+import { getProfile } from '../../lib/data';
 
 export default function TechnicianDashboard() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
-  console.log("[TechnicianDashboard] authLoading:", authLoading, "user:", user);
+  console.log('[TechnicianDashboard] authLoading:', authLoading, 'user:', user);
   const [profile, setProfile] = useState<{ first_name: string } | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -27,7 +27,7 @@ export default function TechnicianDashboard() {
     // If no user is signed in, stop loading and show anon state
     if (!user?.id) {
       console.log(
-        "[TechnicianDashboard] No user signed in, skipping profile load"
+        '[TechnicianDashboard] No user signed in, skipping profile load'
       );
       setLoading(false);
       return;
@@ -39,7 +39,7 @@ export default function TechnicianDashboard() {
         const userProfile = await getProfile(user.id);
         setProfile(userProfile);
       } catch (err) {
-        console.error("Error loading profile:", err);
+        console.error('Error loading profile:', err);
       } finally {
         setLoading(false);
       }
@@ -60,41 +60,36 @@ export default function TechnicianDashboard() {
   return (
     <View className="flex-1 bg-gray-50">
       {/* Header */}
-      <View className="bg-green-600 pt-12 pb-4 px-4">
-        <View className="flex-row justify-between items-center">
+      <View className="bg-green-600 px-4 pb-4 pt-12">
+        <View className="flex-row items-center justify-between">
           <View>
-            <Text className="text-white text-2xl font-bold">Dashboard</Text>
-            <View className="flex-row items-center mt-1">
+            <Text className="text-2xl font-bold text-white">Dashboard</Text>
+            <View className="mt-1 flex-row items-center">
               <MapPin size={14} color="#ffffff" />
-              <Text className="text-white text-sm ml-1">
+              <Text className="ml-1 text-sm text-white">
                 Current Location: Service Area
               </Text>
             </View>
           </View>
-          <View className="flex-row space-x-4">
-            <TouchableOpacity className="p-2">
-              <Bell size={24} color="#ffffff" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              className="p-2"
-              onPress={() => router.push("/(technician)/profile")}
-            >
-              <Settings size={24} color="#ffffff" />
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            className="p-2"
+            onPress={() => router.push('/(technician)/profile')}
+          >
+            <Settings size={24} color="#ffffff" />
+          </TouchableOpacity>
         </View>
       </View>
 
       {/* Main Content */}
       <ScrollView className="flex-1 px-4 pt-4">
         {/* Welcome Message */}
-        <View className="bg-white p-4 rounded-lg shadow-sm mb-4">
+        <View className="mb-4 rounded-lg bg-white p-4 shadow-sm">
           {loading ? (
             <ActivityIndicator size="small" color="#22c55e" />
           ) : (
             <>
               <Text className="text-lg font-medium text-gray-800">
-                Welcome back, {profile?.first_name || "Technician"}!
+                Welcome back, {profile?.first_name || 'Technician'}!
               </Text>
               <Text className="text-gray-600">
                 Check your schedule below for today's jobs.
@@ -110,19 +105,19 @@ export default function TechnicianDashboard() {
         <TodayJobs onJobSelect={handleJobSelect} />
 
         {/* Quick Actions */}
-        <View className="bg-white p-4 rounded-lg shadow-sm mt-4 mb-8">
-          <Text className="text-lg font-semibold mb-3">Quick Actions</Text>
+        <View className="mb-8 mt-4 rounded-lg bg-white p-4 shadow-sm">
+          <Text className="mb-3 text-lg font-semibold">Quick Actions</Text>
           <View className="flex-row justify-between">
             <TouchableOpacity
-              className="bg-blue-50 p-3 rounded-lg items-center flex-1 mr-2"
-              onPress={() => router.push("/(technician)/jobs")}
+              className="mr-2 flex-1 items-center rounded-lg bg-blue-50 p-3"
+              onPress={() => router.push('/(technician)/jobs')}
             >
-              <Text className="text-blue-700 font-medium mt-1">
+              <Text className="mt-1 font-medium text-blue-700">
                 View All Jobs
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity className="bg-green-50 p-3 rounded-lg items-center flex-1 ml-2">
-              <Text className="text-green-700 font-medium mt-1">
+            <TouchableOpacity className="ml-2 flex-1 items-center rounded-lg bg-green-50 p-3">
+              <Text className="mt-1 font-medium text-green-700">
                 Report Issue
               </Text>
             </TouchableOpacity>

@@ -1,0 +1,60 @@
+WARNING: You are running different service versions locally than your linked project:
+supabase/gotrue:v2.179.0 => v2.180.0
+Run supabase link to update them.
+Starting database...
+Initialising schema...
+Seeding globals from roles.sql...
+Applying migration 20250315000000_initial_schema.sql...
+NOTICE (42710): extension "uuid-ossp" already exists, skipping
+NOTICE (00000): trigger "create_profile_after_signup" for relation "auth.users" does not exist, skipping
+NOTICE (00000): trigger "update_profiles_modtime" for relation "profiles" does not exist, skipping
+NOTICE (00000): trigger "update_services_modtime" for relation "services" does not exist, skipping
+NOTICE (00000): trigger "update_recurring_plans_modtime" for relation "recurring_plans" does not exist, skipping
+NOTICE (00000): trigger "update_bookings_modtime" for relation "bookings" does not exist, skipping
+Applying migration 20250315000100_row_level_security.sql...
+NOTICE (00000): policy "admin_read_all_profiles" for relation "profiles" does not exist, skipping
+NOTICE (00000): policy "admin_update_all_profiles" for relation "profiles" does not exist, skipping
+NOTICE (00000): policy "users_read_own_profile" for relation "profiles" does not exist, skipping
+NOTICE (00000): policy "users_update_own_profile" for relation "profiles" does not exist, skipping
+NOTICE (00000): policy "technicians_read_customer_profiles" for relation "profiles" does not exist, skipping
+NOTICE (00000): policy "public_read_services" for relation "services" does not exist, skipping
+NOTICE (00000): policy "admin_manage_services" for relation "services" does not exist, skipping
+NOTICE (00000): policy "public_read_recurring_plans" for relation "recurring_plans" does not exist, skipping
+NOTICE (00000): policy "admin_manage_recurring_plans" for relation "recurring_plans" does not exist, skipping
+NOTICE (00000): policy "admin_manage_all_bookings" for relation "bookings" does not exist, skipping
+NOTICE (00000): policy "customers_view_own_bookings" for relation "bookings" does not exist, skipping
+NOTICE (00000): policy "customers_create_bookings" for relation "bookings" does not exist, skipping
+NOTICE (00000): policy "customers_update_own_bookings" for relation "bookings" does not exist, skipping
+NOTICE (00000): policy "technicians_view_assigned_bookings" for relation "bookings" does not exist, skipping
+NOTICE (00000): policy "technicians_update_assigned_bookings" for relation "bookings" does not exist, skipping
+NOTICE (00000): policy "admin_manage_all_reviews" for relation "reviews" does not exist, skipping
+NOTICE (00000): policy "customers_view_own_reviews" for relation "reviews" does not exist, skipping
+NOTICE (00000): policy "customers_create_reviews" for relation "reviews" does not exist, skipping
+NOTICE (00000): policy "technicians_view_job_reviews" for relation "reviews" does not exist, skipping
+NOTICE (00000): policy "public_read_reviews" for relation "reviews" does not exist, skipping
+NOTICE (00000): policy "admin_view_all_payment_methods" for relation "payment_methods" does not exist, skipping
+NOTICE (00000): policy "customers_manage_own_payment_methods" for relation "payment_methods" does not exist, skipping
+Applying migration 20250315000300_jwt_custom_hook.sql...
+Applying migration 20250315000400_update_all_user_roles.sql...
+Applying migration 20250316001000_fix_jwt_role_handling.sql...
+Applying migration 20250321190207_storage_setup.sql...
+Applying migration 20250321190208_fix_booking_notification_trigger.sql...
+NOTICE (00000): trigger "trg_notify_on_booking_change" for relation "bookings" does not exist, skipping
+Applying migration 20250408212245_add_single_column_indexes.sql...
+Applying migration 20250408212246_add_composite_indexes.sql...
+Applying migration 20250408212247_add_stripe_fields.sql...
+Applying migration 20250408212248_add_constraints.sql...
+Stopping containers...
+ERROR: syntax error at or near "WHERE" (SQLSTATE 42601)                      
+At statement: 1                                                              
+-- 2. Add unique constraint for stripe_customer_id                           
+DO $$                                                                        
+BEGIN                                                                        
+    IF NOT EXISTS (                                                          
+        SELECT FROM pg_constraint                                            
+        WHERE conname = 'unique_stripe_customer_id'                          
+    ) THEN                                                                   
+        ALTER TABLE profiles ADD CONSTRAINT unique_stripe_customer_id        
+            UNIQUE (stripe_customer_id) WHERE stripe_customer_id IS NOT NULL;
+                                        ^                                    
+Try rerunning the command with --debug to troubleshoot the error.

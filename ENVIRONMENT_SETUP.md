@@ -30,9 +30,21 @@ These variables must be set in your `.env` file with the `EXPO_PUBLIC_` prefix. 
 
 ### Optional Variables
 
-| Variable               | Description              | Default         | Example             |
-| ---------------------- | ------------------------ | --------------- | ------------------- |
-| `EXPO_PUBLIC_APP_NAME` | Application display name | `"LawnRefresh"` | `"My Lawn Service"` |
+| Variable                      | Description                                      | Default             | Example                         |
+| ----------------------------- | ------------------------------------------------ | ------------------- | ------------------------------- |
+| `EXPO_PUBLIC_APP_NAME`        | Application display name                         | `"LawnRefresh"`     | `"My Lawn Service"`             |
+| `EXPO_PUBLIC_GOOGLE_PLACE_ID` | Google Place ID for review redirects (4-5 stars) | Generic search used | `"ChIJN1t_tDeuEmsRUsoyG83frY4"` |
+
+> **Important**: `EXPO_PUBLIC_GOOGLE_PLACE_ID` is **highly recommended** for the customer review system. When customers rate your service 4-5 stars, they'll be redirected to Google Reviews. Without this variable, they'll be sent to a generic Google search instead of your specific business page.
+>
+> **How to get your Google Place ID**:
+>
+> 1. Visit: https://developers.google.com/maps/documentation/places/web-service/place-id
+> 2. Click "Place ID Finder"
+> 3. Search for your business name and location
+> 4. Copy the Place ID (format: `ChIJxxxxxxxxxxxxx`)
+>
+> Alternatively, search for your business on Google Maps, click on it, and extract the Place ID from the URL.
 
 ### Setup Instructions
 
@@ -55,6 +67,10 @@ EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_your_stripe_publishable_key
 
 # Optional
 EXPO_PUBLIC_APP_NAME=LawnRefresh
+
+# Google Reviews Integration (Highly Recommended)
+# Get your Place ID: https://developers.google.com/maps/documentation/places/web-service/place-id
+EXPO_PUBLIC_GOOGLE_PLACE_ID=ChIJyour_google_place_id_here
 ```
 
 3. **Validate your setup**:
@@ -262,6 +278,10 @@ EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_your_stripe_publishable_key
 
 # Optional Configuration
 EXPO_PUBLIC_APP_NAME=LawnRefresh
+
+# Google Reviews Integration (Highly Recommended for Review System)
+# Get your Place ID: https://developers.google.com/maps/documentation/places/web-service/place-id
+EXPO_PUBLIC_GOOGLE_PLACE_ID=ChIJyour_google_place_id_here
 ```
 
 ### Supabase Secrets Template
@@ -328,6 +348,3 @@ When deploying to production:
 
 **Last Updated**: October 9, 2025  
 **Version**: 1.0.0
-
-
-

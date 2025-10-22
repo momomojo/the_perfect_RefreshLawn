@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
-import { StyleSheet, View, Alert, Image, Button } from 'react-native';
+import { StyleSheet, View, Image, Button } from 'react-native';
+import { showNotification } from '../../../lib/notification';
 import * as ImagePicker from 'expo-image-picker';
 
 interface Props {
@@ -20,7 +21,9 @@ export default function Avatar({ url, size = 150, onUpload }: Props) {
 
   async function downloadImage(path: string) {
     try {
-      const { data, error } = await supabase.storage.from('avatars').download(path);
+      const { data, error } = await supabase.storage
+        .from('avatars')
+        .download(path);
       if (error) throw error;
       const fr = new FileReader();
       fr.readAsDataURL(data);
@@ -46,16 +49,24 @@ export default function Avatar({ url, size = 150, onUpload }: Props) {
       }
       const image = result.assets[0];
       if (!image.uri) throw new Error('No image uri!');
-      const arraybuffer = await fetch(image.uri).then((res) => res.arrayBuffer());
+      const arraybuffer = await fetch(image.uri).then((res) =>
+        res.arrayBuffer()
+      );
       const fileExt = image.uri?.split('.').pop()?.toLowerCase() ?? 'jpeg';
       const path = `${Date.now()}.${fileExt}`;
       const { data, error: uploadError } = await supabase.storage
         .from('avatars')
-        .upload(path, arraybuffer, { contentType: image.mimeType ?? 'image/jpeg' });
+        .upload(path, arraybuffer, {
+          contentType: image.mimeType ?? 'image/jpeg',
+        });
       if (uploadError) throw uploadError;
       onUpload(data.path);
     } catch (error: any) {
-      Alert.alert(error.message);
+      showNotification({
+        title: 'Error',
+        message: error.message,
+        type: 'error',
+      });
     } finally {
       setUploading(false);
     }

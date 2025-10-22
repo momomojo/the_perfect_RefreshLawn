@@ -1,6 +1,18 @@
 # RefreshLawn App
 
+[![CI](https://github.com/YOUR_USERNAME/the_perfect_RefreshLawn/workflows/CI/badge.svg)](https://github.com/YOUR_USERNAME/the_perfect_RefreshLawn/actions/workflows/ci.yml)
+[![EAS Build](https://github.com/YOUR_USERNAME/the_perfect_RefreshLawn/workflows/EAS%20Build/badge.svg)](https://github.com/YOUR_USERNAME/the_perfect_RefreshLawn/actions/workflows/eas-build.yml)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A modern lawn care service management application built with React Native (Expo) and Supabase.
+
+## 🚀 Production Features
+
+- ✅ **Crash Reporting** - Sentry integration for error tracking
+- ✅ **Performance Monitoring** - Real-time performance insights
+- ✅ **CI/CD Pipeline** - Automated testing and builds
+- ✅ **OTA Updates** - Instant updates via EAS Update
+- ✅ **Code Quality** - ESLint, Prettier, pre-commit hooks
 
 ## Supabase Integration
 
@@ -43,7 +55,6 @@ npm run validate-env
 ```
 
 5. Set up Supabase:
-
    - Import the migrations from the `supabase/migrations` directory
    - Run migrations in order, starting with the initial schema
 
@@ -246,7 +257,6 @@ The database has been optimized for improved performance and data integrity:
 The following indexes have been added to improve query performance:
 
 - **Bookings Table**
-
   - `idx_bookings_customer_id` - For faster lookup of bookings by customer
   - `idx_bookings_technician_id` - For faster lookup of bookings by technician
   - `idx_bookings_service_id` - For faster lookup of bookings by service

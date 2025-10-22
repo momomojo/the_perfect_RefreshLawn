@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,12 +6,14 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
-} from "react-native";
-import { MapPin, Clock, ChevronRight, CheckCircle } from "lucide-react-native";
-import { getTechnicianBookings, Booking } from "../../../lib/data";
-import { useAuth } from "../../../lib/auth";
-import { format, parseISO } from "date-fns";
-import { useRealtimeBookings } from "../../../lib/hooks";
+} from 'react-native';
+import { MapPin, Clock, ChevronRight, CheckCircle } from 'lucide-react-native';
+import { getTechnicianBookings, Booking } from '../../../lib/data';
+import { useAuth } from '../../../lib/auth';
+import { format, parseISO } from 'date-fns';
+import { useRealtimeBookings } from '../../../lib/hooks';
+import { StatusBadge } from '../common/StatusBadge';
+import { WorkflowStatusType } from '../../../lib/constants/bookingStatus';
 
 interface Job {
   id: string;
@@ -19,7 +21,7 @@ interface Job {
   address: string;
   time: string;
   serviceType: string;
-  status: Booking["status"];
+  workflowStatus: WorkflowStatusType;
   propertyImage?: string;
   createdAt: string;
 }
@@ -36,8 +38,8 @@ const TodayJobs = ({
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
 
-  const [activeFilter, setActiveFilter] = useState<"all" | Booking["status"]>(
-    "all"
+  const [activeFilter, setActiveFilter] = useState<'all' | WorkflowStatusType>(
+    'all'
   );
 
   // Subscribe to real-time booking updates for this technician
@@ -49,7 +51,7 @@ const TodayJobs = ({
   // Initial data load
   useEffect(() => {
     if (!user?.id) {
-      console.log("[TodayJobs] No user ID yet—skipping load");
+      console.log('[TodayJobs] No user ID yet—skipping load');
       setLoading(false);
       return;
     }
@@ -61,7 +63,7 @@ const TodayJobs = ({
         const bookings = await getTechnicianBookings(user.id);
 
         // Filter for today's jobs only
-        const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
         const todaysBookings = bookings.filter(
           (booking) => booking.scheduled_date === today
         );
@@ -70,23 +72,23 @@ const TodayJobs = ({
         const mappedJobs = todaysBookings.map((booking) => ({
           id: booking.id,
           customerName:
-            booking.customer?.first_name + " " + booking.customer?.last_name,
-          address: booking.address || "",
+            booking.customer?.first_name + ' ' + booking.customer?.last_name,
+          address: booking.address || '',
           time: `${format(
             new Date(`2000-01-01T${booking.scheduled_time}`),
-            "h:mm a"
+            'h:mm a'
           )}`,
-          serviceType: booking.service?.name || "",
-          status: booking.status as Booking["status"],
+          serviceType: booking.service?.name || '',
+          workflowStatus: booking.workflow_status,
           propertyImage:
-            "https://images.unsplash.com/photo-1560749003-f4b1e17e2dfd?w=400&q=80", // Default image
+            'https://images.unsplash.com/photo-1560749003-f4b1e17e2dfd?w=400&q=80', // Default image
           createdAt: booking.created_at,
         }));
 
         setJobs(mappedJobs);
       } catch (err) {
-        console.error("Error loading technician jobs:", err);
-        setError("Failed to load jobs");
+        console.error('Error loading technician jobs:', err);
+        setError('Failed to load jobs');
       } finally {
         setLoading(false);
       }
@@ -99,7 +101,7 @@ const TodayJobs = ({
   useEffect(() => {
     if (realtimeBookings.length === 0) return;
 
-    const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
     // Filter real-time bookings for today only
     const todaysRealtimeBookings = realtimeBookings.filter(
@@ -110,16 +112,16 @@ const TodayJobs = ({
     const mappedRealtimeJobs = todaysRealtimeBookings.map((booking) => ({
       id: booking.id,
       customerName:
-        booking.customer?.first_name + " " + booking.customer?.last_name,
-      address: booking.address || "",
+        booking.customer?.first_name + ' ' + booking.customer?.last_name,
+      address: booking.address || '',
       time: `${format(
         new Date(`2000-01-01T${booking.scheduled_time}`),
-        "h:mm a"
+        'h:mm a'
       )}`,
-      serviceType: booking.service?.name || "",
-      status: booking.status as Booking["status"],
+      serviceType: booking.service?.name || '',
+      workflowStatus: booking.workflow_status,
       propertyImage:
-        "https://images.unsplash.com/photo-1560749003-f4b1e17e2dfd?w=400&q=80",
+        'https://images.unsplash.com/photo-1560749003-f4b1e17e2dfd?w=400&q=80',
       createdAt: booking.created_at,
     }));
 
@@ -143,141 +145,90 @@ const TodayJobs = ({
   }, [realtimeBookings]);
 
   const filteredJobs =
-    activeFilter === "all"
+    activeFilter === 'all'
       ? jobs
-      : jobs.filter((job) => job.status === activeFilter);
-
-  const getStatusColor = (status: Booking["status"]) => {
-    switch (status) {
-      case "pending":
-      case "pending_payment":
-      case "payment_processing":
-      case "payment_confirmed":
-      case "payment_failed":
-        return "bg-amber-100 text-amber-800";
-      case "scheduled":
-        return "bg-blue-100 text-blue-800";
-      case "in_progress":
-        return "bg-blue-100 text-blue-800";
-      case "completed":
-        return "bg-green-100 text-green-800";
-      case "cancelled":
-      case "payment_refunded":
-      case "refunded":
-        return "bg-red-100 text-red-800";
-      default:
-        return "bg-gray-100 text-gray-800";
-    }
-  };
-
-  const getStatusText = (status: Booking["status"]) => {
-    switch (status) {
-      case "pending":
-        return "Pending";
-      case "pending_payment":
-        return "Pending Payment";
-      case "payment_processing":
-        return "Processing Payment";
-      case "payment_confirmed":
-        return "Payment Confirmed";
-      case "scheduled":
-        return "Scheduled";
-      case "in_progress":
-        return "In Progress";
-      case "completed":
-        return "Completed";
-      case "payment_failed":
-        return "Payment Failed";
-      case "cancelled":
-        return "Cancelled";
-      case "payment_refunded":
-        return "Payment Refunded";
-      case "refunded":
-        return "Refunded";
-      default:
-        const _exhaustiveCheck: never = status;
-        return "Unknown";
-    }
-  };
+      : jobs.filter((job) => job.workflowStatus === activeFilter);
 
   if (loading) {
     return (
       <View
-        className="bg-white p-4 rounded-lg shadow-sm justify-center items-center"
+        className="items-center justify-center rounded-lg bg-white p-4 shadow-sm"
         style={{ height: 150 }}
       >
         <ActivityIndicator size="large" color="#10b981" />
-        <Text className="text-gray-500 mt-2">Loading jobs...</Text>
+        <Text className="mt-2 text-gray-500">Loading jobs...</Text>
       </View>
     );
   }
 
   if (error) {
     return (
-      <View className="bg-white p-4 rounded-lg shadow-sm">
-        <Text className="text-red-500 text-center">{error}</Text>
+      <View className="rounded-lg bg-white p-4 shadow-sm">
+        <Text className="text-center text-red-500">{error}</Text>
       </View>
     );
   }
 
   return (
-    <View className="bg-white p-4 rounded-lg shadow-sm">
-      <View className="flex-row justify-between items-center mb-4">
+    <View className="rounded-lg bg-white p-4 shadow-sm">
+      <View className="mb-4 flex-row items-center justify-between">
         <Text className="text-xl font-bold text-gray-800">Today's Jobs</Text>
-        <View className="flex-row bg-gray-100 rounded-full p-1">
+        <View className="flex-row rounded-full bg-gray-100 p-1">
           <TouchableOpacity
-            onPress={() => setActiveFilter("all")}
-            className={`px-3 py-1 rounded-full ${
-              activeFilter === "all" ? "bg-white shadow-sm" : ""
+            onPress={() => setActiveFilter('all')}
+            className={`rounded-full px-3 py-1 ${
+              activeFilter === 'all' ? 'bg-white shadow-sm' : ''
             }`}
           >
             <Text
               className={`${
-                activeFilter === "all" ? "text-blue-600" : "text-gray-600"
+                activeFilter === 'all' ? 'text-blue-600' : 'text-gray-600'
               }`}
             >
               All
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={() => setActiveFilter("pending")}
-            className={`px-3 py-1 rounded-full ${
-              activeFilter === "pending" ? "bg-white shadow-sm" : ""
+            onPress={() => setActiveFilter('pending_assignment')}
+            className={`rounded-full px-3 py-1 ${
+              activeFilter === 'pending_assignment' ? 'bg-white shadow-sm' : ''
             }`}
           >
             <Text
               className={`${
-                activeFilter === "pending" ? "text-blue-600" : "text-gray-600"
+                activeFilter === 'pending_assignment'
+                  ? 'text-blue-600'
+                  : 'text-gray-600'
               }`}
             >
               Pending
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={() => setActiveFilter("in_progress")}
-            className={`px-3 py-1 rounded-full ${
-              activeFilter === "in_progress" ? "bg-white shadow-sm" : ""
+            onPress={() => setActiveFilter('in_progress')}
+            className={`rounded-full px-3 py-1 ${
+              activeFilter === 'in_progress' ? 'bg-white shadow-sm' : ''
             }`}
           >
             <Text
               className={`${
-                activeFilter === "in_progress"
-                  ? "text-blue-600"
-                  : "text-gray-600"
+                activeFilter === 'in_progress'
+                  ? 'text-blue-600'
+                  : 'text-gray-600'
               }`}
             >
               In Progress
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={() => setActiveFilter("completed")}
-            className={`px-3 py-1 rounded-full ${
-              activeFilter === "completed" ? "bg-white shadow-sm" : ""
+            onPress={() => setActiveFilter('completed')}
+            className={`rounded-full px-3 py-1 ${
+              activeFilter === 'completed' ? 'bg-white shadow-sm' : ''
             }`}
           >
             <Text
               className={`${
-                activeFilter === "completed" ? "text-blue-600" : "text-gray-600"
+                activeFilter === 'completed' ? 'text-blue-600' : 'text-gray-600'
               }`}
             >
               Completed
@@ -287,8 +238,8 @@ const TodayJobs = ({
       </View>
 
       {filteredJobs.length === 0 ? (
-        <View className="py-8 items-center justify-center">
-          <Text className="text-gray-500 text-center">
+        <View className="items-center justify-center py-8">
+          <Text className="text-center text-gray-500">
             No jobs found for the selected filter.
           </Text>
         </View>
@@ -297,49 +248,45 @@ const TodayJobs = ({
           {filteredJobs.map((job) => (
             <TouchableOpacity
               key={job.id}
-              className="bg-white border border-gray-200 rounded-lg mb-3 overflow-hidden"
+              className="mb-3 overflow-hidden rounded-lg border border-gray-200 bg-white"
               onPress={() => onJobSelect(job.id)}
             >
               <View className="flex-row">
                 <Image
                   source={{ uri: job.propertyImage }}
-                  className="w-24 h-full"
+                  className="h-full w-24"
                   style={{ height: 100 }}
                 />
                 <View className="flex-1 p-3">
-                  <View className="flex-row justify-between items-start">
+                  <View className="flex-row items-start justify-between">
                     <Text className="text-lg font-semibold text-gray-800">
                       {job.serviceType}
                     </Text>
-                    <View
-                      className={`px-2 py-1 rounded-full ${getStatusColor(
-                        job.status
-                      )}`}
-                    >
-                      <Text className="text-xs font-medium">
-                        {getStatusText(job.status)}
-                      </Text>
-                    </View>
+                    <StatusBadge
+                      workflowStatus={job.workflowStatus}
+                      size="small"
+                    />
                   </View>
-                  <Text className="text-gray-600 mt-1">{job.customerName}</Text>
-                  <View className="flex-row items-center mt-2">
+                  <Text className="mt-1 text-gray-600">{job.customerName}</Text>
+                  <View className="mt-2 flex-row items-center">
                     <MapPin size={14} color="#6b7280" />
                     <Text
-                      className="text-gray-500 text-xs ml-1"
+                      className="ml-1 text-xs text-gray-500"
                       numberOfLines={1}
                     >
                       {job.address}
                     </Text>
                   </View>
-                  <View className="flex-row items-center mt-1">
+                  <View className="mt-1 flex-row items-center">
                     <Clock size={14} color="#6b7280" />
-                    <Text className="text-gray-500 text-xs ml-1">
+                    <Text className="ml-1 text-xs text-gray-500">
                       {job.time}
                     </Text>
                   </View>
                   <View className="mt-1">
-                    <Text className="text-gray-400 text-xs">
-                      Booked: {format(parseISO(job.createdAt), "MMM d 'at' h:mm a")}
+                    <Text className="text-xs text-gray-400">
+                      Booked:{' '}
+                      {format(parseISO(job.createdAt), "MMM d 'at' h:mm a")}
                     </Text>
                   </View>
                 </View>
@@ -353,16 +300,16 @@ const TodayJobs = ({
       )}
 
       <View className="mt-4 border-t border-gray-200 pt-3">
-        <View className="flex-row justify-between items-center">
+        <View className="flex-row items-center justify-between">
           <View className="flex-row items-center">
             <CheckCircle size={16} color="#10b981" />
-            <Text className="text-gray-700 ml-1 font-medium">
-              {jobs.filter((job) => job.status === "completed").length} of{" "}
-              {jobs.length} completed
+            <Text className="ml-1 font-medium text-gray-700">
+              {jobs.filter((job) => job.workflowStatus === 'completed').length}{' '}
+              of {jobs.length} completed
             </Text>
           </View>
           <TouchableOpacity>
-            <Text className="text-blue-600 font-medium">View All Jobs</Text>
+            <Text className="font-medium text-blue-600">View All Jobs</Text>
           </TouchableOpacity>
         </View>
       </View>

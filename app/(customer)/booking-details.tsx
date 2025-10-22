@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -6,13 +6,21 @@ import {
   ScrollView,
   ActivityIndicator,
   TouchableOpacity,
-} from "react-native";
-import { Stack, useRouter, useLocalSearchParams } from "expo-router";
-import { useAuth } from "../../lib/auth";
-import { getBooking, Booking } from "../../lib/data";
-import { Calendar, Clock, MapPin, DollarSign, Info } from "lucide-react-native";
-import { format } from "date-fns";
-import { showNotification } from "../../lib/notification";
+} from 'react-native';
+import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
+import { useAuth } from '../../lib/auth';
+import { getBooking, Booking } from '../../lib/data';
+import {
+  Calendar,
+  Clock,
+  MapPin,
+  DollarSign,
+  Info,
+  FileText,
+} from 'lucide-react-native';
+import { format } from 'date-fns';
+import { showNotification } from '../../lib/notification';
+import { StatusBadge } from '../components/common/StatusBadge';
 
 export default function BookingDetailsScreen() {
   const router = useRouter();
@@ -24,7 +32,7 @@ export default function BookingDetailsScreen() {
 
   useEffect(() => {
     if (!id) {
-      setError("No booking ID provided");
+      setError('No booking ID provided');
       setLoading(false);
       return;
     }
@@ -32,12 +40,12 @@ export default function BookingDetailsScreen() {
     const fetchBookingDetails = async () => {
       try {
         if (!user) {
-          throw new Error("User not authenticated");
+          throw new Error('User not authenticated');
         }
 
         const bookingData = await getBooking(id as string);
         if (!bookingData) {
-          throw new Error("Booking not found");
+          throw new Error('Booking not found');
         }
 
         // Check if this booking belongs to the current user
@@ -47,12 +55,12 @@ export default function BookingDetailsScreen() {
 
         setBooking(bookingData);
       } catch (err: any) {
-        console.error("Error fetching booking details:", err);
-        setError(err.message || "Failed to load booking details");
+        console.error('Error fetching booking details:', err);
+        setError(err.message || 'Failed to load booking details');
         showNotification({
-          title: "Error",
-          message: err.message || "Failed to load booking details",
-          type: "error",
+          title: 'Error',
+          message: err.message || 'Failed to load booking details',
+          type: 'error',
         });
       } finally {
         setLoading(false);
@@ -64,45 +72,27 @@ export default function BookingDetailsScreen() {
 
   // Format time from 24-hour to 12-hour format
   const formatTime = (timeString?: string) => {
-    if (!timeString) return "";
+    if (!timeString) return '';
     try {
-      const [hours, minutes] = timeString.split(":");
+      const [hours, minutes] = timeString.split(':');
       const date = new Date();
       date.setHours(parseInt(hours, 10));
       date.setMinutes(parseInt(minutes, 10));
-      return format(date, "h:mm a");
+      return format(date, 'h:mm a');
     } catch (err) {
-      console.error("Error formatting time:", err);
+      console.error('Error formatting time:', err);
       return timeString;
     }
   };
 
   // Format date to readable format
   const formatDate = (dateString?: string) => {
-    if (!dateString) return "";
+    if (!dateString) return '';
     try {
-      return format(new Date(dateString), "EEEE, MMMM d, yyyy");
+      return format(new Date(dateString), 'EEEE, MMMM d, yyyy');
     } catch (err) {
-      console.error("Error formatting date:", err);
+      console.error('Error formatting date:', err);
       return dateString;
-    }
-  };
-
-  // Status badge color
-  const getStatusColor = (status?: string) => {
-    switch (status) {
-      case "completed":
-        return "bg-green-500";
-      case "scheduled":
-        return "bg-blue-500";
-      case "pending":
-        return "bg-yellow-500";
-      case "cancelled":
-        return "bg-red-500";
-      case "paid":
-        return "bg-purple-500";
-      default:
-        return "bg-gray-500";
     }
   };
 
@@ -112,7 +102,7 @@ export default function BookingDetailsScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView className="flex-1 bg-gray-50 justify-center items-center">
+      <SafeAreaView className="flex-1 items-center justify-center bg-gray-50">
         <ActivityIndicator size="large" color="#16a34a" />
         <Text className="mt-4 text-gray-600">Loading booking details...</Text>
       </SafeAreaView>
@@ -121,13 +111,13 @@ export default function BookingDetailsScreen() {
 
   if (error) {
     return (
-      <SafeAreaView className="flex-1 bg-gray-50 justify-center items-center p-4">
-        <Text className="text-red-500 text-lg mb-4">{error}</Text>
+      <SafeAreaView className="flex-1 items-center justify-center bg-gray-50 p-4">
+        <Text className="mb-4 text-lg text-red-500">{error}</Text>
         <TouchableOpacity
-          className="bg-green-600 py-2 px-4 rounded-lg"
+          className="rounded-lg bg-green-600 px-4 py-2"
           onPress={goBack}
         >
-          <Text className="text-white font-semibold">Go Back</Text>
+          <Text className="font-semibold text-white">Go Back</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
@@ -137,68 +127,68 @@ export default function BookingDetailsScreen() {
     <SafeAreaView className="flex-1 bg-gray-50">
       <Stack.Screen
         options={{
-          title: "Booking Details",
+          title: 'Booking Details',
           headerShadowVisible: false,
-          headerStyle: { backgroundColor: "#F9FAFB" },
+          headerStyle: { backgroundColor: '#F9FAFB' },
         }}
       />
 
       <ScrollView className="flex-1 p-4">
-        <View className="bg-white rounded-xl p-4 shadow-md mb-4">
-          <Text className="text-2xl font-bold text-gray-800 mb-2">
-            {booking?.service?.name || "Unknown Service"}
+        <View className="mb-4 rounded-xl bg-white p-4 shadow-md">
+          <Text className="mb-2 text-2xl font-bold text-gray-800">
+            {booking?.service?.name || 'Unknown Service'}
           </Text>
-          
-          <View className="flex-row items-center justify-between mb-4">
-            <View
-              className={`${getStatusColor(
-                booking?.status
-              )} px-3 py-1 rounded-full`}
-            >
-              <Text className="text-white font-medium text-xs capitalize">
-                {booking?.status || "Unknown"}
-              </Text>
-            </View>
+
+          <View className="mb-4 flex-row items-center justify-between">
+            {/* Hybrid Status Display */}
+            <StatusBadge
+              paymentStatus={booking?.payment_status}
+              workflowStatus={booking?.workflow_status}
+              showBoth
+              size="small"
+            />
             <Text className="text-xl font-bold text-gray-800">
-              ${booking?.price?.toFixed(2) || "0.00"}
+              ${booking?.price?.toFixed(2) || '0.00'}
             </Text>
           </View>
 
           <View className="border-t border-gray-200 pt-4">
-            <View className="flex-row items-center mb-3">
+            <View className="mb-3 flex-row items-center">
               <Calendar size={20} color="#4B5563" />
-              <Text className="text-gray-700 ml-2">
+              <Text className="ml-2 text-gray-700">
                 {formatDate(booking?.scheduled_date)}
               </Text>
             </View>
 
-            <View className="flex-row items-center mb-3">
+            <View className="mb-3 flex-row items-center">
               <Clock size={20} color="#4B5563" />
-              <Text className="text-gray-700 ml-2">
+              <Text className="ml-2 text-gray-700">
                 {formatTime(booking?.scheduled_time)}
               </Text>
             </View>
 
-            <View className="flex-row items-start mb-3">
+            <View className="mb-3 flex-row items-start">
               <MapPin size={20} color="#4B5563" style={{ marginTop: 2 }} />
-              <Text className="text-gray-700 ml-2 flex-1">
-                {booking?.address || "No address provided"}
+              <Text className="ml-2 flex-1 text-gray-700">
+                {booking?.address || 'No address provided'}
               </Text>
             </View>
 
             {booking?.notes && (
-              <View className="flex-row items-start mb-3">
+              <View className="mb-3 flex-row items-start">
                 <Info size={20} color="#4B5563" style={{ marginTop: 2 }} />
-                <Text className="text-gray-700 ml-2 flex-1">
+                <Text className="ml-2 flex-1 text-gray-700">
                   {booking.notes}
                 </Text>
               </View>
             )}
 
             {booking?.stripe_payment_intent_id && (
-              <View className="mb-3 bg-gray-100 p-3 rounded-md">
-                <Text className="text-gray-700 font-semibold">Payment Info</Text>
-                <Text className="text-gray-600 text-xs mt-1">
+              <View className="mb-3 rounded-md bg-gray-100 p-3">
+                <Text className="font-semibold text-gray-700">
+                  Payment Info
+                </Text>
+                <Text className="mt-1 text-xs text-gray-600">
                   Payment ID: {booking.stripe_payment_intent_id}
                 </Text>
               </View>
@@ -206,11 +196,24 @@ export default function BookingDetailsScreen() {
           </View>
         </View>
 
+        {/* View Job Report button for completed jobs */}
+        {booking?.workflow_status === 'completed' && (
+          <TouchableOpacity
+            className="mb-4 flex-row items-center justify-center rounded-lg bg-green-600 px-4 py-3"
+            onPress={() => router.push(`/(customer)/job-report/${booking.id}`)}
+          >
+            <FileText size={20} color="white" />
+            <Text className="ml-2 font-semibold text-white">
+              View Job Report
+            </Text>
+          </TouchableOpacity>
+        )}
+
         <TouchableOpacity
-          className="bg-green-600 py-3 px-4 rounded-lg items-center mb-8"
+          className="mb-8 items-center rounded-lg bg-gray-600 px-4 py-3"
           onPress={goBack}
         >
-          <Text className="text-white font-semibold">Return to Dashboard</Text>
+          <Text className="font-semibold text-white">Return to Dashboard</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>

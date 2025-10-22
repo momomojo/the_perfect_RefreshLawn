@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from "react";
-import { View, Text, SafeAreaView, ActivityIndicator } from "react-native";
-import TechnicianProfile from "../components/technician/TechnicianProfile";
-import { Stack } from "expo-router";
-import { useAuth } from "../../lib/auth";
-import { getProfile } from "../../lib/data";
+import React, { useState, useEffect } from 'react';
+import { View, Text, SafeAreaView, ActivityIndicator } from 'react-native';
+import TechnicianProfile from '../components/technician/TechnicianProfile';
+import { Stack } from 'expo-router';
+import { useAuth } from '../../lib/auth';
+import { getProfile } from '../../lib/data';
 
 export default function ProfileScreen() {
   const { user } = useAuth();
@@ -20,8 +20,8 @@ export default function ProfileScreen() {
         const userProfile = await getProfile(user.id);
         setProfile(userProfile);
       } catch (err) {
-        console.error("Error loading profile:", err);
-        setError("Failed to load profile");
+        console.error('Error loading profile:', err);
+        setError('Failed to load profile');
       } finally {
         setLoading(false);
       }
@@ -30,17 +30,7 @@ export default function ProfileScreen() {
     loadProfile();
   }, [user?.id]);
 
-  // These are mock/default data since they're not part of the Profile type in data.ts
-  const defaultAvailability = [
-    { day: "Monday", available: true, startTime: "08:00", endTime: "17:00" },
-    { day: "Tuesday", available: true, startTime: "08:00", endTime: "17:00" },
-    { day: "Wednesday", available: true, startTime: "08:00", endTime: "17:00" },
-    { day: "Thursday", available: true, startTime: "08:00", endTime: "17:00" },
-    { day: "Friday", available: true, startTime: "08:00", endTime: "17:00" },
-    { day: "Saturday", available: false, startTime: "09:00", endTime: "15:00" },
-    { day: "Sunday", available: false, startTime: "09:00", endTime: "15:00" },
-  ];
-
+  // Mock notification preferences for demonstration
   const defaultNotificationPreferences = {
     newJobs: true,
     scheduleChanges: true,
@@ -50,16 +40,16 @@ export default function ProfileScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView className="flex-1 bg-white justify-center items-center">
+      <SafeAreaView className="flex-1 items-center justify-center bg-white">
         <ActivityIndicator size="large" color="#22c55e" />
-        <Text className="text-gray-500 mt-2">Loading profile...</Text>
+        <Text className="mt-2 text-gray-500">Loading profile...</Text>
       </SafeAreaView>
     );
   }
 
   if (error || !profile) {
     return (
-      <SafeAreaView className="flex-1 bg-white justify-center items-center">
+      <SafeAreaView className="flex-1 items-center justify-center bg-white">
         <Text className="text-red-500">Error loading profile data</Text>
       </SafeAreaView>
     );
@@ -69,26 +59,26 @@ export default function ProfileScreen() {
     <SafeAreaView className="flex-1 bg-white">
       <Stack.Screen
         options={{
-          title: "My Profile",
+          title: 'My Profile',
           headerShown: true,
         }}
       />
       <View className="flex-1">
-        <View className="px-4 py-3 border-b border-gray-200">
+        <View className="border-b border-gray-200 px-4 py-3">
           <Text className="text-2xl font-bold">My Profile</Text>
         </View>
 
         <TechnicianProfile
           name={`${profile.first_name} ${profile.last_name}`}
-          email={user?.email || ""}
-          phone={profile.phone || ""}
+          email={user?.email || ''}
+          phone={profile.phone || ''}
           skills={[
-            "Lawn Mowing",
-            "Hedge Trimming",
-            "Fertilization",
-            "Leaf Removal",
+            'Lawn Mowing',
+            'Hedge Trimming',
+            'Fertilization',
+            'Leaf Removal',
           ]} // Example skills since they're not in the Profile type
-          availability={defaultAvailability}
+          autoSendJobReports={profile.auto_send_job_reports ?? true}
           notificationPreferences={defaultNotificationPreferences}
         />
       </View>

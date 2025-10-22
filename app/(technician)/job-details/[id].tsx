@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,31 +7,30 @@ import {
   ActivityIndicator,
   Image,
   Button,
-  Alert,
   Platform,
   RefreshControl,
-} from "react-native";
-import { useLocalSearchParams, Stack, router } from "expo-router";
+} from 'react-native';
+import { useLocalSearchParams, Stack, router } from 'expo-router';
 import {
   ArrowLeft,
   MapPin,
   AlertCircle,
   Camera,
   Upload,
-} from "lucide-react-native";
-import JobDetail from "../../components/technician/JobDetail";
-import JobStatusUpdater from "../../components/technician/JobStatusUpdater";
-import { getBooking, updateBookingStatus } from "../../../lib/data";
-import { format } from "date-fns";
-import * as ImagePicker from "expo-image-picker";
-import { useAuth } from "../../../lib/auth";
-import * as ImageManipulator from "expo-image-manipulator";
-import { supabase } from "../../../lib/supabase";
-import "react-native-get-random-values";
-import { v4 as uuidv4 } from "uuid";
-import { showNotification } from "../../../lib/notification";
-import { useRealtimeBookings } from "../../../lib/hooks";
-import { optimisticValueUpdate } from "../../../lib/optimistic-updates";
+} from 'lucide-react-native';
+import JobDetail from '../../components/technician/JobDetail';
+import JobStatusUpdater from '../../components/technician/JobStatusUpdater';
+import { getBooking, updateBookingStatus } from '../../../lib/data';
+import { format } from 'date-fns';
+import * as ImagePicker from 'expo-image-picker';
+import { useAuth } from '../../../lib/auth';
+import * as ImageManipulator from 'expo-image-manipulator';
+import { supabase } from '../../../lib/supabase';
+import 'react-native-get-random-values';
+import { v4 as uuidv4 } from 'uuid';
+import { showNotification } from '../../../lib/notification';
+import { useRealtimeBookings } from '../../../lib/hooks';
+import { optimisticValueUpdate } from '../../../lib/optimistic-updates';
 
 export default function JobDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -41,8 +40,8 @@ export default function JobDetailsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [jobData, setJobData] = useState<any>(null);
   const [currentStatus, setCurrentStatus] = useState<
-    "pending" | "scheduled" | "in_progress" | "completed" | "cancelled"
-  >("scheduled");
+    'pending' | 'scheduled' | 'in_progress' | 'completed' | 'cancelled'
+  >('scheduled');
 
   // Real-time subscription for this specific job
   const { bookings: realtimeBookings } = useRealtimeBookings({
@@ -52,14 +51,16 @@ export default function JobDetailsScreen() {
 
   useEffect(() => {
     (async () => {
-      if (Platform.OS !== "web") {
+      if (Platform.OS !== 'web') {
         const { status } =
           await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== "granted") {
-          Alert.alert(
-            "Permission Denied",
-            "Sorry, we need camera roll permissions to make this work!"
-          );
+        if (status !== 'granted') {
+          showNotification({
+            title: 'Permission Denied',
+            message:
+              'Sorry, we need camera roll permissions to make this work!',
+            type: 'error',
+          });
         }
       }
     })();
@@ -72,57 +73,57 @@ export default function JobDetailsScreen() {
           `[JobDetailsScreen] fetchBookingDetails started for id: ${id}`
         );
         setLoading(true);
-        console.log("[JobDetailsScreen] Calling getBooking...");
+        console.log('[JobDetailsScreen] Calling getBooking...');
         const booking = await getBooking(id as string);
-        console.log("[JobDetailsScreen] getBooking returned:", booking);
+        console.log('[JobDetailsScreen] getBooking returned:', booking);
 
         if (!booking) {
-          console.log("[JobDetailsScreen] Booking not found, setting error.");
-          setError("Booking not found.");
+          console.log('[JobDetailsScreen] Booking not found, setting error.');
+          setError('Booking not found.');
           setLoading(false);
           return;
         }
-        console.log("[JobDetailsScreen] Booking found, setting status...");
+        console.log('[JobDetailsScreen] Booking found, setting status...');
         setCurrentStatus(booking.status as any);
-        console.log("[JobDetailsScreen] Setting job data...");
+        console.log('[JobDetailsScreen] Setting job data...');
         setJobData({
           jobId: booking.id,
           customerName: `${booking.customer?.first_name} ${booking.customer?.last_name}`,
-          customerPhone: booking.customer?.phone || "",
+          customerPhone: booking.customer?.phone || '',
           address:
             booking.address ||
             (booking.customer?.address
               ? `${booking.customer.address}, ${booking.customer.city}, ${booking.customer.state} ${booking.customer.zip_code}`
-              : ""),
-          serviceType: booking.service?.name || "",
+              : ''),
+          serviceType: booking.service?.name || '',
           scheduledDate: format(
             new Date(booking.scheduled_date),
-            "MMMM d, yyyy"
+            'MMMM d, yyyy'
           ),
           scheduledTime: format(
             new Date(`2000-01-01T${booking.scheduled_time}`),
-            "h:mm a"
+            'h:mm a'
           ),
           estimatedDuration: booking.service?.duration_minutes
             ? `${booking.service.duration_minutes} minutes`
-            : "Not specified",
-          propertySize: "Not specified",
-          specialInstructions: booking.notes || "",
+            : 'Not specified',
+          propertySize: 'Not specified',
+          specialInstructions: booking.notes || '',
           propertyImage:
-            "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=600&q=80",
+            'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=600&q=80',
           status: booking.status,
         });
-        console.log("[JobDetailsScreen] Job data set.");
+        console.log('[JobDetailsScreen] Job data set.');
       } catch (err) {
-        console.error("Error fetching booking details:", err);
+        console.error('Error fetching booking details:', err);
         console.log(
-          "[JobDetailsScreen] Error caught in fetchBookingDetails:",
+          '[JobDetailsScreen] Error caught in fetchBookingDetails:',
           err
         );
-        setError("Failed to load booking details");
+        setError('Failed to load booking details');
       } finally {
         console.log(
-          "[JobDetailsScreen] Entering finally block, setting loading to false."
+          '[JobDetailsScreen] Entering finally block, setting loading to false.'
         );
         setLoading(false);
       }
@@ -134,34 +135,31 @@ export default function JobDetailsScreen() {
   useEffect(() => {
     if (realtimeBookings.length > 0 && realtimeBookings[0].id === id) {
       const booking = realtimeBookings[0];
-      console.log("Real-time update received for job:", booking);
+      console.log('Real-time update received for job:', booking);
 
       setCurrentStatus(booking.status as any);
       setJobData({
         jobId: booking.id,
         customerName: `${booking.customer?.first_name} ${booking.customer?.last_name}`,
-        customerPhone: booking.customer?.phone || "",
+        customerPhone: booking.customer?.phone || '',
         address:
           booking.address ||
           (booking.customer?.address
             ? `${booking.customer.address}, ${booking.customer.city}, ${booking.customer.state} ${booking.customer.zip_code}`
-            : ""),
-        serviceType: booking.service?.name || "",
-        scheduledDate: format(
-          new Date(booking.scheduled_date),
-          "MMMM d, yyyy"
-        ),
+            : ''),
+        serviceType: booking.service?.name || '',
+        scheduledDate: format(new Date(booking.scheduled_date), 'MMMM d, yyyy'),
         scheduledTime: format(
           new Date(`2000-01-01T${booking.scheduled_time}`),
-          "h:mm a"
+          'h:mm a'
         ),
         estimatedDuration: booking.service?.duration_minutes
           ? `${booking.service.duration_minutes} minutes`
-          : "Not specified",
-        propertySize: "Not specified",
-        specialInstructions: booking.notes || "",
+          : 'Not specified',
+        propertySize: 'Not specified',
+        specialInstructions: booking.notes || '',
         propertyImage:
-          "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=600&q=80",
+          'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=600&q=80',
         status: booking.status,
       });
     }
@@ -169,17 +167,25 @@ export default function JobDetailsScreen() {
 
   const handleStatusUpdate = async (status: string, data?: any) => {
     if (!user || !user.id) {
-      Alert.alert("Error", "No authenticated user found.");
+      showNotification({
+        title: 'Error',
+        message: 'No authenticated user found.',
+        type: 'error',
+      });
       return;
     }
 
     if (!jobData) {
-      Alert.alert("Error", "Job data not available.");
+      showNotification({
+        title: 'Error',
+        message: 'Job data not available.',
+        type: 'error',
+      });
       return;
     }
 
     // Extract notes if status is completed
-    const reportNotes = status === "completed" ? data?.notes : undefined;
+    const reportNotes = status === 'completed' ? data?.notes : undefined;
 
     // Use optimistic update for instant UI feedback
     await optimisticValueUpdate({
@@ -204,30 +210,31 @@ export default function JobDetailsScreen() {
       onSuccess: () => {
         console.log(`[OptimisticUpdate] Status updated to ${status}`);
 
-        if (status === "completed") {
+        if (status === 'completed') {
           // Show success notification
           showNotification({
-            title: "Job Completed Successfully",
-            message: "Your job report has been submitted.",
-            type: "success",
+            title: 'Job Completed Successfully',
+            message: 'Your job report has been submitted.',
+            type: 'success',
           });
           // Immediately redirect to the jobs list
-          router.replace("/(technician)/jobs");
+          router.replace('/(technician)/jobs');
         } else {
           // Show notification for other status updates
           showNotification({
-            title: "Status Updated",
+            title: 'Status Updated',
             message: `Job status changed to ${status}.`,
-            type: "info",
+            type: 'info',
           });
         }
       },
       onError: (error) => {
-        console.error("Error updating booking status:", error);
-        Alert.alert(
-          "Error",
-          `Failed to update job status: ${error.message}. Please try again.`
-        );
+        console.error('Error updating booking status:', error);
+        showNotification({
+          title: 'Error',
+          message: `Failed to update job status: ${error.message}. Please try again.`,
+          type: 'error',
+        });
         // Status will automatically rollback to previous value
       },
     });
@@ -235,25 +242,25 @@ export default function JobDetailsScreen() {
 
   if (loading) {
     return (
-      <View className="flex-1 bg-white justify-center items-center">
+      <View className="flex-1 items-center justify-center bg-white">
         <ActivityIndicator size="large" color="#10b981" />
-        <Text className="text-gray-500 mt-2">Loading job details...</Text>
+        <Text className="mt-2 text-gray-500">Loading job details...</Text>
       </View>
     );
   }
 
   if (error || !jobData) {
     return (
-      <View className="flex-1 bg-white justify-center items-center p-4">
+      <View className="flex-1 items-center justify-center bg-white p-4">
         <AlertCircle size={40} color="#ef4444" />
-        <Text className="text-red-500 text-center mt-2">
-          {error || "Job not found"}
+        <Text className="mt-2 text-center text-red-500">
+          {error || 'Job not found'}
         </Text>
         <TouchableOpacity
-          className="mt-4 bg-blue-500 px-4 py-2 rounded-lg"
-          onPress={() => router.push("/(technician)/jobs")}
+          className="mt-4 rounded-lg bg-blue-500 px-4 py-2"
+          onPress={() => router.push('/(technician)/jobs')}
         >
-          <Text className="text-white font-medium">Go Back</Text>
+          <Text className="font-medium text-white">Go Back</Text>
         </TouchableOpacity>
       </View>
     );
@@ -266,7 +273,7 @@ export default function JobDetailsScreen() {
           headerTitle: `Job #${id?.substring(0, 8)}...`,
           headerLeft: () => (
             <TouchableOpacity
-              onPress={() => router.push("/(technician)/jobs")}
+              onPress={() => router.push('/(technician)/jobs')}
               className="mr-4"
             >
               <ArrowLeft size={24} color="#000" />
@@ -288,47 +295,47 @@ export default function JobDetailsScreen() {
                   setJobData({
                     jobId: booking.id,
                     customerName: `${booking.customer?.first_name} ${booking.customer?.last_name}`,
-                    customerPhone: booking.customer?.phone || "",
+                    customerPhone: booking.customer?.phone || '',
                     address:
                       booking.address ||
                       (booking.customer?.address
                         ? `${booking.customer.address}, ${booking.customer.city}, ${booking.customer.state} ${booking.customer.zip_code}`
-                        : ""),
-                    serviceType: booking.service?.name || "",
+                        : ''),
+                    serviceType: booking.service?.name || '',
                     scheduledDate: format(
                       new Date(booking.scheduled_date),
-                      "MMMM d, yyyy"
+                      'MMMM d, yyyy'
                     ),
                     scheduledTime: format(
                       new Date(`2000-01-01T${booking.scheduled_time}`),
-                      "h:mm a"
+                      'h:mm a'
                     ),
                     estimatedDuration: booking.service?.duration_minutes
                       ? `${booking.service.duration_minutes} minutes`
-                      : "Not specified",
-                    propertySize: "Not specified",
-                    specialInstructions: booking.notes || "",
+                      : 'Not specified',
+                    propertySize: 'Not specified',
+                    specialInstructions: booking.notes || '',
                     propertyImage:
-                      "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=600&q=80",
+                      'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=600&q=80',
                     status: booking.status,
                   });
                 }
               } catch (err) {
-                console.error("Error refreshing job:", err);
+                console.error('Error refreshing job:', err);
               } finally {
                 setRefreshing(false);
               }
             }}
-            colors={["#16a34a"]}
+            colors={['#16a34a']}
             tintColor="#16a34a"
           />
         }
       >
         <View className="p-4">
           {/* Navigation indicator */}
-          <View className="flex-row items-center mb-4">
+          <View className="mb-4 flex-row items-center">
             <MapPin size={16} color="#6b7280" />
-            <Text className="text-gray-500 ml-1">Job Details</Text>
+            <Text className="ml-1 text-gray-500">Job Details</Text>
           </View>
           {/* Job Details Component - Pass auth email */}
           <JobDetail {...jobData} customerAuthEmail={user?.email} />

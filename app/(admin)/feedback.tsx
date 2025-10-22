@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   TextInput,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -25,9 +24,11 @@ import {
 import type { Review } from '../../lib/data';
 import { useAuth } from '../../lib/auth';
 import Toast from 'react-native-toast-message';
+import { useConfirmation } from '../../lib/confirmation';
 
 export default function AdminFeedback() {
   const { user } = useAuth();
+  const { showConfirmation } = useConfirmation();
   const [reviews, setReviews] = useState<Review[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -79,44 +80,41 @@ export default function AdminFeedback() {
 
     const notes = adminNotes[reviewId]?.trim() || '';
 
-    Alert.alert(
-      'Mark as Reviewed',
-      'Are you sure you want to mark this feedback as reviewed?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Confirm',
-          onPress: async () => {
-            try {
-              await markAdminFeedbackReviewed(reviewId, user.id, notes);
+    showConfirmation({
+      title: 'Mark as Reviewed',
+      message: 'Are you sure you want to mark this feedback as reviewed?',
+      confirmText: 'Confirm',
+      cancelText: 'Cancel',
+      confirmButtonStyle: 'default',
+      onConfirm: async () => {
+        try {
+          await markAdminFeedbackReviewed(reviewId, user.id, notes);
 
-              Toast.show({
-                type: 'success',
-                text1: 'Success',
-                text2: 'Feedback marked as reviewed',
-              });
+          Toast.show({
+            type: 'success',
+            text1: 'Success',
+            text2: 'Feedback marked as reviewed',
+          });
 
-              // Remove from list or reload
-              setReviews(reviews.filter((r) => r.id !== reviewId));
-              setPendingCount((prev) => Math.max(0, prev - 1));
-              setAdminNotes((prev) => {
-                const updated = { ...prev };
-                delete updated[reviewId];
-                return updated;
-              });
-              setExpandedReviewId(null);
-            } catch (error) {
-              console.error('Error marking feedback as reviewed:', error);
-              Toast.show({
-                type: 'error',
-                text1: 'Error',
-                text2: 'Failed to mark feedback as reviewed',
-              });
-            }
-          },
-        },
-      ]
-    );
+          // Remove from list or reload
+          setReviews(reviews.filter((r) => r.id !== reviewId));
+          setPendingCount((prev) => Math.max(0, prev - 1));
+          setAdminNotes((prev) => {
+            const updated = { ...prev };
+            delete updated[reviewId];
+            return updated;
+          });
+          setExpandedReviewId(null);
+        } catch (error) {
+          console.error('Error marking feedback as reviewed:', error);
+          Toast.show({
+            type: 'error',
+            text1: 'Error',
+            text2: 'Failed to mark feedback as reviewed',
+          });
+        }
+      },
+    });
   };
 
   const toggleExpand = (reviewId: string) => {

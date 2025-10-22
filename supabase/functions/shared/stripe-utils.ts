@@ -1,80 +1,93 @@
-// Stripe Utils
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
-import Stripe from "https://esm.sh/stripe@12.4.0?dts";
+/**
+ * Stripe Utilities for Supabase Edge Functions
+ *
+ * Provides Stripe client initialization and customer management.
+ * This is the CANONICAL source - all Edge Functions should import from here.
+ */
 
-const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
+import Stripe from 'https://esm.sh/stripe@12.4.0?dts';
+
+const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY') ?? '';
 
 // Validate critical environment variables
-console.log("=== STRIPE-UTILS INITIALIZATION ===");
-console.log("Environment variables check:");
-console.log("- STRIPE_SECRET_KEY:", stripeSecretKey ? `Set (starts with ${stripeSecretKey.substring(0, 7)}...)` : "NOT SET");
-console.log("- SUPABASE_URL:", supabaseUrl ? `Set (${supabaseUrl})` : "NOT SET");
-console.log("- SUPABASE_SERVICE_ROLE_KEY:", supabaseServiceKey ? "Set" : "NOT SET");
-
 if (!stripeSecretKey) {
-  console.error("CRITICAL ERROR: STRIPE_SECRET_KEY is not set!");
-  console.error("Available env vars:", Object.keys(Deno.env.toObject()));
+  console.error('[Stripe] CRITICAL: STRIPE_SECRET_KEY is not set!');
 }
 if (!supabaseUrl) {
-  console.error("CRITICAL ERROR: SUPABASE_URL is not set!");
+  console.error('[Stripe] CRITICAL: SUPABASE_URL is not set!');
 }
 if (!supabaseServiceKey) {
-  console.error("CRITICAL ERROR: SUPABASE_SERVICE_ROLE_KEY is not set!");
+  console.error('[Stripe] CRITICAL: SUPABASE_SERVICE_ROLE_KEY is not set!');
 }
 
-// Create and export a Stripe instance
-console.log("Creating Stripe client instance...");
+/**
+ * Stripe client instance - configured with latest API version
+ */
 export const stripe = new Stripe(stripeSecretKey, {
-  apiVersion: "2024-06-20",
+  apiVersion: '2024-06-20',
   httpClient: Stripe.createFetchHttpClient(),
 });
-console.log("Stripe client created successfully");
 
-// Helper to get a Supabase client
+/**
+ * Get Supabase client with service role key
+ */
 export function getSupabaseClient() {
   return createClient(supabaseUrl, supabaseServiceKey);
 }
 
-// Get Stripe customer ID from the database
+/**
+ * Get Stripe customer ID from the database
+ * @param userId - Supabase user ID
+ * @returns Stripe customer ID
+ * @throws Error if customer not found
+ */
 export async function getStripeCustomerId(userId: string): Promise<string> {
   const supabase = getSupabaseClient();
 
-  // First check in customers table
+  // Check in customers table
   const { data: customerData, error: customerError } = await supabase
-    .from("customers")
-    .select("stripe_customer_id")
-    .eq("user_id", userId)
+    .from('customers')
+    .select('stripe_customer_id')
+    .eq('user_id', userId)
     .maybeSingle();
 
   if (customerError) {
-    console.error("Error fetching customer:", customerError);
-    throw new Error("Failed to retrieve customer information.");
+    console.error('[Stripe] Error fetching customer:', customerError.message);
+    throw new Error('Failed to retrieve customer information.');
   }
 
   if (customerData?.stripe_customer_id) {
     return customerData.stripe_customer_id;
   }
 
-  throw new Error("Stripe customer ID not found for this user.");
+  throw new Error('Stripe customer ID not found for this user.');
 }
 
-// Get or create Stripe customer ID, ensuring local DB and Stripe are consistent
+/**
+ * Get or create Stripe customer, ensuring local DB and Stripe are consistent
+ * @param user - Supabase user object
+ * @param supabase - Supabase client instance
+ * @returns Stripe customer ID
+ */
 export async function getOrCreateStripeCustomer(
-  user: User,
-  supabase: SupabaseClient<any, "public", any> // Pass Supabase client
+  user: { id: string; email?: string },
+  supabase: ReturnType<typeof getSupabaseClient>
 ): Promise<string> {
-  // 1. Fetch user profile data from Supabase
+  // Fetch user profile data from Supabase
   const { data: profileData, error: profileError } = await supabase
-    .from("profiles")
-    .select("first_name, last_name, phone")
-    .eq("id", user.id)
+    .from('profiles')
+    .select('first_name, last_name, phone')
+    .eq('id', user.id)
     .single();
 
-  if (profileError && profileError.code !== "PGRST116") {
-    console.error("Error fetching profile:", profileError);
-    throw new Error("Could not fetch user profile for Stripe customer handling.");
+  if (profileError && profileError.code !== 'PGRST116') {
+    console.error('[Stripe] Error fetching profile:', profileError.message);
+    throw new Error(
+      'Could not fetch user profile for Stripe customer handling.'
+    );
   }
 
   // Construct customer details from profile or fallbacks
@@ -85,21 +98,27 @@ export async function getOrCreateStripeCustomer(
   const customerEmail = user.email;
   const customerPhone = profileData?.phone || null;
 
-  // 2. Check local 'customers' table
+  // Check local 'customers' table
   const { data: customerRecord, error: customerDbError } = await supabase
-    .from("customers")
-    .select("stripe_customer_id")
-    .eq("user_id", user.id)
+    .from('customers')
+    .select('stripe_customer_id')
+    .eq('user_id', user.id)
     .maybeSingle();
 
-  if (customerDbError) throw customerDbError;
+  if (customerDbError) {
+    console.error(
+      '[Stripe] Error checking customer record:',
+      customerDbError.message
+    );
+    throw customerDbError;
+  }
 
   let customerId: string;
 
   if (customerRecord?.stripe_customer_id) {
-    // 3a. Customer exists - Update Stripe customer and local DB record
+    // Customer exists - Update Stripe customer and local DB record
     customerId = customerRecord.stripe_customer_id;
-    console.log(`Existing Stripe customer found: ${customerId}, updating...`);
+    console.log(`[Stripe] Existing customer found: ${customerId}, updating...`);
 
     try {
       await stripe.customers.update(customerId, {
@@ -107,25 +126,30 @@ export async function getOrCreateStripeCustomer(
         email: customerEmail,
         phone: customerPhone,
       });
-      // Update local 'customers' table (ensure consistency)
+
+      // Update local 'customers' table
       await supabase
-        .from("customers")
+        .from('customers')
         .update({
           name: customerName,
           email: customerEmail,
           phone: customerPhone,
           updated_at: new Date().toISOString(),
         })
-        .eq("user_id", user.id);
-      console.log(`Stripe customer ${customerId} updated successfully.`);
+        .eq('user_id', user.id);
+
+      console.log(`[Stripe] Customer ${customerId} updated successfully.`);
     } catch (updateError) {
-      console.error(`Error updating Stripe customer ${customerId}:`, updateError);
-      // Decide if this should be a fatal error or just logged
-      // For now, we'll log and continue, using the existing customerId
+      console.error(
+        `[Stripe] Error updating customer ${customerId}:`,
+        updateError
+      );
+      // Log and continue with existing customerId
     }
   } else {
-    // 3b. Customer doesn't exist - Create in Stripe and insert into local DB
-    console.log("No Stripe customer found, creating new one...");
+    // Customer doesn't exist - Create in Stripe and insert into local DB
+    console.log('[Stripe] No Stripe customer found, creating new one...');
+
     const customer = await stripe.customers.create({
       email: customerEmail,
       name: customerName,
@@ -134,11 +158,12 @@ export async function getOrCreateStripeCustomer(
         supabase_user_id: user.id,
       },
     });
+
     customerId = customer.id;
-    console.log(`New Stripe customer created: ${customerId}`);
+    console.log(`[Stripe] New customer created: ${customerId}`);
 
     // Insert into local 'customers' table
-    const { error: insertError } = await supabase.from("customers").insert({
+    const { error: insertError } = await supabase.from('customers').insert({
       user_id: user.id,
       stripe_customer_id: customerId,
       name: customerName,
@@ -150,13 +175,30 @@ export async function getOrCreateStripeCustomer(
 
     if (insertError) {
       console.error(
-        "Error inserting new customer record into Supabase:",
-        insertError
+        '[Stripe] Error inserting customer record:',
+        insertError.message
       );
-      // This is more critical, potentially throw error or handle cleanup
-      throw new Error("Failed to save new Stripe customer ID to database.");
+      throw new Error('Failed to save new Stripe customer ID to database.');
     }
   }
 
   return customerId;
+}
+
+/**
+ * Format amount for Stripe (convert dollars to cents)
+ * @param amount - Amount in dollars
+ * @returns Amount in cents
+ */
+export function formatStripeAmount(amount: number): number {
+  return Math.round(amount * 100);
+}
+
+/**
+ * Format amount from Stripe (convert cents to dollars)
+ * @param amount - Amount in cents
+ * @returns Amount in dollars
+ */
+export function parseStripeAmount(amount: number): number {
+  return amount / 100;
 }

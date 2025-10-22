@@ -46,20 +46,38 @@ const AdminDashboard = () => {
 
   // Format bookings to match the TodayOverview component's expectations
   const formatBookingsForDisplay = (bookings: Booking[]) => {
-    return bookings.map((booking) => ({
-      id: booking.id,
-      time: booking.scheduled_time,
-      address: booking.address || 'No address provided',
-      service: booking.service?.name || 'Unknown service',
-      technician: booking.technician?.first_name
-        ? `${booking.technician.first_name} ${booking.technician.last_name}`
-        : 'Unassigned',
-      status: booking.status as
-        | 'scheduled'
-        | 'in-progress'
-        | 'completed'
-        | 'issue',
-    }));
+    return bookings.map((booking) => {
+      // Map workflow_status to component-expected status
+      let displayStatus: 'scheduled' | 'in-progress' | 'completed' | 'issue' =
+        'scheduled';
+
+      if (booking.workflow_status === 'completed') {
+        displayStatus = 'completed';
+      } else if (booking.workflow_status === 'in_progress') {
+        displayStatus = 'in-progress';
+      } else if (booking.workflow_status === 'cancelled') {
+        displayStatus = 'issue';
+      } else if (
+        booking.workflow_status === 'scheduled' ||
+        booking.workflow_status === 'pending_assignment'
+      ) {
+        displayStatus = 'scheduled';
+      }
+
+      return {
+        id: booking.id,
+        time: booking.scheduled_time,
+        address: booking.address || 'No address provided',
+        service: booking.service?.name || 'Unknown service',
+        technician: booking.technician?.first_name
+          ? `${booking.technician.first_name} ${booking.technician.last_name}`
+          : 'Unassigned',
+        status: displayStatus,
+        // Include hybrid status fields for future use
+        paymentStatus: booking.payment_status,
+        workflowStatus: booking.workflow_status,
+      };
+    });
   };
 
   // Fetch metrics and bookings data
@@ -86,26 +104,28 @@ const AdminDashboard = () => {
         0
       );
 
+      // Use hybrid status: workflow_status for job state
       const completedBookings = bookingsData.filter(
-        (booking) => booking.status === 'completed'
+        (booking) => booking.workflow_status === 'completed'
       );
 
       const completedTodayCount = todaysBookings.filter(
-        (booking) => booking.status === 'completed'
+        (booking) => booking.workflow_status === 'completed'
       ).length;
 
       const inProgressTodayCount = todaysBookings.filter(
-        (booking) => booking.status === 'in_progress'
+        (booking) => booking.workflow_status === 'in_progress'
       ).length;
 
       const issuesCount = todaysBookings.filter(
-        (booking) => booking.status === 'cancelled'
+        (booking) => booking.workflow_status === 'cancelled'
       ).length;
 
       // Get scheduled bookings for today
       const scheduledToday = todaysBookings.filter(
         (booking) =>
-          booking.status === 'scheduled' || booking.status === 'pending'
+          booking.workflow_status === 'scheduled' ||
+          booking.workflow_status === 'pending_assignment'
       );
 
       // Calculate customer satisfaction from reviews

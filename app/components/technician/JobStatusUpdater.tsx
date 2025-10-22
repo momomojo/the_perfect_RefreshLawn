@@ -7,7 +7,6 @@ import {
   ActivityIndicator,
   ScrollView,
   Image,
-  Alert,
   Platform,
 } from 'react-native';
 import {
@@ -20,7 +19,7 @@ import {
 } from 'lucide-react-native';
 import { useAuth } from '../../../lib/auth';
 import * as ImagePicker from 'expo-image-picker';
-import { showNotification } from '@/lib/notification';
+import { showNotification } from '../../../lib/notification';
 import { supabase } from '../../../lib/supabase';
 import * as ImageManipulator from 'expo-image-manipulator';
 import 'react-native-get-random-values';
@@ -229,10 +228,11 @@ const JobStatusUpdater = ({
         const { status } =
           await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== 'granted') {
-          Alert.alert(
-            'Permission Denied',
-            'Sorry, we need camera roll permissions to upload photos.'
-          );
+          showNotification({
+            title: 'Permission Denied',
+            message: 'Sorry, we need camera roll permissions to upload photos.',
+            type: 'error',
+          });
           setUploading(false);
           return;
         }
@@ -259,7 +259,11 @@ const JobStatusUpdater = ({
 
         if (!user) {
           console.error('No authenticated user found');
-          Alert.alert('Error', 'You must be logged in to upload photos');
+          showNotification({
+            title: 'Error',
+            message: 'You must be logged in to upload photos',
+            type: 'error',
+          });
           setUploading(false);
           return;
         }
@@ -328,10 +332,11 @@ const JobStatusUpdater = ({
           );
           if (sessionError) {
             console.error('Error getting session:', sessionError);
-            Alert.alert(
-              'Authentication Error',
-              'Could not verify user session.'
-            );
+            showNotification({
+              title: 'Authentication Error',
+              message: 'Could not verify user session.',
+              type: 'error',
+            });
             setUploading(false);
             return; // Stop if session check fails
           }
@@ -339,10 +344,11 @@ const JobStatusUpdater = ({
             console.error(
               'No authenticated user found in session before upload!'
             );
-            Alert.alert(
-              'Authentication Error',
-              'Cannot upload image without a logged-in user.'
-            );
+            showNotification({
+              title: 'Authentication Error',
+              message: 'Cannot upload image without a logged-in user.',
+              type: 'error',
+            });
             setUploading(false);
             return; // Stop if no user
           }
@@ -386,10 +392,11 @@ const JobStatusUpdater = ({
               errorMessage,
               uploadError || 'No error object, but data missing'
             );
-            Alert.alert(
-              'Upload Error',
-              `Failed to upload image: ${errorMessage}`
-            );
+            showNotification({
+              title: 'Upload Error',
+              message: `Failed to upload image: ${errorMessage}`,
+              type: 'error',
+            });
             setUploading(false);
             return; // Stop execution if upload failed
           }
@@ -437,19 +444,24 @@ const JobStatusUpdater = ({
           });
         } catch (uploadError: any) {
           console.error('Error in file processing/upload:', uploadError);
-          Alert.alert(
-            'Upload Error',
-            `Failed to process or upload the image: ${
+          showNotification({
+            title: 'Upload Error',
+            message: `Failed to process or upload the image: ${
               uploadError?.message || 'Unknown error'
-            }`
-          );
+            }`,
+            type: 'error',
+          });
         }
       } else {
         console.log('Image picker cancelled or no image selected');
       }
     } catch (error) {
       console.error('Error in pickImage:', error);
-      Alert.alert('Error', 'An error occurred while uploading the image.');
+      showNotification({
+        title: 'Error',
+        message: 'An error occurred while uploading the image.',
+        type: 'error',
+      });
     } finally {
       setUploading(false);
     }
@@ -464,73 +476,64 @@ const JobStatusUpdater = ({
     );
     if (!photo || !photo.storage_path || !photo.id) {
       console.error('[removePhoto] Invalid photo data for removal.');
-      Alert.alert('Error', 'Cannot remove photo: invalid data.');
+      showNotification({
+        title: 'Error',
+        message: 'Cannot remove photo: invalid data.',
+        type: 'error',
+      });
       return;
     }
 
     // Add confirmation dialog before deleting
-    Alert.alert(
-      'Confirm Deletion',
-      `Are you sure you want to delete this ${type} photo? This action cannot be undone.`,
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            setUploading(true);
-            console.log(
-              '[removePhoto] Removing from storage:',
-              photo.storage_path
-            );
-            const { error: storageError } = await supabase.storage
-              .from('booking-images')
-              .remove([photo.storage_path]);
+    showConfirmation({
+      title: 'Confirm Deletion',
+      message: `Are you sure you want to delete this ${type} photo? This action cannot be undone.`,
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      confirmButtonStyle: 'destructive',
+      onConfirm: async () => {
+        setUploading(true);
+        console.log('[removePhoto] Removing from storage:', photo.storage_path);
+        const { error: storageError } = await supabase.storage
+          .from('booking-images')
+          .remove([photo.storage_path]);
 
-            console.log('[removePhoto] Removing from database, id:', photo.id);
-            const { error: dbError } = await supabase
-              .from('booking_images')
-              .delete()
-              .eq('id', photo.id);
+        console.log('[removePhoto] Removing from database, id:', photo.id);
+        const { error: dbError } = await supabase
+          .from('booking_images')
+          .delete()
+          .eq('id', photo.id);
 
-            console.log('[removePhoto] Re-fetching photos after removal.');
-            await fetchPhotos();
-            setUploading(false);
+        console.log('[removePhoto] Re-fetching photos after removal.');
+        await fetchPhotos();
+        setUploading(false);
 
-            if (storageError) {
-              console.error(
-                '[removePhoto] Storage removal error:',
-                storageError
-              );
-              showNotification({
-                title: 'Delete Failed',
-                message: `Storage error: ${storageError.message}`,
-                type: 'error',
-              });
-            }
-            if (dbError) {
-              console.error('[removePhoto] Database removal error:', dbError);
-              showNotification({
-                title: 'Delete Failed',
-                message: `Database error: ${dbError.message}`,
-                type: 'error',
-              });
-            }
-            if (!storageError && !dbError) {
-              console.log('[removePhoto] Removal successful.');
-              showNotification({
-                title: 'Photo Deleted',
-                message: `${type === 'before' ? 'Before' : 'After'} photo removed successfully.`,
-                type: 'success',
-              });
-            }
-          },
-        },
-      ]
-    );
+        if (storageError) {
+          console.error('[removePhoto] Storage removal error:', storageError);
+          showNotification({
+            title: 'Delete Failed',
+            message: `Storage error: ${storageError.message}`,
+            type: 'error',
+          });
+        }
+        if (dbError) {
+          console.error('[removePhoto] Database removal error:', dbError);
+          showNotification({
+            title: 'Delete Failed',
+            message: `Database error: ${dbError.message}`,
+            type: 'error',
+          });
+        }
+        if (!storageError && !dbError) {
+          console.log('[removePhoto] Removal successful.');
+          showNotification({
+            title: 'Photo Deleted',
+            message: `${type === 'before' ? 'Before' : 'After'} photo removed successfully.`,
+            type: 'success',
+          });
+        }
+      },
+    });
   };
 
   const submitJobReport = async () => {

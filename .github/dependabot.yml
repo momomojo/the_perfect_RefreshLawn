@@ -1,0 +1,46 @@
+# Dependabot configuration for automated dependency updates
+# See https://docs.github.com/github/administering-a-repository/configuration-options-for-dependency-updates
+
+version: 2
+updates:
+  # Update npm dependencies
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+    open-pull-requests-limit: 10
+    labels:
+      - 'dependencies'
+      - 'automated'
+    commit-message:
+      prefix: 'chore'
+      include: 'scope'
+    # Group minor and patch updates together
+    groups:
+      expo-packages:
+        patterns:
+          - 'expo*'
+          - '@expo/*'
+      react-packages:
+        patterns:
+          - 'react*'
+          - '@react-*'
+      stripe-packages:
+        patterns:
+          - '@stripe/*'
+          - 'stripe*'
+      dev-dependencies:
+        dependency-type: 'development'
+        update-types:
+          - 'minor'
+          - 'patch'
+
+  # Update GitHub Actions
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'monthly'
+    labels:
+      - 'dependencies'
+      - 'github-actions'
