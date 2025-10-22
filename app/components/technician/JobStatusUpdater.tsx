@@ -16,6 +16,7 @@ import {
   Upload,
   X,
   AlertCircle,
+  RefreshCw,
 } from 'lucide-react-native';
 import { useAuth } from '../../../lib/auth';
 import * as ImagePicker from 'expo-image-picker';
@@ -39,6 +40,15 @@ interface JobStatusUpdaterProps {
   onStatusUpdate: (status: string, data?: any) => void;
 }
 
+interface UploadStatus {
+  id: string;
+  type: 'before' | 'after';
+  status: 'uploading' | 'completed' | 'failed';
+  progress: number;
+  error?: string;
+  uri?: string;
+}
+
 const JobStatusUpdater = ({
   jobId,
   currentStatus,
@@ -51,6 +61,9 @@ const JobStatusUpdater = ({
   const [afterPhotos, setAfterPhotos] = useState<any[]>([]);
   const [notes, setNotes] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [uploadQueue, setUploadQueue] = useState<Map<string, UploadStatus>>(
+    new Map()
+  );
 
   const fetchPhotos = async () => {
     console.log('[fetchPhotos] Fetching photos for jobId:', jobId);
@@ -202,6 +215,61 @@ const JobStatusUpdater = ({
     }
   }, [jobId]);
 
+  // Helper: Check if any uploads are in progress
+  const hasActiveUploads = (): boolean => {
+    for (const upload of uploadQueue.values()) {
+      if (upload.status === 'uploading') {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // Helper: Add upload to queue
+  const addUploadToQueue = (
+    id: string,
+    type: 'before' | 'after',
+    uri?: string
+  ) => {
+    setUploadQueue((prev) => {
+      const newQueue = new Map(prev);
+      newQueue.set(id, {
+        id,
+        type,
+        status: 'uploading',
+        progress: 0,
+        uri,
+      });
+      return newQueue;
+    });
+  };
+
+  // Helper: Update upload status
+  const updateUploadStatus = (
+    id: string,
+    status: 'uploading' | 'completed' | 'failed',
+    progress: number = 100,
+    error?: string
+  ) => {
+    setUploadQueue((prev) => {
+      const newQueue = new Map(prev);
+      const upload = newQueue.get(id);
+      if (upload) {
+        newQueue.set(id, { ...upload, status, progress, error });
+      }
+      return newQueue;
+    });
+  };
+
+  // Helper: Remove upload from queue
+  const removeUploadFromQueue = (id: string) => {
+    setUploadQueue((prev) => {
+      const newQueue = new Map(prev);
+      newQueue.delete(id);
+      return newQueue;
+    });
+  };
+
   const handleStatusChange = (
     newStatus:
       | 'pending'
@@ -219,6 +287,17 @@ const JobStatusUpdater = ({
 
   const pickImage = async (type: 'before' | 'after') => {
     console.log(`Entering pickImage for type: ${type}`);
+
+    // Prevent multiple simultaneous uploads
+    if (uploading) {
+      showNotification({
+        title: 'Upload in Progress',
+        message: 'Please wait for the current upload to finish.',
+        type: 'warning',
+      });
+      return;
+    }
+
     try {
       console.log(`Picking image for ${type} photos`);
       setUploading(true);
@@ -253,9 +332,10 @@ const JobStatusUpdater = ({
         const asset = result.assets[0];
         console.log('Selected asset:', asset);
 
-        // Generate a unique filename (use .jpg extension)
+        // Generate a unique filename and upload ID
         const fileName = `${uuidv4()}.jpg`;
-        console.log('Generated file name:', fileName);
+        const uploadId = uuidv4();
+        console.log('Generated file name:', fileName, 'Upload ID:', uploadId);
 
         if (!user) {
           console.error('No authenticated user found');
@@ -267,6 +347,9 @@ const JobStatusUpdater = ({
           setUploading(false);
           return;
         }
+
+        // Add to upload queue
+        addUploadToQueue(uploadId, type, asset.uri);
 
         try {
           let arrayBuffer;
@@ -406,6 +489,9 @@ const JobStatusUpdater = ({
             uploadData.path
           );
 
+          // Update progress: storage upload complete (50%)
+          updateUploadStatus(uploadId, 'uploading', 50);
+
           // Persist record in booking_images table (SINGLE INSERT - duplicate removed)
           const { data: dbData, error: dbError } = await supabase
             .from('booking_images')
@@ -427,11 +513,16 @@ const JobStatusUpdater = ({
               message: 'Image uploaded but failed to record in database.',
               type: 'error',
             });
+            // Mark upload as failed
+            updateUploadStatus(uploadId, 'failed', 50, 'Database error');
             setUploading(false);
             return;
           }
 
           console.log(`[pickImage] booking_images record inserted:`, dbData);
+
+          // Update progress: database record created (100%)
+          updateUploadStatus(uploadId, 'completed', 100);
 
           // Refresh photos to include the newly added one
           await fetchPhotos();
@@ -442,8 +533,18 @@ const JobStatusUpdater = ({
             message: `${type === 'before' ? 'Before' : 'After'} photo uploaded successfully!`,
             type: 'success',
           });
+
+          // Remove from queue after short delay to show completion
+          setTimeout(() => removeUploadFromQueue(uploadId), 2000);
         } catch (uploadError: any) {
           console.error('Error in file processing/upload:', uploadError);
+          // Mark upload as failed in queue
+          updateUploadStatus(
+            uploadId,
+            'failed',
+            0,
+            uploadError?.message || 'Unknown error'
+          );
           showNotification({
             title: 'Upload Error',
             message: `Failed to process or upload the image: ${
@@ -541,6 +642,18 @@ const JobStatusUpdater = ({
     console.log('[submitJobReport] beforePhotos count:', beforePhotos.length);
     console.log('[submitJobReport] afterPhotos count:', afterPhotos.length);
     console.log('[submitJobReport] notes:', notes);
+
+    // Check if any uploads are still in progress
+    if (hasActiveUploads()) {
+      console.log('[submitJobReport] Blocked: uploads still in progress');
+      showNotification({
+        title: 'Upload in Progress',
+        message:
+          'Please wait for all image uploads to complete before submitting.',
+        type: 'warning',
+      });
+      return;
+    }
 
     // Validate that required photos are present
     if (beforePhotos.length === 0) {
@@ -774,17 +887,71 @@ const JobStatusUpdater = ({
         ) : null}
       </View>
 
+      {/* Upload Progress Indicators */}
+      {uploadQueue.size > 0 && (
+        <View className="mt-4 rounded-lg bg-blue-50 p-3">
+          <Text className="mb-2 font-medium text-blue-900">
+            Upload Progress ({uploadQueue.size}{' '}
+            {uploadQueue.size === 1 ? 'image' : 'images'})
+          </Text>
+          {Array.from(uploadQueue.values()).map((upload) => (
+            <View key={upload.id} className="mb-2 flex-row items-center">
+              <View className="flex-1">
+                <View className="flex-row items-center justify-between">
+                  <Text className="text-sm text-gray-700">
+                    {upload.type === 'before' ? 'Before' : 'After'} Photo
+                  </Text>
+                  <Text className="text-xs text-gray-500">
+                    {upload.status === 'uploading'
+                      ? `${upload.progress}%`
+                      : upload.status === 'completed'
+                        ? 'Done'
+                        : 'Failed'}
+                  </Text>
+                </View>
+                <View className="mt-1 h-2 overflow-hidden rounded-full bg-gray-200">
+                  <View
+                    className={`h-full ${
+                      upload.status === 'completed'
+                        ? 'bg-green-500'
+                        : upload.status === 'failed'
+                          ? 'bg-red-500'
+                          : 'bg-blue-500'
+                    }`}
+                    style={{ width: `${upload.progress}%` }}
+                  />
+                </View>
+                {upload.error && (
+                  <Text className="mt-1 text-xs text-red-500">
+                    {upload.error}
+                  </Text>
+                )}
+              </View>
+              {upload.status === 'uploading' && (
+                <View className="ml-2">
+                  <RefreshCw size={16} color="#3b82f6" />
+                </View>
+              )}
+            </View>
+          ))}
+        </View>
+      )}
+
       {/* Submit Button */}
       {status === 'completed' && (
         <TouchableOpacity
           className={`items-center rounded-lg bg-green-500 py-3 ${
-            uploading ? 'opacity-70' : ''
+            uploading || hasActiveUploads() ? 'opacity-70' : ''
           }`}
           onPress={submitJobReport}
-          disabled={uploading}
+          disabled={uploading || hasActiveUploads()}
         >
           <Text className="font-semibold text-white">
-            {uploading ? 'Submitting...' : 'Submit Job Report'}
+            {uploading
+              ? 'Submitting...'
+              : hasActiveUploads()
+                ? 'Uploading Images...'
+                : 'Submit Job Report'}
           </Text>
         </TouchableOpacity>
       )}

@@ -28,10 +28,11 @@ import AvailabilityForm from '@/app/components/technician/AvailabilityForm';
 import TimeBlockForm from '@/app/components/technician/TimeBlockForm';
 import { showNotification } from '@/lib/notification';
 import { useConfirmation } from '@/lib/confirmation';
+import ErrorBoundary from '@/app/components/common/ErrorBoundary';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-export default function TechnicianSchedule() {
+function TechnicianScheduleContent() {
   const { user } = useAuth();
   const { showConfirmation } = useConfirmation();
   const [availability, setAvailability] = useState<TechnicianAvailability[]>(
@@ -653,5 +654,13 @@ export default function TechnicianSchedule() {
         </View>
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+export default function TechnicianSchedule() {
+  return (
+    <ErrorBoundary fallbackMessage="Schedule Error">
+      <TechnicianScheduleContent />
+    </ErrorBoundary>
   );
 }

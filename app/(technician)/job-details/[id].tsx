@@ -20,7 +20,11 @@ import {
 } from 'lucide-react-native';
 import JobDetail from '../../components/technician/JobDetail';
 import JobStatusUpdater from '../../components/technician/JobStatusUpdater';
-import { getBooking, updateBookingStatus } from '../../../lib/data';
+import {
+  getBooking,
+  updateBookingStatus,
+  WorkflowStatus,
+} from '../../../lib/data';
 import { format } from 'date-fns';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../../../lib/auth';
@@ -31,17 +35,18 @@ import { v4 as uuidv4 } from 'uuid';
 import { showNotification } from '../../../lib/notification';
 import { useRealtimeBookings } from '../../../lib/hooks';
 import { optimisticValueUpdate } from '../../../lib/optimistic-updates';
+import { WorkflowStatusType } from '../../../lib/constants/bookingStatus';
+import ErrorBoundary from '../../components/common/ErrorBoundary';
 
-export default function JobDetailsScreen() {
+function JobDetailsScreenContent() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [jobData, setJobData] = useState<any>(null);
-  const [currentStatus, setCurrentStatus] = useState<
-    'pending' | 'scheduled' | 'in_progress' | 'completed' | 'cancelled'
-  >('scheduled');
+  const [currentStatus, setCurrentStatus] =
+    useState<WorkflowStatusType>('scheduled');
 
   // Real-time subscription for this specific job
   const { bookings: realtimeBookings } = useRealtimeBookings({
@@ -84,7 +89,7 @@ export default function JobDetailsScreen() {
           return;
         }
         console.log('[JobDetailsScreen] Booking found, setting status...');
-        setCurrentStatus(booking.status as any);
+        setCurrentStatus(booking.workflow_status);
         console.log('[JobDetailsScreen] Setting job data...');
         setJobData({
           jobId: booking.id,
@@ -111,7 +116,8 @@ export default function JobDetailsScreen() {
           specialInstructions: booking.notes || '',
           propertyImage:
             'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=600&q=80',
-          status: booking.status,
+          workflowStatus: booking.workflow_status,
+          paymentStatus: booking.payment_status,
         });
         console.log('[JobDetailsScreen] Job data set.');
       } catch (err) {
@@ -137,7 +143,7 @@ export default function JobDetailsScreen() {
       const booking = realtimeBookings[0];
       console.log('Real-time update received for job:', booking);
 
-      setCurrentStatus(booking.status as any);
+      setCurrentStatus(booking.workflow_status);
       setJobData({
         jobId: booking.id,
         customerName: `${booking.customer?.first_name} ${booking.customer?.last_name}`,
@@ -160,7 +166,8 @@ export default function JobDetailsScreen() {
         specialInstructions: booking.notes || '',
         propertyImage:
           'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=600&q=80',
-        status: booking.status,
+        workflowStatus: booking.workflow_status,
+        paymentStatus: booking.payment_status,
       });
     }
   }, [realtimeBookings, id]);
@@ -193,11 +200,11 @@ export default function JobDetailsScreen() {
       setValue: setJobData,
       optimisticValue: {
         ...jobData,
-        status,
+        workflowStatus: status,
       },
       operation: async () => {
         // Also update currentStatus immediately
-        setCurrentStatus(status as any);
+        setCurrentStatus(status as WorkflowStatusType);
 
         // Perform the actual status update
         await updateBookingStatus(
@@ -291,7 +298,7 @@ export default function JobDetailsScreen() {
                 setRefreshing(true);
                 const booking = await getBooking(id as string);
                 if (booking) {
-                  setCurrentStatus(booking.status as any);
+                  setCurrentStatus(booking.workflow_status);
                   setJobData({
                     jobId: booking.id,
                     customerName: `${booking.customer?.first_name} ${booking.customer?.last_name}`,
@@ -317,7 +324,8 @@ export default function JobDetailsScreen() {
                     specialInstructions: booking.notes || '',
                     propertyImage:
                       'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=600&q=80',
-                    status: booking.status,
+                    workflowStatus: booking.workflow_status,
+                    paymentStatus: booking.payment_status,
                   });
                 }
               } catch (err) {
@@ -349,5 +357,13 @@ export default function JobDetailsScreen() {
         </View>
       </ScrollView>
     </View>
+  );
+}
+
+export default function JobDetailsScreen() {
+  return (
+    <ErrorBoundary fallbackMessage="Job Details Error">
+      <JobDetailsScreenContent />
+    </ErrorBoundary>
   );
 }

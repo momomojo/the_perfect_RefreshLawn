@@ -13,8 +13,9 @@ import TodayJobs from '../components/technician/TodayJobs';
 import WeeklySchedule from '../components/technician/WeeklySchedule';
 import { useAuth } from '../../lib/auth';
 import { getProfile } from '../../lib/data';
+import ErrorBoundary from '../components/common/ErrorBoundary';
 
-export default function TechnicianDashboard() {
+function TechnicianDashboardContent() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   console.log('[TechnicianDashboard] authLoading:', authLoading, 'user:', user);
@@ -50,11 +51,6 @@ export default function TechnicianDashboard() {
 
   const handleJobSelect = (jobId: string) => {
     router.push(`/(technician)/job-details/${jobId}`);
-  };
-
-  const handleDayPress = (date: string) => {
-    console.log(`Viewing schedule for: ${date}`);
-    // Future enhancement: Navigate to a detailed day view or filter jobs by this date
   };
 
   return (
@@ -99,7 +95,7 @@ export default function TechnicianDashboard() {
         </View>
 
         {/* Weekly Schedule */}
-        <WeeklySchedule onDayPress={handleDayPress} />
+        <WeeklySchedule />
 
         {/* Today's Jobs */}
         <TodayJobs onJobSelect={handleJobSelect} />
@@ -107,23 +103,24 @@ export default function TechnicianDashboard() {
         {/* Quick Actions */}
         <View className="mb-8 mt-4 rounded-lg bg-white p-4 shadow-sm">
           <Text className="mb-3 text-lg font-semibold">Quick Actions</Text>
-          <View className="flex-row justify-between">
-            <TouchableOpacity
-              className="mr-2 flex-1 items-center rounded-lg bg-blue-50 p-3"
-              onPress={() => router.push('/(technician)/jobs')}
-            >
-              <Text className="mt-1 font-medium text-blue-700">
-                View All Jobs
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity className="ml-2 flex-1 items-center rounded-lg bg-green-50 p-3">
-              <Text className="mt-1 font-medium text-green-700">
-                Report Issue
-              </Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            className="items-center rounded-lg bg-blue-50 p-3"
+            onPress={() => router.push('/(technician)/jobs')}
+          >
+            <Text className="mt-1 font-medium text-blue-700">
+              View All Jobs
+            </Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </View>
+  );
+}
+
+export default function TechnicianDashboard() {
+  return (
+    <ErrorBoundary fallbackMessage="Dashboard Error">
+      <TechnicianDashboardContent />
+    </ErrorBoundary>
   );
 }

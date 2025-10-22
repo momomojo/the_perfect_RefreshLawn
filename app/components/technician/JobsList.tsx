@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,8 +6,8 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-} from "react-native";
-import { useRouter } from "expo-router";
+} from 'react-native';
+import { useRouter } from 'expo-router';
 import {
   Calendar,
   Filter,
@@ -16,40 +16,27 @@ import {
   Clock,
   ChevronRight,
   AlertCircle,
-} from "lucide-react-native";
-import { getTechnicianBookings } from "../../../lib/data";
-import { useAuth } from "../../../lib/auth";
-import { format, parseISO } from "date-fns";
-import { useRealtimeBookings } from "../../../lib/hooks";
-
-interface Job {
-  id: string;
-  customerName: string;
-  address: string;
-  date: string;
-  time: string;
-  serviceType: string;
-  status:
-    | "pending"
-    | "scheduled"
-    | "in_progress"
-    | "completed"
-    | "cancelled"
-    | "pending_payment"
-    | "payment_processing"
-    | "payment_confirmed"
-    | "payment_failed"
-    | "payment_refunded"
-    | "refunded";
-}
+} from 'lucide-react-native';
+import { getTechnicianBookings } from '../../../lib/data';
+import { useAuth } from '../../../lib/auth';
+import { parseISO } from 'date-fns';
+import { useRealtimeBookings } from '../../../lib/hooks';
+import { StatusBadge } from '../../components/common/StatusBadge';
+import { WorkflowStatusType } from '../../../lib/constants/bookingStatus';
+import {
+  mapBookingToJob,
+  sortJobsByPriority,
+  TechnicianJob,
+  getStatusSortPriority,
+} from '../../../lib/technician-utils';
 
 const JobsList = () => {
   const router = useRouter();
   const { user } = useAuth();
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string | null>(null);
-  const [sortBy, setSortBy] = useState<"date" | "status">("date");
-  const [jobs, setJobs] = useState<Job[]>([]);
+  const [sortBy, setSortBy] = useState<'date' | 'status'>('date');
+  const [jobs, setJobs] = useState<TechnicianJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -69,25 +56,13 @@ const JobsList = () => {
         // Get all technician bookings from Supabase
         const bookings = await getTechnicianBookings(user.id);
 
-        // Map the bookings to the Job interface format
-        const mappedJobs = bookings.map((booking) => ({
-          id: booking.id,
-          customerName:
-            booking.customer?.first_name + " " + booking.customer?.last_name,
-          address: booking.address || "",
-          date: booking.scheduled_date,
-          time: format(
-            new Date(`2000-01-01T${booking.scheduled_time}`),
-            "h:mm a"
-          ),
-          serviceType: booking.service?.name || "",
-          status: booking.status as any, // Cast to match the Job interface
-        }));
+        // Map the bookings using shared utility function
+        const mappedJobs = bookings.map(mapBookingToJob);
 
         setJobs(mappedJobs);
       } catch (err) {
-        console.error("Error loading technician jobs:", err);
-        setError("Failed to load jobs");
+        console.error('Error loading technician jobs:', err);
+        setError('Failed to load jobs');
       } finally {
         setLoading(false);
       }
@@ -100,20 +75,8 @@ const JobsList = () => {
   useEffect(() => {
     if (realtimeBookings.length === 0) return;
 
-    // Map real-time bookings to Job format and merge with existing jobs
-    const mappedRealtimeJobs = realtimeBookings.map((booking) => ({
-      id: booking.id,
-      customerName:
-        booking.customer?.first_name + " " + booking.customer?.last_name,
-      address: booking.address || "",
-      date: booking.scheduled_date,
-      time: format(
-        new Date(`2000-01-01T${booking.scheduled_time}`),
-        "h:mm a"
-      ),
-      serviceType: booking.service?.name || "",
-      status: booking.status as any,
-    }));
+    // Map real-time bookings using shared utility
+    const mappedRealtimeJobs = realtimeBookings.map(mapBookingToJob);
 
     // Merge real-time updates with existing jobs
     setJobs((prevJobs) => {
@@ -135,70 +98,28 @@ const JobsList = () => {
       job.address.toLowerCase().includes(searchQuery.toLowerCase()) ||
       job.serviceType.toLowerCase().includes(searchQuery.toLowerCase());
 
-    const matchesFilter = filterStatus ? job.status === filterStatus : true;
+    const matchesFilter = filterStatus
+      ? job.workflowStatus === filterStatus
+      : true;
 
     return matchesSearch && matchesFilter;
   });
 
   // Sort jobs based on sortBy state
   const sortedJobs = [...filteredJobs].sort((a, b) => {
-    if (sortBy === "date") {
+    if (sortBy === 'date') {
       return (
-        new Date(a.date + "T" + a.time).getTime() -
-        new Date(b.date + "T" + b.time).getTime()
+        new Date(a.scheduledDate).getTime() -
+        new Date(b.scheduledDate).getTime()
       );
     } else {
-      // Sort by status priority according to the workflow
-      const statusPriority = {
-        in_progress: 0,
-        scheduled: 1,
-        payment_confirmed: 2,
-        pending_payment: 3,
-        payment_processing: 4,
-        pending: 5,
-        completed: 6,
-        payment_failed: 7,
-        cancelled: 8,
-        payment_refunded: 9,
-        refunded: 10,
-      };
-      // Handle unknown status by giving it lowest priority
-      const aStatus =
-        statusPriority[a.status] !== undefined ? statusPriority[a.status] : 100;
-      const bStatus =
-        statusPriority[b.status] !== undefined ? statusPriority[b.status] : 100;
-      return aStatus - bStatus;
+      // Use shared utility for status-based sorting
+      return (
+        getStatusSortPriority(a.workflowStatus) -
+        getStatusSortPriority(b.workflowStatus)
+      );
     }
   });
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "pending_payment":
-        return "bg-gray-100 text-gray-800";
-      case "payment_processing":
-        return "bg-purple-100 text-purple-800";
-      case "payment_confirmed":
-        return "bg-indigo-100 text-indigo-800";
-      case "scheduled":
-        return "bg-blue-100 text-blue-800";
-      case "in_progress":
-        return "bg-yellow-100 text-yellow-800";
-      case "pending":
-        return "bg-amber-100 text-amber-800";
-      case "completed":
-        return "bg-green-100 text-green-800";
-      case "payment_failed":
-        return "bg-red-100 text-red-800";
-      case "cancelled":
-        return "bg-red-100 text-red-800";
-      case "payment_refunded":
-        return "bg-orange-100 text-orange-800";
-      case "refunded":
-        return "bg-orange-100 text-orange-800";
-      default:
-        return "bg-gray-100 text-gray-800";
-    }
-  };
 
   const handleJobPress = (jobId: string) => {
     router.push(`/(technician)/job-details/${jobId}`);
@@ -206,18 +127,18 @@ const JobsList = () => {
 
   if (loading) {
     return (
-      <View className="flex-1 bg-white justify-center items-center">
+      <View className="flex-1 items-center justify-center bg-white">
         <ActivityIndicator size="large" color="#10b981" />
-        <Text className="text-gray-500 mt-2">Loading jobs...</Text>
+        <Text className="mt-2 text-gray-500">Loading jobs...</Text>
       </View>
     );
   }
 
   if (error) {
     return (
-      <View className="flex-1 bg-white justify-center items-center p-4">
+      <View className="flex-1 items-center justify-center bg-white p-4">
         <AlertCircle size={40} color="#ef4444" />
-        <Text className="text-red-500 text-center mt-2">{error}</Text>
+        <Text className="mt-2 text-center text-red-500">{error}</Text>
       </View>
     );
   }
@@ -225,11 +146,11 @@ const JobsList = () => {
   return (
     <View className="flex-1 bg-white">
       {/* Search and Filter Bar */}
-      <View className="p-4 bg-white border-b border-gray-200">
-        <View className="flex-row items-center bg-gray-100 rounded-lg px-3 py-2 mb-3">
+      <View className="border-b border-gray-200 bg-white p-4">
+        <View className="mb-3 flex-row items-center rounded-lg bg-gray-100 px-3 py-2">
           <Search size={20} color="#6b7280" />
           <TextInput
-            className="flex-1 ml-2 text-base text-gray-800"
+            className="ml-2 flex-1 text-base text-gray-800"
             placeholder="Search jobs..."
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -244,90 +165,90 @@ const JobsList = () => {
             className="flex-row"
           >
             <TouchableOpacity
-              className={`flex-row items-center mr-2 px-3 py-1 rounded-full ${
-                filterStatus === null ? "bg-blue-500" : "bg-gray-200"
+              className={`mr-2 flex-row items-center rounded-full px-3 py-1 ${
+                filterStatus === null ? 'bg-blue-500' : 'bg-gray-200'
               }`}
               onPress={() => setFilterStatus(null)}
             >
               <Text
                 className={`${
-                  filterStatus === null ? "text-white" : "text-gray-800"
+                  filterStatus === null ? 'text-white' : 'text-gray-800'
                 }`}
               >
                 All
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              className={`flex-row items-center mr-2 px-3 py-1 rounded-full ${
-                filterStatus === "payment_confirmed"
-                  ? "bg-blue-500"
-                  : "bg-gray-200"
+              className={`mr-2 flex-row items-center rounded-full px-3 py-1 ${
+                filterStatus === 'pending_assignment'
+                  ? 'bg-blue-500'
+                  : 'bg-gray-200'
               }`}
-              onPress={() => setFilterStatus("payment_confirmed")}
+              onPress={() => setFilterStatus('pending_assignment')}
             >
               <Text
                 className={`${
-                  filterStatus === "payment_confirmed"
-                    ? "text-white"
-                    : "text-gray-800"
+                  filterStatus === 'pending_assignment'
+                    ? 'text-white'
+                    : 'text-gray-800'
                 }`}
               >
-                Confirmed
+                Pending
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              className={`flex-row items-center mr-2 px-3 py-1 rounded-full ${
-                filterStatus === "scheduled" ? "bg-blue-500" : "bg-gray-200"
+              className={`mr-2 flex-row items-center rounded-full px-3 py-1 ${
+                filterStatus === 'scheduled' ? 'bg-blue-500' : 'bg-gray-200'
               }`}
-              onPress={() => setFilterStatus("scheduled")}
+              onPress={() => setFilterStatus('scheduled')}
             >
               <Text
                 className={`${
-                  filterStatus === "scheduled" ? "text-white" : "text-gray-800"
+                  filterStatus === 'scheduled' ? 'text-white' : 'text-gray-800'
                 }`}
               >
                 Scheduled
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              className={`flex-row items-center mr-2 px-3 py-1 rounded-full ${
-                filterStatus === "in_progress" ? "bg-blue-500" : "bg-gray-200"
+              className={`mr-2 flex-row items-center rounded-full px-3 py-1 ${
+                filterStatus === 'in_progress' ? 'bg-blue-500' : 'bg-gray-200'
               }`}
-              onPress={() => setFilterStatus("in_progress")}
+              onPress={() => setFilterStatus('in_progress')}
             >
               <Text
                 className={`${
-                  filterStatus === "in_progress"
-                    ? "text-white"
-                    : "text-gray-800"
+                  filterStatus === 'in_progress'
+                    ? 'text-white'
+                    : 'text-gray-800'
                 }`}
               >
                 In Progress
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              className={`flex-row items-center mr-2 px-3 py-1 rounded-full ${
-                filterStatus === "completed" ? "bg-blue-500" : "bg-gray-200"
+              className={`mr-2 flex-row items-center rounded-full px-3 py-1 ${
+                filterStatus === 'completed' ? 'bg-blue-500' : 'bg-gray-200'
               }`}
-              onPress={() => setFilterStatus("completed")}
+              onPress={() => setFilterStatus('completed')}
             >
               <Text
                 className={`${
-                  filterStatus === "completed" ? "text-white" : "text-gray-800"
+                  filterStatus === 'completed' ? 'text-white' : 'text-gray-800'
                 }`}
               >
                 Completed
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              className={`flex-row items-center mr-2 px-3 py-1 rounded-full ${
-                filterStatus === "cancelled" ? "bg-blue-500" : "bg-gray-200"
+              className={`mr-2 flex-row items-center rounded-full px-3 py-1 ${
+                filterStatus === 'cancelled' ? 'bg-blue-500' : 'bg-gray-200'
               }`}
-              onPress={() => setFilterStatus("cancelled")}
+              onPress={() => setFilterStatus('cancelled')}
             >
               <Text
                 className={`${
-                  filterStatus === "cancelled" ? "text-white" : "text-gray-800"
+                  filterStatus === 'cancelled' ? 'text-white' : 'text-gray-800'
                 }`}
               >
                 Cancelled
@@ -337,12 +258,12 @@ const JobsList = () => {
 
           {/* Sort Button */}
           <TouchableOpacity
-            className="flex-row items-center px-3 py-1 rounded-full bg-gray-200"
-            onPress={() => setSortBy(sortBy === "date" ? "status" : "date")}
+            className="flex-row items-center rounded-full bg-gray-200 px-3 py-1"
+            onPress={() => setSortBy(sortBy === 'date' ? 'status' : 'date')}
           >
             <Filter size={16} color="#4b5563" />
             <Text className="ml-1 text-gray-800">
-              {sortBy === "date" ? "By Date" : "By Status"}
+              {sortBy === 'date' ? 'By Date' : 'By Status'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -354,48 +275,46 @@ const JobsList = () => {
           sortedJobs.map((job) => (
             <TouchableOpacity
               key={job.id}
-              className="p-4 border-b border-gray-200 bg-white"
+              className="border-b border-gray-200 bg-white p-4"
               onPress={() => handleJobPress(job.id)}
             >
-              <View className="flex-row justify-between items-start">
+              <View className="flex-row items-start justify-between">
                 <View className="flex-1">
                   <Text className="text-lg font-bold text-gray-800">
                     {job.customerName}
                   </Text>
-                  <View className="flex-row items-center mt-1">
+                  <View className="mt-1 flex-row items-center">
                     <MapPin size={16} color="#6b7280" />
-                    <Text className="ml-1 text-gray-600 flex-1">
+                    <Text className="ml-1 flex-1 text-gray-600">
                       {job.address}
                     </Text>
                   </View>
-                  <View className="flex-row items-center mt-1">
+                  <View className="mt-1 flex-row items-center">
                     <Calendar size={16} color="#6b7280" />
                     <Text className="ml-1 text-gray-600">
-                      {format(new Date(job.date), "MMM d, yyyy")}
+                      {job.scheduledDate}
                     </Text>
                     <Clock size={16} color="#6b7280" className="ml-3" />
-                    <Text className="ml-1 text-gray-600">{job.time}</Text>
+                    <Text className="ml-1 text-gray-600">
+                      {job.scheduledTime}
+                    </Text>
                   </View>
                   <Text className="mt-2 text-gray-700">{job.serviceType}</Text>
                 </View>
                 <View className="flex-row items-center">
-                  <View
-                    className={`px-2 py-1 rounded-full ${getStatusColor(
-                      job.status
-                    )}`}
-                  >
-                    <Text className="text-xs font-medium capitalize">
-                      {job.status.replace("_", " ")}
-                    </Text>
-                  </View>
+                  <StatusBadge
+                    workflowStatus={job.workflowStatus}
+                    paymentStatus={job.paymentStatus}
+                    size="small"
+                  />
                   <ChevronRight size={20} color="#9ca3af" className="ml-2" />
                 </View>
               </View>
             </TouchableOpacity>
           ))
         ) : (
-          <View className="p-4 items-center justify-center">
-            <Text className="text-gray-500 text-center">
+          <View className="items-center justify-center p-4">
+            <Text className="text-center text-gray-500">
               No jobs found matching your criteria
             </Text>
           </View>

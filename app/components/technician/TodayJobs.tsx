@@ -7,21 +7,21 @@ import {
   Image,
   ActivityIndicator,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { MapPin, Clock, ChevronRight, CheckCircle } from 'lucide-react-native';
-import { getTechnicianBookings, Booking } from '../../../lib/data';
+import { getTechnicianBookings } from '../../../lib/data';
 import { useAuth } from '../../../lib/auth';
 import { format, parseISO } from 'date-fns';
 import { useRealtimeBookings } from '../../../lib/hooks';
 import { StatusBadge } from '../common/StatusBadge';
 import { WorkflowStatusType } from '../../../lib/constants/bookingStatus';
+import {
+  mapBookingToJob,
+  isToday,
+  TechnicianJob,
+} from '../../../lib/technician-utils';
 
-interface Job {
-  id: string;
-  customerName: string;
-  address: string;
-  time: string;
-  serviceType: string;
-  workflowStatus: WorkflowStatusType;
+interface Job extends TechnicianJob {
   propertyImage?: string;
   createdAt: string;
 }
@@ -33,6 +33,7 @@ interface TodayJobsProps {
 const TodayJobs = ({
   onJobSelect = (jobId) => console.log(`Job ${jobId} selected`),
 }: TodayJobsProps) => {
+  const router = useRouter();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -62,26 +63,16 @@ const TodayJobs = ({
         // Get all technician bookings from Supabase
         const bookings = await getTechnicianBookings(user.id);
 
-        // Filter for today's jobs only
-        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-        const todaysBookings = bookings.filter(
-          (booking) => booking.scheduled_date === today
+        // Filter for today's jobs using shared utility
+        const todaysBookings = bookings.filter((booking) =>
+          isToday(booking.scheduled_date)
         );
 
-        // Map the bookings to the Job interface format
+        // Map the bookings using shared utility, then add TodayJobs-specific fields
         const mappedJobs = todaysBookings.map((booking) => ({
-          id: booking.id,
-          customerName:
-            booking.customer?.first_name + ' ' + booking.customer?.last_name,
-          address: booking.address || '',
-          time: `${format(
-            new Date(`2000-01-01T${booking.scheduled_time}`),
-            'h:mm a'
-          )}`,
-          serviceType: booking.service?.name || '',
-          workflowStatus: booking.workflow_status,
+          ...mapBookingToJob(booking),
           propertyImage:
-            'https://images.unsplash.com/photo-1560749003-f4b1e17e2dfd?w=400&q=80', // Default image
+            'https://images.unsplash.com/photo-1560749003-f4b1e17e2dfd?w=400&q=80',
           createdAt: booking.created_at,
         }));
 
@@ -101,25 +92,14 @@ const TodayJobs = ({
   useEffect(() => {
     if (realtimeBookings.length === 0) return;
 
-    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-
-    // Filter real-time bookings for today only
-    const todaysRealtimeBookings = realtimeBookings.filter(
-      (booking) => booking.scheduled_date === today
+    // Filter real-time bookings for today using shared utility
+    const todaysRealtimeBookings = realtimeBookings.filter((booking) =>
+      isToday(booking.scheduled_date)
     );
 
-    // Map real-time bookings to Job format
+    // Map real-time bookings using shared utility
     const mappedRealtimeJobs = todaysRealtimeBookings.map((booking) => ({
-      id: booking.id,
-      customerName:
-        booking.customer?.first_name + ' ' + booking.customer?.last_name,
-      address: booking.address || '',
-      time: `${format(
-        new Date(`2000-01-01T${booking.scheduled_time}`),
-        'h:mm a'
-      )}`,
-      serviceType: booking.service?.name || '',
-      workflowStatus: booking.workflow_status,
+      ...mapBookingToJob(booking),
       propertyImage:
         'https://images.unsplash.com/photo-1560749003-f4b1e17e2dfd?w=400&q=80',
       createdAt: booking.created_at,
@@ -137,9 +117,7 @@ const TodayJobs = ({
       // Remove jobs that are no longer for today
       return Array.from(jobMap.values()).filter((job) => {
         const matchingBooking = realtimeBookings.find((b) => b.id === job.id);
-        return matchingBooking
-          ? matchingBooking.scheduled_date === today
-          : true;
+        return matchingBooking ? isToday(matchingBooking.scheduled_date) : true;
       });
     });
   }, [realtimeBookings]);
@@ -280,7 +258,7 @@ const TodayJobs = ({
                   <View className="mt-1 flex-row items-center">
                     <Clock size={14} color="#6b7280" />
                     <Text className="ml-1 text-xs text-gray-500">
-                      {job.time}
+                      {job.scheduledTime}
                     </Text>
                   </View>
                   <View className="mt-1">
@@ -308,7 +286,7 @@ const TodayJobs = ({
               of {jobs.length} completed
             </Text>
           </View>
-          <TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push('/(technician)/jobs')}>
             <Text className="font-medium text-blue-600">View All Jobs</Text>
           </TouchableOpacity>
         </View>
