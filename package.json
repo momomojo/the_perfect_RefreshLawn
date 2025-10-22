@@ -95,7 +95,7 @@
     "react-native-webview": "13.12.5",
     "sentry-expo": "~7.0.0",
     "tailwind-merge": "^3.0.2",
-    "tailwindcss": "^3.4.17",
+    "tailwindcss": "^4.1.15",
     "tempo-devtools": "^2.0.95",
     "zod": "^4.1.12"
   },
