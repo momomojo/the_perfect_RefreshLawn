@@ -728,7 +728,18 @@ const BookingForm = ({
 
         <TouchableOpacity
           className="mb-3 mt-auto rounded-lg bg-green-500 px-4 py-3"
-          onPress={nextStep}
+          onPress={() => {
+            // Validate address is not empty
+            if (!bookingData.address || bookingData.address.trim() === '') {
+              showNotification({
+                title: 'Address Required',
+                message: 'Please enter a service address',
+                type: 'error',
+              });
+              return;
+            }
+            nextStep();
+          }}
         >
           <Text className="text-lg font-bold text-white">Next</Text>
         </TouchableOpacity>

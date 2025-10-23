@@ -609,11 +609,6 @@ const CustomerDashboard = () => {
               lawn in the early morning to prevent evaporation and fungal
               growth.
             </Text>
-            <TouchableOpacity style={{ marginTop: 12 }}>
-              <Text style={{ color: '#16a34a', fontWeight: '600' }}>
-                View more tips
-              </Text>
-            </TouchableOpacity>
           </View>
 
           <View style={{ height: 80 }} />

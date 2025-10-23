@@ -236,7 +236,7 @@ const AdminDashboard = () => {
         <Text className="mb-4 text-lg text-red-500">{error}</Text>
         <TouchableOpacity
           className="rounded-lg bg-green-600 px-4 py-2"
-          onPress={() => window.location.reload()}
+          onPress={fetchDashboardData}
         >
           <Text className="font-semibold text-white">Retry</Text>
         </TouchableOpacity>
